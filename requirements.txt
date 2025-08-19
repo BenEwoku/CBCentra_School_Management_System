@@ -1,0 +1,10 @@
+mysql-connector-python
+PySide6
+pyqt
+pyqt6-tools
+python-dotenv
+bycript
+python-docx
+openpyxl
+Pillow
+fpdf

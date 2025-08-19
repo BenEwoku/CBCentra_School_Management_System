@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sqbpro
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Virtual environment
+venv/
+env/
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+
+# Exported files
+exports/
+
+# Environment variables (optional)
+.env
+*.env
