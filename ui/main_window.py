@@ -4,43 +4,94 @@ from PySide6.QtWidgets import (
     QMainWindow, QMessageBox, QToolBar, QWidget,
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QStackedWidget,
     QSizePolicy, QScrollArea, QTabWidget, QInputDialog, QGraphicsDropShadowEffect,
-    QDialog, QFileDialog
+    QDialog, QFileDialog, QGroupBox, QRadioButton, QComboBox, QProgressDialog
 )
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect
+from datetime import datetime
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction
+from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintPreviewWidget, QPrintDialog
 from PySide6.QtPdf import QPdfDocument
 from ui.schools_form import SchoolsForm
 from ui.users_form import UsersForm
 from ui.teachers_form import TeachersForm
+from ui.login_logs_form import LoginLogsForm
+from ui.audit_logs_form import AuditLogsForm
+from utils.permissions import has_permission
 from fpdf import FPDF
 from docx import Document
 import tempfile
+import csv
+
 
 
 class MainWindow(QMainWindow):
+    # Signals at class level - CORRECT LOCATION
+    logout_requested = Signal()
+    user_session_updated = Signal(dict)
+    
     def __init__(self, config=None, user_session=None, db_connection=None, app_paths=None):
         super().__init__()
-
+        
+        # Store instance variables - CORRECT LOCATION
+        self.user_session = user_session or {}
+        self.app_config = config or {}
+        self.db_connection = db_connection
+        self.app_paths = app_paths or {}
+        
+        # Use the passed parameters, don't hardcode defaults
         self.app_config = config or {
             'name': 'CBCentra School Management System',
-            'window_title': 'CBCentra SMS Desktop',
+            'window_title': 'CBCentra SMS Desktop', 
             'min_size': (1024, 768),
             'default_size': (1200, 700)
         }
-        self.user_session = user_session or {
-            'user_id': 1,
-            'username': 'admin',
-            'role': 'admin',
-            'full_name': 'System Administrator'
-        }
+        
+        # CRITICAL: Use the passed user_session, don't hardcode
+        # Ensure user_session is a dictionary
+        if isinstance(user_session, dict):
+            self.user_session = user_session.copy()  # Avoid mutating external dict
+        else:
+            # Log invalid session
+            if user_session is not None:
+                print(f"❌ Invalid user_session type: {type(user_session)}, value: {user_session}")
+            
+            # Use safe fallback session with full data including permissions
+            self.user_session = {
+                'user_id': 1,
+                'username': 'admin',
+                'role': 'admin', 
+                'full_name': 'System Administrator',
+                'ip_address': '127.0.0.1',
+                'permissions': [
+                    'view_all_data', 'edit_all_data', 'create_user', 'delete_user',
+                    'view_login_logs', 'view_audit_logs', 'export_all_data',
+                    'manage_system_settings', 'backup_database'
+                ]
+            }
+        
+        # 🔁 Critical: If permissions are missing, regenerate from role
+        if 'permissions' not in self.user_session or self.user_session['permissions'] is None:
+            try:
+                from utils.permissions import get_role_permissions
+                role = self.user_session.get('role', 'user')
+                self.user_session['permissions'] = get_role_permissions(role)
+                print(f"🔁 Permissions auto-generated for role '{role}': {self.user_session['permissions']}")
+            except Exception as e:
+                print(f"❌ Failed to load permissions: {e}")
+                # Fallback minimal permissions
+                self.user_session['permissions'] = ['view_own_profile'] if self.user_session.get('role') != 'admin' else [
+                    'view_login_logs', 'view_audit_logs', 'view_all_data'
+                ]
+                
+        
         self.db_connection = db_connection
         self.app_paths = app_paths or {
             'icons': 'static/icons',
             'images': 'static/images',
             'app_icon': 'static/images/programlogo.png'
         }
+        
         self.sidebar_visible = False
         self.ribbon_visible = True
 
@@ -50,7 +101,7 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
         self.setup_window()
-
+        
     def setup_window(self):
         self.setWindowTitle(self.app_config['window_title'])
         self.setGeometry(100, 100, *self.app_config['default_size'])
@@ -63,27 +114,108 @@ class MainWindow(QMainWindow):
         self.create_main_tabs()
         self.create_ribbon_panel()
         self.create_sidebar()
+        self.create_logout_action()
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
         self.create_content_pages()
-        self.statusBar().showMessage("Ready - CBCentra School Management System")
-
+        
+        # Update status bar with user info
+        user_info = f"Ready - CBCentra School Management System | User: {self.user_session.get('full_name', 'Unknown')}"
+        self.statusBar().showMessage(user_info)
+    
         self.print_btn = QPushButton("Print Document", self)
         self.print_btn.clicked.connect(self.print_loaded_pdf)
         self.statusBar().addPermanentWidget(self.print_btn)
-
+    
         self.sidebar_animation = QPropertyAnimation(self.sidebar_frame, b"geometry")
         self.sidebar_animation.setDuration(300)
         self.sidebar_animation.setEasingCurve(QEasingCurve.OutCubic)
-
+    
         self.overlay_animation = QPropertyAnimation(self.sidebar_overlay, b"windowOpacity")
         self.overlay_animation.setDuration(300)
-
+        
+        # Update UI for current user session
+        self.update_ui_for_user_session()
+    
     def safe_disconnect(self, signal, slot):
         try:
             signal.disconnect(slot)
         except (RuntimeWarning, RuntimeError, TypeError):
             pass
+
+    # Add this method to your MainWindow class in ui/main_window.py
+    def update_user_session(self, new_session_data):
+        """Update user session data - CORRECTED METHOD"""
+        if isinstance(new_session_data, dict):
+            # Update the dictionary directly
+            self.user_session.update(new_session_data)
+        else:
+            # Replace entire session
+            self.user_session = new_session_data
+        
+        # Update UI elements that depend on user session
+        self.update_ui_for_user_session()
+        
+        # Emit signal to notify other components
+        self.user_session_updated.emit(self.user_session.copy())
+        
+    def get_user_session(self):
+        """Get copy of current user session"""
+        return self.user_session.copy() if self.user_session else {}
+    
+    def update_ui_for_user_session(self):
+        """Update UI based on current user session"""
+        if not self.user_session:
+            return
+            
+        # Update window title
+        username = self.user_session.get('username', 'User')
+        title = f"{self.app_config.get('window_title', 'CBCentra')} - {username}"
+        self.setWindowTitle(title)
+        
+        # Update status bar
+        if hasattr(self, 'statusBar'):
+            user_info = f"Logged in as: {self.user_session.get('full_name', 'User')} ({self.user_session.get('role', 'Unknown')})"
+            self.statusBar().showMessage(user_info)
+        
+        # Update any UI labels that show user info
+        if hasattr(self, 'user_name_label'):
+            self.user_name_label.setText(self.user_session.get('full_name', 'User'))
+            
+        if hasattr(self, 'user_role_label'):
+            self.user_role_label.setText(self.user_session.get('role', 'User'))
+    def create_logout_action(self):
+        """Create logout action in menu"""
+        # Get the menu bar (QMainWindow already has menuBar() method)
+        menu_bar = self.menuBar()
+        
+        # Create file menu
+        file_menu = menu_bar.addMenu("&File")
+        
+        # Logout action
+        logout_action = QAction("Logout", self)
+        logout_action.setShortcut("Ctrl+Q")
+        logout_action.triggered.connect(self.on_logout)
+        file_menu.addAction(logout_action)
+        
+        # Exit action
+        exit_action = QAction("Exit", self)
+        exit_action.setShortcut("Ctrl+W")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+    
+    def on_logout(self):
+        """Handle logout request"""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Logout", 
+            "Are you sure you want to logout?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.logout_requested.emit()
 
     def toggle_sidebar(self):
         self.safe_disconnect(self.overlay_animation.finished, self.sidebar_overlay.hide)
@@ -187,7 +319,6 @@ class MainWindow(QMainWindow):
         return None, None
 
     # --- your existing UI, ribbon, sidebar, main tabs, and other methods follow here ---
-    # ...
 
     def apply_styles(self):
         """Apply the main application stylesheet"""
@@ -373,31 +504,40 @@ class MainWindow(QMainWindow):
                 border-radius: 4px;
             }
             
+            /* Tab Widget Styling */
             QTabWidget::pane {
                 border: 1px solid #dee2e6;
-                border-radius: 4px;
-                margin: 0px;
-                padding: 0px;
+                border-radius: 8px;
+                margin: 10px 0 0 0;
+                padding: 0;
+                background: #ffffff;
             }
-            
+
             QTabBar::tab {
                 background: #f8f9fa;
+                color: #495057;
                 border: 1px solid #dee2e6;
                 border-bottom: none;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                padding: 12px 20px;
+                margin: 0 4px 0 0;
+                min-width: 120px;
+                font-size: 13px;
+                font-weight: 500;
             }
-            
-            QTabBar::tab:selected {
-                background: #ffffff;
-                border-color: #dee2e6;
-                border-bottom-color: #ffffff;
-            }
-            
+
             QTabBar::tab:hover {
                 background: #e9ecef;
+                color: #2c3e50;
+            }
+
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #1e40af;
+                border-color: #dee2e6;
+                border-bottom-color: #ffffff; /* Creates clean separation */
+                font-weight: 600;
             }
         """)
 
@@ -411,8 +551,8 @@ class MainWindow(QMainWindow):
         profile_layout.setContentsMargins(0, 0, 0, 0)
         profile_layout.setSpacing(10)
         
-        # User name label
-        self.user_name_label = QLabel(self.user_session['full_name'])
+        # User name label - use actual user session data
+        self.user_name_label = QLabel(self.user_session.get('full_name', 'User'))
         self.user_name_label.setStyleSheet("""
             QLabel {
                 color: white;
@@ -492,21 +632,21 @@ class MainWindow(QMainWindow):
         # Create profile section (now includes the toggle button)
         self.create_profile_section()
 
+    
     def create_dashboard_page(self):
-        """Create dashboard page with tabs including Users form"""
+        """Create dashboard page with flat tabs: Overview, User Management, Login Activity, Audit Trail"""
         dashboard_page = QWidget()
         dashboard_layout = QVBoxLayout(dashboard_page)
         dashboard_layout.setContentsMargins(0, 0, 0, 0)
-        
+    
         # Create tab widget for dashboard
         self.dashboard_tabs = QTabWidget()
         self.dashboard_tabs.setDocumentMode(True)
         self.dashboard_tabs.setTabPosition(QTabWidget.North)
-        
-        # Overview Tab
+    
+        # 1. Overview Tab
         overview_tab = QWidget()
         overview_layout = QVBoxLayout(overview_tab)
-        
         welcome_label = QLabel("Welcome to CBCentra School Management System")
         welcome_label.setStyleSheet("""
             font-size: 24px;
@@ -517,7 +657,7 @@ class MainWindow(QMainWindow):
         """)
         welcome_label.setAlignment(Qt.AlignCenter)
         overview_layout.addWidget(welcome_label)
-        
+    
         # Add some dashboard widgets
         stats_widget = QWidget()
         stats_layout = QHBoxLayout(stats_widget)
@@ -532,38 +672,50 @@ class MainWindow(QMainWindow):
             """)
             box_layout = QVBoxLayout(stat_box)
             box_layout.setContentsMargins(15, 15, 15, 15)
-            
             val_label = QLabel(value)
             val_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #2c3e50;")
             val_label.setAlignment(Qt.AlignCenter)
-            
             title_label = QLabel(title)
             title_label.setStyleSheet("font-size: 14px; color: #6c757d;")
             title_label.setAlignment(Qt.AlignCenter)
-            
             box_layout.addWidget(val_label)
             box_layout.addWidget(title_label)
             stats_layout.addWidget(stat_box)
-        
         overview_layout.addWidget(stats_widget)
         overview_layout.addStretch()
-        
         self.dashboard_tabs.addTab(overview_tab, "Overview")
-        
-        # Users Tab
-        self.users_form = UsersForm(self)
+        # After adding Overview
+        self.dashboard_tabs.setTabIcon(0, QIcon("static/icons/home.jpg"))
+    
+        # 2. User Management Tab
+        self.users_form = UsersForm(parent=self, user_session=self.user_session)
         self.dashboard_tabs.addTab(self.users_form, "User Management")
-        
-        # Reports Tab
-        reports_tab = QWidget()
-        reports_tab.setLayout(QVBoxLayout())
-        reports_tab.layout().addWidget(QLabel("Reports will be displayed here"))
-        self.dashboard_tabs.addTab(reports_tab, "Reports")
-        
+    
+        # 3. Login Activity Tab (now top-level)
+        login_logs_tab = QWidget()
+        login_logs_layout = QVBoxLayout(login_logs_tab)
+        login_logs_layout.setContentsMargins(0, 0, 0, 0)
+        self.login_logs_form = LoginLogsForm(user_session=self.user_session)
+        login_logs_layout.addWidget(self.login_logs_form)
+        self.dashboard_tabs.addTab(login_logs_tab, "Login Activity")
+        # After adding User Management
+        self.dashboard_tabs.setTabIcon(1, QIcon("static/icons/users.png"))
+    
+        # 4. Audit Trail Tab (now top-level)
+        audit_logs_tab = QWidget()
+        audit_logs_layout = QVBoxLayout(audit_logs_tab)
+        audit_logs_layout.setContentsMargins(0, 0, 0, 0)
+        self.audit_logs_form = AuditLogsForm(parent=audit_logs_tab, user_session=self.user_session)
+        audit_logs_layout.addWidget(self.audit_logs_form)
+        self.dashboard_tabs.addTab(audit_logs_tab, "Audit Trail")
+        # After adding Audit Trail
+        self.dashboard_tabs.setTabIcon(3, QIcon("static/icons/audit.jpg"))
+    
+        # Add the tab widget to the layout
         dashboard_layout.addWidget(self.dashboard_tabs)
-        
+    
         return dashboard_page
-
+    
     def create_content_pages(self):
         """Create all content pages for the application"""
         # Dashboard Page (now with tabs)
@@ -772,11 +924,17 @@ class MainWindow(QMainWindow):
                 {"title": "User Management", "actions": [
                     {"name": "Manage Users", "icon": "users.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(1)},
                     {"name": "Add User", "icon": "adduser.jpg", "handler": self.add_new_user},
-                    {"name": "User Reports", "icon": "report.jpg"}
+                    {"name": "User Reports", "icon": "report.jpg", "handler": self.export_user_reports},
+                    {"name": "Refresh", "icon": "refresh.jpg", "handler": self.refresh_user_data}
+                ]},
+                {"title": "Security & Reports", "actions": [  # NEW GROUP
+                    {"name": "Login Logs", "icon": "security.jpg", "handler": self.show_login_logs},
+                    {"name": "Audit Trail", "icon": "audit.jpg", "handler": self.show_audit_logs},
+                    {"name": "Security Report", "icon": "report_security.jpg", "handler": self.generate_security_report}
                 ]},
                 {"title": "Tools", "actions": [
                     {"name": "Settings", "icon": "settings.jpg", "handler": self.settings_action},
-                    {"name": "Refresh", "icon": "home.jpg"}
+                    {"name": "Global Refresh", "icon": "refresh_all.jpg", "handler": self.refresh_all_data}
                 ]}
             ],
             "Schools": [
@@ -802,9 +960,9 @@ class MainWindow(QMainWindow):
                     {"name": "Print Teacher", "icon": "print.jpg", "handler": self.print_teacher_pdf},  # Changed this
                     {"name": "Generate Teacher Profile", "icon": "report.jpg", "handler": self.generate_teacher_profile}
                 ]},
-                {"title": "Export & Import", "actions": [
-                    {"name": "Export Teacher Data to Excel", "icon": "export.jpg", "handler": self.export_teachers_data},
-                    {"name": "Import Teacher Data (CSV)", "icon": "import.jpg", "handler": self.import_teachers_data}
+                {"title": "Import & Export", "actions": [
+                    {"name": "Import Teacher Data (CSV)", "icon": "import.jpg", "handler": self.import_teachers_data},
+		    {"name": "Export Teacher Data (Excel)", "icon": "export.jpg", "handler": self.export_teachers_data}
                 ]}
             ]
 
@@ -841,7 +999,268 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'users_form'):
             self.users_form.clear_form()
         self.statusBar().showMessage("Ready to add new user")
+
+    def refresh_user_data(self):
+        """Refresh user data in the dashboard users form"""
+        self.on_tab_clicked("Dashboard")
+        self.dashboard_tabs.setCurrentIndex(1)  # Switch to Users tab
+        
+        if hasattr(self, 'users_form'):
+            try:
+                # Call the refresh method on your users form
+                self.users_form.refresh_data()
+                self.statusBar().showMessage("User data refreshed successfully!")
+            except Exception as e:
+                self.statusBar().showMessage(f"Error refreshing user data: {str(e)}")
+                QMessageBox.critical(self, "Refresh Error", f"Failed to refresh user data: {e}")
+        else:
+            self.statusBar().showMessage("Users form not available for refresh")
+            QMessageBox.warning(self, "Refresh Failed", "Users form is not initialized")
+
+    def export_user_reports(self):
+        """Export user reports to various formats"""
+        self.on_tab_clicked("Dashboard")
+        self.dashboard_tabs.setCurrentIndex(1)  # Switch to Users tab
+        
+        if not hasattr(self, 'users_form'):
+            QMessageBox.warning(self, "Export Failed", "Users form is not available")
+            return
+        
+        # Create export options dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Export User Reports")
+        dialog.setMinimumWidth(400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Report type selection
+        type_group = QGroupBox("Report Type")
+        type_layout = QVBoxLayout(type_group)
+        
+        report_types = [
+            ("All Users", "Complete list of all system users"),
+            ("Active Users", "Only currently active users"),
+            ("Inactive Users", "Only deactivated users"),
+            ("User Roles", "Users grouped by role with counts"),
+            ("Login Statistics", "User login activity and statistics")
+        ]
+        
+        self.report_radio_group = QButtonGroup()
+        for i, (title, description) in enumerate(report_types):
+            radio = QRadioButton(title)
+            radio.setToolTip(description)
+            type_layout.addWidget(radio)
+            self.report_radio_group.addButton(radio, i)
+            if i == 0:  # Select first option by default
+                radio.setChecked(True)
+        
+        layout.addWidget(type_group)
+        
+        # Format selection
+        format_group = QGroupBox("Export Format")
+        format_layout = QHBoxLayout(format_group)
+        
+        format_combo = QComboBox()
+        format_combo.addItems(["CSV", "Excel (XLSX)", "PDF", "HTML"])
+        format_layout.addWidget(QLabel("Format:"))
+        format_layout.addWidget(format_combo)
+        format_layout.addStretch()
+        
+        layout.addWidget(format_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        export_btn = QPushButton("Export")
+        cancel_btn = QPushButton("Cancel")
+        
+        export_btn.clicked.connect(lambda: self.execute_user_export(
+            self.report_radio_group.checkedId(),
+            format_combo.currentText(),
+            dialog
+        ))
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        button_layout.addWidget(export_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
+        
+    def execute_user_export(self, report_type, format_name, dialog):
+        """Execute the actual user export based on selections"""
+        try:
+            # Get filename from user
+            file_extensions = {
+                "CSV": "CSV files (*.csv)",
+                "Excel (XLSX)": "Excel files (*.xlsx)",
+                "PDF": "PDF files (*.pdf)",
+                "HTML": "HTML files (*.html)"
+            }
+            
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                f"Export User Report - {format_name}",
+                f"user_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                file_extensions.get(format_name, "All files (*.*)")
+            )
+            
+            if not filename:
+                return  # User cancelled
+            
+            # Add proper extension if missing
+            if format_name == "CSV" and not filename.lower().endswith('.csv'):
+                filename += '.csv'
+            elif format_name == "Excel (XLSX)" and not filename.lower().endswith('.xlsx'):
+                filename += '.xlsx'
+            elif format_name == "PDF" and not filename.lower().endswith('.pdf'):
+                filename += '.pdf'
+            elif format_name == "HTML" and not filename.lower().endswith('.html'):
+                filename += '.html'
+            
+            # Show progress
+            progress = QProgressDialog("Exporting user report...", "Cancel", 0, 100, self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
+            
+            # Export based on type
+            if report_type == 0:  # All Users
+                success = self.users_form.export_users(filename)
+            elif report_type == 1:  # Active Users
+                success = self.export_active_users(filename)
+            elif report_type == 2:  # Inactive Users
+                success = self.export_inactive_users(filename)
+            elif report_type == 3:  # User Roles
+                success = self.export_user_roles(filename)
+            elif report_type == 4:  # Login Statistics
+                success = self.export_login_statistics(filename)
+            else:
+                success = False
+            
+            progress.close()
+            
+            if success:
+                QMessageBox.information(self, "Success", f"User report exported successfully to:\n{filename}")
+                self.statusBar().showMessage(f"User report exported: {os.path.basename(filename)}")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to export user report")
+                
+            dialog.accept()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export user report: {str(e)}")
+
+    def export_active_users(self, filename):
+        """Export only active users"""
+        try:
+            # You can implement this directly or modify your users_form.export_users method
+            # to accept filters. For now, let's use a simple approach:
+            query = '''
+                SELECT u.id, u.username, u.full_name, u.role, 
+                       COALESCE(t.position, 'N/A') as position,
+                       u.created_at
+                FROM users u
+                LEFT JOIN teachers t ON t.full_name = u.full_name
+                WHERE u.is_active = 1
+                ORDER BY u.username
+            '''
+            
+            self.users_form.cursor.execute(query)
+            users = self.users_form.cursor.fetchall()
+            
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Position', 'Created At'])
+                writer.writerows(users)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Export active users error: {e}")
+            return False
     
+    def export_inactive_users(self, filename):
+        """Export only inactive users"""
+        try:
+            query = '''
+                SELECT u.id, u.username, u.full_name, u.role, 
+                       COALESCE(t.position, 'N/A') as position,
+                       u.created_at, u.updated_at
+                FROM users u
+                LEFT JOIN teachers t ON t.full_name = u.full_name
+                WHERE u.is_active = 0
+                ORDER BY u.username
+            '''
+            
+            self.users_form.cursor.execute(query)
+            users = self.users_form.cursor.fetchall()
+            
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Position', 'Created At', 'Last Updated'])
+                writer.writerows(users)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Export inactive users error: {e}")
+            return False
+    
+    def export_user_roles(self, filename):
+        """Export users grouped by roles"""
+        try:
+            query = '''
+                SELECT role, COUNT(*) as user_count,
+                       SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count,
+                       SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive_count
+                FROM users
+                GROUP BY role
+                ORDER BY role
+            '''
+            
+            self.users_form.cursor.execute(query)
+            role_stats = self.users_form.cursor.fetchall()
+            
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['Role', 'Total Users', 'Active Users', 'Inactive Users'])
+                writer.writerows(role_stats)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Export user roles error: {e}")
+            return False
+    
+    def export_login_statistics(self, filename):
+        """Export user login statistics"""
+        try:
+            query = '''
+                SELECT u.username, u.full_name, u.role,
+                       COUNT(ll.id) as total_logins,
+                       SUM(CASE WHEN ll.login_status = 'success' THEN 1 ELSE 0 END) as successful_logins,
+                       SUM(CASE WHEN ll.login_status = 'failed' THEN 1 ELSE 0 END) as failed_logins,
+                       MAX(ll.login_time) as last_login
+                FROM users u
+                LEFT JOIN login_logs ll ON u.id = ll.user_id
+                GROUP BY u.id, u.username, u.full_name, u.role
+                ORDER BY total_logins DESC
+            '''
+            
+            self.users_form.cursor.execute(query)
+            login_stats = self.users_form.cursor.fetchall()
+            
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['Username', 'Full Name', 'Role', 'Total Logins', 
+                               'Successful Logins', 'Failed Logins', 'Last Login'])
+                writer.writerows(login_stats)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Export login statistics error: {e}")
+            return False
+        
     #for staff/teachers
     def show_teachers_form(self):
         """Switch to teachers form and ensure it's visible"""
@@ -916,6 +1335,103 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to generate PDF:\n{str(e)}")
         else:
             QMessageBox.warning(self, "No Selection", "Please select a teacher first")
+
+    #for login logs
+    def show_login_logs(self):
+        """Show Login Activity tab directly"""
+        if not has_permission(self.user_session, "view_login_logs"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to view login logs.")
+            return
+    
+        self.on_tab_clicked("Dashboard")
+        self.dashboard_tabs.setCurrentIndex(2)  # Login Activity is now tab 2
+        self.login_logs_form.load_login_logs()
+        self.statusBar().showMessage("Login activity logs loaded")
+    
+    def show_audit_logs(self):
+        """Show Audit Trail tab directly"""
+        if not has_permission(self.user_session, "view_audit_logs"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to view audit logs.")
+            return
+    
+        self.on_tab_clicked("Dashboard")
+        self.dashboard_tabs.setCurrentIndex(3)  # Audit Trail is now tab 3
+        self.audit_logs_form.load_audit_logs()
+        self.statusBar().showMessage("Audit trail logs loaded")
+        
+    def log_audit_action(user_session, action, table_name, record_id=None, old_values=None, new_values=None, ip_address=None):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+    
+            # Auto-generate description
+            full_name = user_session.get('full_name', user_session.get('username', 'Unknown'))
+            desc = f"{full_name} performed '{action}' on '{table_name}' (ID: {record_id})"
+    
+            query = """
+                INSERT INTO audit_log 
+                (user_id, action, description, table_name, record_id, old_values, new_values, ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(query, (
+                user_session.get('user_id'),
+                action,
+                desc,
+                table_name,
+                record_id,
+                old_values,
+                new_values,
+                ip_address or user_session.get('ip_address', '127.0.0.1')
+            ))
+            conn.commit()
+        except Exception as e:
+            print(f"Failed to log audit action: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def export_audit_reports(self):
+        """Export audit reports"""
+        self.on_tab_clicked("Dashboard")
+        self.dashboard_tabs.setCurrentIndex(2)  # Reports tab
+        
+        if hasattr(self, 'audit_logs_form'):
+            try:
+                self.audit_logs_form.export_logs()
+                self.statusBar().showMessage("Audit reports exported successfully!")
+            except Exception as e:
+                self.statusBar().showMessage(f"Error exporting audit reports: {str(e)}")
+                QMessageBox.critical(self, "Export Error", f"Failed to export audit reports: {e}")
+        else:
+            self.statusBar().showMessage("Audit logs form not available for export")
+    
+    def generate_security_report(self):
+        """Generate security report (placeholder)"""
+        self.on_tab_clicked("Dashboard")
+        self.dashboard_tabs.setCurrentIndex(2)  # Reports tab
+        QMessageBox.information(self, "Coming Soon", "Security reports feature will be available in the next update")
+
+    #Global refresh all data
+    def refresh_all_data(self):
+        """Refresh all data across dashboard tabs"""
+        current_tab = self.dashboard_tabs.currentIndex()
+        
+        # Refresh based on current dashboard tab
+        if current_tab == 0:  # Overview tab
+            self.load_dashboard_stats()
+            self.statusBar().showMessage("Dashboard overview refreshed!")
+        elif current_tab == 1 and hasattr(self, 'users_form'):  # Users tab
+            self.refresh_user_data()
+        elif current_tab == 2:  # Reports tab
+            # Refresh based on which reports subtab is active
+            current_report_tab = self.reports_tabs.currentIndex()
+            if current_report_tab == 0 and hasattr(self, 'login_logs_form'):  # Login Logs
+                self.login_logs_form.load_login_logs()
+                self.statusBar().showMessage("Login logs refreshed!")
+            else:
+                self.statusBar().showMessage("Reports data refreshed!")
+        else:
+            self.statusBar().showMessage("Refresh completed")
  
 
     #for system

@@ -1,0 +1,59 @@
+
+
+cd /d F:\PROJECTS\CBCENTRA
+********************************************************************************
+✅ Daily Git Commands Cheat Sheet
+🔁 1. Pull the latest changes before you start
+git pull origin main    =========================================
+
+🛠️ 2. Stage all new or modified files
+git add .               =========================================
+
+
+Or stage specific files:
+
+git add filename.py     =========================================
+
+📝 3. Commit your changes with a clear message
+git commit -m "your meaningful commit message"  ==============================
+
+
+Examples:
+
+git commit -m "Add student registration form"
+git commit -m "Fix sidebar layout"
+
+⬆️ 4. Push your code to GitHub
+git push origin main    =======================================================
+
+*****************************************************************************************
+
+
+
+****************************************************
+✅ Full Daily Push Workflow Summary
+git pull origin main     
+git add .
+git commit -m "Describe what you changed"
+git push origin main
+*******************************************************
+
+
+
+******************************************************
+🧠 Useful Tips
+
+Check what’s changed:
+
+git status
+
+
+View commit history:
+
+git log --oneline
+
+
+See differences before committing:
+
+git diff
+**********************************************************

@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-
 def get_db_config():
     """Get DB configuration from environment variables"""
     return {
@@ -21,43 +20,68 @@ def get_db_config():
         'use_unicode': True
     }
 
-
 def get_db_connection():
-    """Get database connection with automatic initialization"""
+    """Get database connection WITHOUT automatic initialization"""
     try:
-        # First connect without database to create it if needed
+        config = get_db_config()
+        conn = mysql.connector.connect(**config)
+        
+        if conn.is_connected():
+            print(f"✅ Connected to database: {config['database']}")
+            return conn
+        else:
+            raise Error("Failed to establish connection")
+            
+    except Error as e:
+        print(f"❌ Database connection error: {e}")
+        raise
+
+def create_database_if_not_exists():
+    """Create database if it doesn't exist"""
+    try:
         config = get_db_config()
         db_name = config.pop('database')
         
-        # Connect to MySQL server without specific database
+        # Connect without specific database
         conn = mysql.connector.connect(**config)
         cursor = conn.cursor()
         
-        # Create database if not exists
         cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+        print(f"✅ Database '{db_name}' ready")
+        
         cursor.close()
         conn.close()
         
-        # Now connect to the specific database
-        config['database'] = db_name
-        conn = mysql.connector.connect(**config)
-        
-        # Initialize tables
-        initialize_tables(conn)
-        
-        return conn
-        
     except Error as e:
-        print(f"Database error: {e}")
+        print(f"❌ Error creating database: {e}")
         raise
 
+def check_tables_exist(conn):
+    """Check if tables exist in the database"""
+    cursor = conn.cursor()
+    cursor.execute("SHOW TABLES")
+    tables = cursor.fetchall()
+    cursor.close()
+    
+    table_names = [table[0] for table in tables]
+    print(f"📋 Existing tables: {table_names}")
+    return table_names
 
-def initialize_tables(conn):
-    """Initialize all tables in one place"""
+def initialize_tables(conn, force=False):
+    """Initialize all tables - only call this explicitly"""
     cursor = conn.cursor()
     
     try:
-        print("Initializing database tables...")
+        if not force:
+            existing_tables = check_tables_exist(conn)
+            if existing_tables:
+                print(f"⚠️  Tables already exist: {existing_tables}")
+                response = input("Do you want to recreate all tables? (y/N): ").lower().strip()
+                if response not in ['y', 'yes']:
+                    print("📋 Skipping table creation")
+                    return existing_tables
+        
+        print("🔧 Initializing database tables...")
         
         # Disable foreign key checks temporarily
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
@@ -83,17 +107,18 @@ def initialize_tables(conn):
         ''')
 
         # === 2. Users (Admins/Staff login credentials) ===
+        #cursor.execute('DROP TABLE IF EXISTS users')  # Drop existing table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 full_name VARCHAR(100),
-                role ENUM('admin', 'headteacher', 'teacher', 'staff') DEFAULT 'staff',
+                role ENUM('admin', 'headteacher', 'teacher', 'staff', 'finance', 'subject_head') DEFAULT 'staff',
                 password_hash VARCHAR(255) NOT NULL,
                 is_active BOOLEAN DEFAULT TRUE,
                 last_login TIMESTAMP NULL,
-                password_reset_token VARCHAR(255) NULL,
-                token_expiry TIMESTAMP NULL,
+                failed_login_attempts INT DEFAULT 0,
+                account_locked_until TIMESTAMP NULL,
                 school_id INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -101,6 +126,49 @@ def initialize_tables(conn):
                 INDEX idx_role (role),
                 INDEX idx_is_active (is_active),
                 FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ''')
+
+        # === Login Logs ===
+        #cursor.execute('DROP TABLE IF EXISTS login_logs')  # Drop existing table
+        cursor.execute('''
+            CREATE TABLE login_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                logout_time TIMESTAMP NULL,
+                ip_address VARCHAR(50),
+                device VARCHAR(100),
+                login_status VARCHAR(50),
+                failure_reason VARCHAR(100),
+                user_agent TEXT,
+                INDEX idx_login_time (login_time),
+                INDEX idx_user_login (user_id, login_time),
+                INDEX idx_login_status (login_status),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ''')
+
+        # === OR if you want to recreate the table with description column ===
+        #cursor.execute('DROP TABLE IF EXISTS audit_log')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT,
+                action VARCHAR(100) NOT NULL,
+                description TEXT,
+                table_name VARCHAR(100),
+                record_id INT,
+                old_values JSON,
+                new_values JSON,
+                ip_address VARCHAR(50),
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_action (action),
+                INDEX idx_table_name (table_name),
+                INDEX idx_created_at (created_at),
+                INDEX idx_user_action (user_id, action),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
@@ -890,25 +958,6 @@ def initialize_tables(conn):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
-        # === 35. Login Logs ===
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS login_logs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                logout_time TIMESTAMP NULL,
-                ip_address VARCHAR(50),
-                device VARCHAR(100),
-                login_status VARCHAR(50),
-                user_agent TEXT,
-                is_active BOOLEAN DEFAULT TRUE,
-                INDEX idx_login_time (login_time),
-                INDEX idx_user_login (user_id, login_time),
-                INDEX idx_login_status (login_status),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ''')
-
         # === 36. Backups ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS backups (
@@ -927,7 +976,8 @@ def initialize_tables(conn):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
-        # === 37. System Settings ===
+
+        # === 5. System Settings ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS system_settings (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -946,324 +996,93 @@ def initialize_tables(conn):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
-        # === 38. Audit Log ===
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT,
-                action VARCHAR(100) NOT NULL,
-                table_name VARCHAR(100),
-                record_id INT,
-                old_values JSON,
-                new_values JSON,
-                ip_address VARCHAR(50),
-                user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_action (action),
-                INDEX idx_table_name (table_name),
-                INDEX idx_created_at (created_at),
-                INDEX idx_user_action (user_id, action),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ''')
-
-        print("Creating additional indexes for performance optimization...")
+        #print("Creating additional indexes for performance optimization...")
         
-        # Additional performance indexes - using proper MySQL syntax
-        try:
-            # Check if index exists before creating
-            indexes_to_create = [
-                ("idx_student_class_term", "student_class_assignments", "student_id, class_id, term_id"),
-                ("idx_teacher_subject_class", "teacher_subjects", "teacher_id, subject_id, class_id"),
-                ("idx_marks_comprehensive", "marks", "student_id, subject_id, class_id, term_id, academic_year_id, is_active"),
-                ("idx_attendance_comprehensive", "attendance", "student_id, attendance_date, status"),
-                ("idx_fees_comprehensive", "student_fees", "student_id, status, due_date"),
-                ("idx_inventory_low_stock", "inventory_items", "quantity, min_threshold")
-            ]
-            
-            for index_name, table_name, columns in indexes_to_create:
-                try:
-                    cursor.execute(f"CREATE INDEX {index_name} ON {table_name}({columns})")
-                    print(f"✅ Created index: {index_name}")
-                except Error as e:
-                    if "Duplicate key name" in str(e) or "already exists" in str(e):
-                        print(f"ℹ️ Index {index_name} already exists")
-                    else:
-                        print(f"⚠️ Error creating index {index_name}: {e}")
-                        
-        except Exception as e:
-            print(f"⚠️ Warning: Some indexes may not have been created: {e}")
+        # Additional performance indexes - only create if they don't exist
+        indexes_to_create = [
+            ("idx_student_school_active", "students", "school_id, is_active"),
+            ("idx_teacher_school_active", "teachers", "school_id, is_active"),
+            ("idx_user_role_active", "users", "role, is_active"),
+            ("idx_settings_school_key", "system_settings", "school_id, setting_key")
+        ]
+        
+        for index_name, table_name, columns in indexes_to_create:
+            try:
+                cursor.execute(f"CREATE INDEX {index_name} ON {table_name}({columns})")
+                print(f"✅ Created index: {index_name}")
+            except Error as e:
+                if "Duplicate key name" in str(e) or "already exists" in str(e):
+                    print(f"ℹ️ Index {index_name} already exists")
+                else:
+                    print(f"⚠️ Error creating index {index_name}: {e}")
 
         print("Database schema creation completed successfully!")
-
-        # Insert default data
-        print("Inserting default data...")
-        
-        # Default admin user
-        cursor.execute('''
-            INSERT IGNORE INTO users (username, full_name, role, password_hash, is_active)
-            VALUES ('admin', 'System Administrator', 'admin', 'pbkdf2:sha256:260000$default$hash', TRUE)
-        ''')
-        
-        # Default academic year
-        cursor.execute('''
-            INSERT IGNORE INTO academic_years (year_name, start_date, end_date, is_current)
-            VALUES ('2024', '2024-01-01', '2024-12-31', TRUE)
-        ''')
 
         # Re-enable foreign key checks
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         
         conn.commit()
-        print("✅ All tables created successfully in MySQL database")
+        print("✅ All tables created successfully!")
+        
+        # Return list of created tables
+        return check_tables_exist(conn)
         
     except Error as e:
-        print(f"❌ Error initializing tables: {e}")
         conn.rollback()
+        print(f"❌ Error creating tables: {e}")
         raise
     finally:
         cursor.close()
 
 
 def initialize_database():
-    """Standalone function to initialize database"""
+    """Complete database initialization - call this explicitly"""
+    try:
+        print("🚀 Starting database initialization...")
+        
+        # Step 1: Create database if needed
+        create_database_if_not_exists()
+        
+        # Step 2: Connect to database
+        conn = get_db_connection()
+        
+        # Step 3: Initialize tables
+        tables = initialize_tables(conn, force=True)
+        
+        conn.close()
+        print("🎉 Database initialization complete!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        return False
+
+def test_connection():
+    """Test database connection and show info"""
     try:
         conn = get_db_connection()
-        print("✅ Database initialization completed successfully")
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT DATABASE()")
+        db_name = cursor.fetchone()[0]
+        
+        cursor.execute("SHOW TABLES")
+        tables = cursor.fetchall()
+        table_names = [table[0] for table in tables]
+        
+        cursor.close()
         conn.close()
-    except Error as e:
-        print(f"❌ Database initialization failed: {e}")
-        raise
+        
+        return True, f"Connected to: {db_name}, Tables: {table_names}"
+    except Exception as e:
+        return False, str(e)
 
 
-# Database model classes for easier data manipulation
-class DatabaseManager:
-    """Database manager class for common operations"""
-    
-    def __init__(self):
-        self.connection = None
-    
-    def connect(self):
-        """Establish database connection"""
-        self.connection = get_db_connection()
-        return self.connection
-    
-    def close(self):
-        """Close database connection"""
-        if self.connection:
-            self.connection.close()
-    
-    def execute_query(self, query, params=None):
-        """Execute a query and return results"""
-        cursor = self.connection.cursor(dictionary=True)
-        try:
-            cursor.execute(query, params or ())
-            if query.strip().upper().startswith('SELECT'):
-                return cursor.fetchall()
-            else:
-                self.connection.commit()
-                return cursor.rowcount
-        except Error as e:
-            print(f"Query error: {e}")
-            self.connection.rollback()
-            raise
-        finally:
-            cursor.close()
-    
-    def get_schools(self):
-        """Get all active schools"""
-        return self.execute_query("SELECT * FROM schools WHERE is_active = TRUE")
-    
-    def get_students_by_school(self, school_id):
-        """Get all active students for a school"""
-        return self.execute_query(
-            "SELECT * FROM students WHERE school_id = %s AND is_active = TRUE",
-            (school_id,)
-        )
-    
-    def get_current_academic_year(self):
-        """Get current academic year"""
-        result = self.execute_query("SELECT * FROM academic_years WHERE is_current = TRUE LIMIT 1")
-        return result[0] if result else None
-    
-    def get_current_term(self):
-        """Get current term"""
-        result = self.execute_query("SELECT * FROM terms WHERE is_current = TRUE LIMIT 1")
-        return result[0] if result else None
-    
-    def get_student_marks(self, student_id, term_id=None, academic_year_id=None):
-        """Get student marks for a specific term/year"""
-        query = """
-            SELECT m.*, s.subject_name, st.full_name as student_name
-            FROM marks m
-            JOIN subjects s ON m.subject_id = s.id
-            JOIN students st ON m.student_id = st.id
-            WHERE m.student_id = %s AND m.is_active = TRUE
-        """
-        params = [student_id]
-        
-        if term_id:
-            query += " AND m.term_id = %s"
-            params.append(term_id)
-        
-        if academic_year_id:
-            query += " AND m.academic_year_id = %s"
-            params.append(academic_year_id)
-        
-        query += " ORDER BY s.subject_name"
-        return self.execute_query(query, params)
-    
-    def get_class_students(self, class_id, term_id=None):
-        """Get all students in a class for a specific term"""
-        query = """
-            SELECT DISTINCT s.*, sca.status
-            FROM students s
-            JOIN student_class_assignments sca ON s.id = sca.student_id
-            WHERE sca.class_id = %s AND s.is_active = TRUE
-        """
-        params = [class_id]
-        
-        if term_id:
-            query += " AND sca.term_id = %s"
-            params.append(term_id)
-        
-        query += " ORDER BY s.full_name"
-        return self.execute_query(query, params)
-    
-    def get_teacher_subjects(self, teacher_id, term_id=None):
-        """Get subjects assigned to a teacher"""
-        query = """
-            SELECT ts.*, s.subject_name, c.class_name
-            FROM teacher_subjects ts
-            JOIN subjects s ON ts.subject_id = s.id
-            JOIN classes c ON ts.class_id = c.id
-            WHERE ts.teacher_id = %s AND ts.is_active = TRUE
-        """
-        params = [teacher_id]
-        
-        if term_id:
-            query += " AND ts.term_id = %s"
-            params.append(term_id)
-        
-        return self.execute_query(query, params)
-    
-    def get_student_attendance(self, student_id, start_date=None, end_date=None):
-        """Get student attendance records"""
-        query = """
-            SELECT a.*, s.subject_name, t.full_name as teacher_name
-            FROM attendance a
-            JOIN subjects s ON a.subject_id = s.id
-            JOIN teachers t ON a.teacher_id = t.id
-            WHERE a.student_id = %s
-        """
-        params = [student_id]
-        
-        if start_date:
-            query += " AND a.attendance_date >= %s"
-            params.append(start_date)
-        
-        if end_date:
-            query += " AND a.attendance_date <= %s"
-            params.append(end_date)
-        
-        query += " ORDER BY a.attendance_date DESC"
-        return self.execute_query(query, params)
-    
-    def get_student_fees_summary(self, student_id):
-        """Get student fees summary"""
-        return self.execute_query("""
-            SELECT 
-                sf.*,
-                fc.category_name,
-                COALESCE(SUM(fp.amount_paid), 0) as total_paid,
-                (sf.final_amount - COALESCE(SUM(fp.amount_paid), 0)) as balance
-            FROM student_fees sf
-            JOIN fee_structure fs ON sf.fee_structure_id = fs.id
-            JOIN fee_categories fc ON fs.fee_category_id = fc.id
-            LEFT JOIN fee_payments fp ON sf.id = fp.student_fee_id AND fp.is_active = TRUE
-            WHERE sf.student_id = %s AND sf.is_active = TRUE
-            GROUP BY sf.id
-            ORDER BY sf.due_date
-        """, (student_id,))
-    
-    def get_inventory_low_stock(self, school_id):
-        """Get items with low stock"""
-        return self.execute_query("""
-            SELECT ii.*, ic.name as category_name
-            FROM inventory_items ii
-            LEFT JOIN item_categories ic ON ii.category_id = ic.id
-            WHERE ii.school_id = %s 
-            AND ii.quantity <= ii.min_threshold
-            ORDER BY (ii.quantity / GREATEST(ii.min_threshold, 1)) ASC
-        """, (school_id,))
-    
-    def get_exam_schedule(self, exam_id):
-        """Get exam schedule for a specific exam"""
-        return self.execute_query("""
-            SELECT 
-                es.*,
-                s.subject_name,
-                c.class_name,
-                t.full_name as teacher_name
-            FROM exam_subjects es
-            JOIN subjects s ON es.subject_id = s.id
-            JOIN classes c ON es.class_id = c.id
-            JOIN teachers t ON es.teacher_id = t.id
-            WHERE es.exam_id = %s
-            ORDER BY es.exam_date, es.start_time
-        """, (exam_id,))
-    
-    def get_school_statistics(self, school_id):
-        """Get comprehensive school statistics"""
-        stats = {}
-        
-        # Student count
-        result = self.execute_query(
-            "SELECT COUNT(*) as count FROM students WHERE school_id = %s AND is_active = TRUE",
-            (school_id,)
-        )
-        stats['total_students'] = result[0]['count'] if result else 0
-        
-        # Teacher count
-        result = self.execute_query(
-            "SELECT COUNT(*) as count FROM teachers WHERE school_id = %s AND is_active = TRUE",
-            (school_id,)
-        )
-        stats['total_teachers'] = result[0]['count'] if result else 0
-        
-        # Class count
-        result = self.execute_query(
-            "SELECT COUNT(*) as count FROM classes WHERE school_id = %s AND is_active = TRUE",
-            (school_id,)
-        )
-        stats['total_classes'] = result[0]['count'] if result else 0
-        
-        # Subject count
-        result = self.execute_query(
-            "SELECT COUNT(*) as count FROM subjects WHERE school_id = %s AND is_active = TRUE",
-            (school_id,)
-        )
-        stats['total_subjects'] = result[0]['count'] if result else 0
-        
-        # Outstanding fees
-        result = self.execute_query("""
-            SELECT SUM(sf.final_amount - COALESCE(paid.total_paid, 0)) as outstanding
-            FROM student_fees sf
-            JOIN students s ON sf.student_id = s.id
-            LEFT JOIN (
-                SELECT student_fee_id, SUM(amount_paid) as total_paid
-                FROM fee_payments
-                WHERE is_active = TRUE
-                GROUP BY student_fee_id
-            ) paid ON sf.id = paid.student_fee_id
-            WHERE s.school_id = %s AND sf.is_active = TRUE AND sf.status != 'Paid'
-        """, (school_id,))
-        stats['outstanding_fees'] = float(result[0]['outstanding']) if result and result[0]['outstanding'] else 0.0
-        
-        return stats
-
-
-# Initialize database when module is imported
+# Only run initialization if this file is called directly
 if __name__ == "__main__":
-    print("🚀 Initializing database...")
-    initialize_database()
+    print("🚀 Direct execution - Initializing database...")
+    success = initialize_database()
+    if success:
+        print("✅ Database setup complete!")
+    else:
+        print("❌ Database setup failed!")

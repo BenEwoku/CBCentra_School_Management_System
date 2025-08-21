@@ -2,14 +2,15 @@ import sys
 import os
 import csv
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QMessageBox, QFileDialog, QScrollArea, QFrame, QSizePolicy,
-    QGroupBox, QGridLayout, QSpacerItem, QComboBox, QFormLayout, QMenu
+    QGroupBox, QGridLayout, QSpacerItem, QComboBox, QFormLayout, QMenu,
+    QApplication
 )
 from PySide6.QtGui import QFont, QPalette, QIcon
 from PySide6.QtCore import Qt, Signal, QSize
@@ -21,6 +22,8 @@ from mysql.connector import Error
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.models import get_db_connection
 from utils.auth import hash_password
+from utils.permissions import has_permission
+
 
 class UsersForm(QWidget):
     user_selected = Signal(int)  # Signal emitted when a user is selected
@@ -31,6 +34,7 @@ class UsersForm(QWidget):
         self.current_user_id = None
         self.current_teacher_id = None
         self.password_visible = False
+        self.confirm_password_visible = False
         self.teacher_data = {}
         
         # Set up modern styling
@@ -46,27 +50,30 @@ class UsersForm(QWidget):
         
         self.setup_ui()
         self.load_users()
-
+    
     def setup_styling(self):
-        """Set up modern professional styling"""
-        # Define color palette
+        """Set up modern professional styling matching TeachersForm"""
+        # Define color palette with better contrast (same as TeachersForm)
         self.colors = {
-            'primary': '#2563eb',        # Blue
-            'primary_dark': '#1d4ed8',   # Darker blue
-            'secondary': '#64748b',      # Slate
-            'success': '#059669',        # Emerald
-            'warning': '#d97706',        # Amber
-            'danger': '#dc2626',         # Red
-            'info': '#0891b2',          # Cyan
-            'light': '#f8fafc',         # Very light gray
-            'dark': '#0f172a',          # Very dark blue
-            'border': '#e2e8f0',        # Light border
-            'text_primary': '#1e293b',   # Dark slate
-            'text_secondary': '#64748b', # Medium slate
+            'primary': '#1e40af',        # Darker blue for better contrast
+            'primary_dark': '#1e3a8a',   # Even darker blue
+            'secondary': '#475569',      # Darker slate
+            'success': '#065f46',        # Darker emerald
+            'warning': '#b45309',        # Darker amber
+            'danger': '#b91c1c',         # Darker red
+            'info': '#0e7490',           # Darker cyan
+            'light': '#f1f5f9',          # Light gray
+            'dark': '#0f172a',           # Very dark blue
+            'border': '#cbd5e1',         # Medium border color
+            'text_primary': '#0f172a',   # Darker text for better contrast
+            'text_secondary': '#475569', # Darker secondary text
             'background': '#ffffff',     # White
-            'surface': '#f1f5f9',       # Light surface
-            'table_header': '#10b981',   # Nice green for table headers
-            'table_header_dark': '#059669'  # Darker green for hover
+            'surface': '#f8fafc',        # Very light surface
+            'input_background': '#ffffff', # Pure white for inputs
+            'input_border': '#94a3b8',   # Medium border for inputs
+            'input_focus': '#3b82f6',    # Blue for focus
+            'table_header': '#10b981',   # Teal for table headers (maintained as requested)
+            'table_header_dark': '#059669'  # Darker teal (maintained as requested)
         }
         
         # Set up fonts
@@ -79,16 +86,274 @@ class UsersForm(QWidget):
             'table': QFont("Tahoma", 12),
             'table_header': QFont("Tahoma", 13, QFont.Weight.Bold)
         }
+        
+        # Set application style with better contrast
+        self.setStyleSheet(f"""
+            QWidget {{
+                font-family: 'Segoe UI', 'Arial', sans-serif;
+                font-size: 13px;
+                color: {self.colors['text_primary']};
+                background-color: {self.colors['background']};
+            }}
+            
+            /* Main container */
+            UsersForm {{
+                background-color: {self.colors['surface']};
+                border: none;
+            }}
+            
+            /* Frames */
+            QFrame {{
+                background-color: {self.colors['background']};
+                border: 2px solid {self.colors['border']};
+                border-radius: 8px;
+            }}
+            
+            /* Group boxes and frames - More visible borders */
+            QGroupBox {{
+                font-weight: 700;
+                font-size: 14px;
+                color: {self.colors['text_primary']};
+                border: 2px solid {self.colors['border']};
+                border-radius: 8px;
+                margin-top: 16px;
+                padding-top: 10px;
+                background-color: {self.colors['background']};
+            }}
+            
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 8px 0 8px;
+                color: {self.colors['primary']};
+                background-color: {self.colors['background']};
+                font-weight: 700;
+            }}
+            
+            /* Labels - Better contrast */
+            QLabel {{
+                color: {self.colors['text_primary']};
+                font-weight: 600;
+            }}
+            
+            /* Input fields with better contrast and visibility */
+            QLineEdit, QComboBox {{
+                border: 2px solid {self.colors['input_border']};
+                border-radius: 6px;
+                padding: 12px 16px;
+                font-size: 13px;
+                background-color: {self.colors['input_background']};
+                selection-background-color: {self.colors['primary']};
+                min-height: 20px;
+                line-height: 1.4;
+                color: {self.colors['text_primary']};
+            }}
+            
+            QLineEdit:focus, QComboBox:focus {{
+                border-color: {self.colors['input_focus']};
+                background-color: {self.colors['input_background']};
+                border-width: 2px;
+            }}
+            
+            QLineEdit:disabled, QComboBox:disabled {{
+                background-color: #f1f5f9;
+                color: #64748b;
+                border-color: #cbd5e1;
+            }}
+            
+            QLineEdit::placeholder {{
+                color: #94a3b8;
+                font-style: italic;
+            }}
+            
+            /* ComboBox dropdown styling */
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid {self.colors['text_secondary']};
+            }}
+            
+            /* Buttons - More visible */
+            QPushButton {{
+                border: none;
+                border-radius: 6px;
+                padding: 12px 24px;
+                font-weight: 600;
+                font-size: 13px;
+                min-height: 20px;
+            }}
+            
+            QPushButton:hover {{
+                border: 1px solid rgba(255, 255, 255, 0.3);
+            }}
+            
+            QPushButton:pressed {{
+                padding: 13px 23px 11px 25px;
+            }}
+            
+            /* Primary buttons */
+            .btn-primary {{
+                background-color: {self.colors['primary']};
+                color: white;
+                border: 1px solid {self.colors['primary']};
+            }}
+            
+            .btn-primary:hover {{
+                background-color: {self.colors['primary_dark']};
+                border: 1px solid {self.colors['primary_dark']};
+            }}
+            
+            /* Success buttons */
+            .btn-success {{
+                background-color: {self.colors['success']};
+                color: white;
+                border: 1px solid {self.colors['success']};
+            }}
+            
+            .btn-success:hover {{
+                background-color: #065f46;
+                border: 1px solid #065f46;
+            }}
+            
+            /* Warning buttons */
+            .btn-warning {{
+                background-color: {self.colors['warning']};
+                color: white;
+                border: 1px solid {self.colors['warning']};
+            }}
+            
+            .btn-warning:hover {{
+                background-color: #b45309;
+                border: 1px solid #b45309;
+            }}
+            
+            /* Danger buttons */
+            .btn-danger {{
+                background-color: {self.colors['danger']};
+                color: white;
+                border: 1px solid {self.colors['danger']};
+            }}
+            
+            .btn-danger:hover {{
+                background-color: #991b1b;
+                border: 1px solid #991b1b;
+            }}
+            
+            /* Info buttons */
+            .btn-info {{
+                background-color: {self.colors['info']};
+                color: white;
+                border: 1px solid {self.colors['info']};
+            }}
+            
+            .btn-info:hover {{
+                background-color: #0e7490;
+                border: 1px solid #0e7490;
+            }}
+            
+            /* Secondary buttons */
+            .btn-secondary {{
+                background-color: {self.colors['secondary']};
+                color: white;
+                border: 1px solid {self.colors['secondary']};
+            }}
+            
+            .btn-secondary:hover {{
+                background-color: #374151;
+                border: 1px solid #374151;
+            }}
+            
+            /* Enhanced Table styling with better contrast */
+            QTableWidget {{
+                border: 2px solid {self.colors['border']};
+                border-radius: 8px;
+                background-color: {self.colors['background']};
+                alternate-background-color: #f8fafc;
+                gridline-color: {self.colors['border']};
+                selection-background-color: rgba(13, 148, 136, 0.15);
+                selection-color: {self.colors['text_primary']};
+                font-size: 13px;
+            }}
+            
+            QTableWidget::item {{
+                padding: 12px 16px;
+                border-bottom: 1px solid {self.colors['border']};
+                color: {self.colors['text_primary']};
+            }}
+            
+            QTableWidget::item:selected {{
+                background-color: rgba(13, 148, 136, 0.2);
+                color: {self.colors['text_primary']};
+                border: 1px solid {self.colors['table_header']};
+                font-weight: 600;
+            }}
+            
+            QTableWidget::item:hover {{
+                background-color: rgba(13, 148, 136, 0.1);
+            }}
+            
+            /* Beautiful header styling with green headers */
+            QHeaderView::section {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
+                color: white;
+                padding: 16px;
+                border: none;
+                font-weight: 700;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            
+            QHeaderView::section:first {{
+                border-top-left-radius: 6px;
+            }}
+            
+            QHeaderView::section:last {{
+                border-top-right-radius: 6px;
+            }}
+            
+            QHeaderView::section:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0f766e, stop:1 #115e59);
+            }}
+            
+            /* Enhanced Scrollbars */
+            QScrollBar:vertical {{
+                background: {self.colors['light']};
+                width: 16px;
+                border-radius: 8px;
+                margin: 0px;
+            }}
+            
+            QScrollBar::handle:vertical {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
+                border-radius: 8px;
+                min-height: 30px;
+                margin: 2px;
+            }}
+            
+            QScrollBar::handle:vertical:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #0f766e, stop:1 {self.colors['table_header']});
+            }}
+        """)
 
     def setup_ui(self):
         """Setup the main UI with side-by-side layout"""
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
-
-        # Left side - Form (smaller width)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(15)
+    
+        # Left side - Form (40% width)
         left_frame = QFrame()
-        left_frame.setFixedWidth(400)
         left_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         left_frame.setStyleSheet(f"""
             QFrame {{
@@ -97,8 +362,10 @@ class UsersForm(QWidget):
                 border-radius: 8px;
             }}
         """)
-
-        # Right side - Table (larger width)
+        left_frame.setMinimumWidth(490)  # Minimum width instead of fixed
+        left_frame.setMaximumWidth(500)  # Maximum width to prevent excessive growth
+    
+        # Right side - Table (60% width)
         right_frame = QFrame()
         right_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         right_frame.setStyleSheet(f"""
@@ -108,25 +375,54 @@ class UsersForm(QWidget):
                 border-radius: 8px;
             }}
         """)
-
-        main_layout.addWidget(left_frame)
-        main_layout.addWidget(right_frame, 1)  # Give more space to table
-
+    
+        main_layout.addWidget(left_frame, 2)  # 40% of space
+        main_layout.addWidget(right_frame, 3)  # 60% of space
+        
+        # ADD THESE LINES TO ACTUALLY SET UP THE FORM AND TABLE:
         self.setup_form_section(left_frame)
         self.setup_table_section(right_frame)
 
     def setup_form_section(self, parent):
-        """Setup the form section"""
-        layout = QVBoxLayout(parent)
-        layout.setContentsMargins(10, 10, 10, 10)
-
-        # Header
+        """Setup the form section with scroll area"""
+        # Create scroll area for the form
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Main layout for scroll area
+        main_layout = QVBoxLayout(parent)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(scroll_area)
+        
+        # Content widget inside scroll area
+        content_widget = QWidget()
+        scroll_area.setWidget(content_widget)
+        
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(15)
+    
+        # Header with gradient like table headers
         header_label = QLabel("User Management")
-        header_label.setFont(self.fonts['header'])
-        header_label.setStyleSheet(f"color: {self.colors['primary']}; margin-bottom: 10px;")
+        header_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        header_label.setStyleSheet(f"""
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
+            color: white;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        """)
         header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_label.setMinimumHeight(60)
         layout.addWidget(header_label)
-
+        
         # Form container
         form_group = QGroupBox("User Details")
         form_group.setFont(self.fonts['label'])
@@ -147,46 +443,58 @@ class UsersForm(QWidget):
         """)
         
         form_layout = QFormLayout(form_group)
-        form_layout.setSpacing(10)
-
+        form_layout.setSpacing(12)
+    
         # Username
         self.username_entry = QLineEdit()
         self.username_entry.setFont(self.fonts['entry'])
+        self.username_entry.setPlaceholderText("Enter unique username")
+        self.username_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.username_entry)
         form_layout.addRow(self.create_label("Username*:"), self.username_entry)
-
+    
         # Full Name
         self.fullname_entry = QLineEdit()
         self.fullname_entry.setFont(self.fonts['entry'])
+        self.fullname_entry.setPlaceholderText("Enter full name")
+        self.fullname_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.fullname_entry)
         form_layout.addRow(self.create_label("Full Name*:"), self.fullname_entry)
-
+    
         # Role
         self.role_combo = QComboBox()
         self.role_combo.addItems(["Admin", "Headteacher", "Teacher", "Finance", "Subject Head", "Staff"])
         self.role_combo.setCurrentText("Teacher")
         self.role_combo.setFont(self.fonts['entry'])
+        self.role_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_combo_style(self.role_combo)
         self.role_combo.currentTextChanged.connect(self.on_role_change)
         form_layout.addRow(self.create_label("Role*:"), self.role_combo)
-
+    
         # Teacher selection
         self.teacher_combo = QComboBox()
         self.teacher_combo.setFont(self.fonts['entry'])
+        self.teacher_combo.setPlaceholderText("Select teacher to link")
+        self.teacher_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_combo_style(self.teacher_combo)
         self.teacher_combo.currentTextChanged.connect(self.on_teacher_select)
         self.teacher_combo_row = form_layout.rowCount()
         form_layout.addRow(self.create_label("Link to Teacher:"), self.teacher_combo)
-
+    
         # Position
         self.position_entry = QLineEdit()
         self.position_entry.setFont(self.fonts['entry'])
         self.position_entry.setEnabled(False)
+        self.position_entry.setPlaceholderText("Auto-filled from teacher record")
+        self.position_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.position_entry)
         self.position_row = form_layout.rowCount()
         form_layout.addRow(self.create_label("Position:"), self.position_entry)
-
+    
         # Password field with toggle
+        password_label = self.create_label("Password*:")
+        password_label.setToolTip("Password must be at least 8 characters long")
+        
         password_container = QWidget()
         password_layout = QHBoxLayout(password_container)
         password_layout.setContentsMargins(0, 0, 0, 0)
@@ -194,32 +502,74 @@ class UsersForm(QWidget):
         self.password_entry = QLineEdit()
         self.password_entry.setFont(self.fonts['entry'])
         self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_entry.setPlaceholderText("Enter password (min 8 characters)")
+        self.password_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.password_entry)
         
         self.toggle_password_btn = QPushButton("👁")
-        self.toggle_password_btn.setFixedSize(30, 30)
+        self.toggle_password_btn.setFixedSize(25, 25)
+        self.toggle_password_btn.setToolTip("Show/hide password")
         self.toggle_password_btn.clicked.connect(self.toggle_password_visibility)
         self.setup_icon_button_style(self.toggle_password_btn)
         
         password_layout.addWidget(self.password_entry)
         password_layout.addWidget(self.toggle_password_btn)
         
-        form_layout.addRow(self.create_label("Password*:"), password_container)
-
+        form_layout.addRow(password_label, password_container)
+    
+        # Confirm Password field with toggle
+        confirm_password_label = self.create_label("Confirm Password*:")
+        
+        confirm_password_container = QWidget()
+        confirm_password_layout = QHBoxLayout(confirm_password_container)
+        confirm_password_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.confirm_password_entry = QLineEdit()
+        self.confirm_password_entry.setFont(self.fonts['entry'])
+        self.confirm_password_entry.setEchoMode(QLineEdit.EchoMode.Password)
+        self.confirm_password_entry.setPlaceholderText("Re-enter password to confirm")
+        self.confirm_password_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
+        self.setup_entry_style(self.confirm_password_entry)
+        
+        self.toggle_confirm_password_btn = QPushButton("👁")
+        self.toggle_confirm_password_btn.setFixedSize(25, 25)
+        self.toggle_confirm_password_btn.setToolTip("Show/hide confirm password")
+        self.toggle_confirm_password_btn.clicked.connect(self.toggle_confirm_password_visibility)
+        self.setup_icon_button_style(self.toggle_confirm_password_btn)
+        
+        confirm_password_layout.addWidget(self.confirm_password_entry)
+        confirm_password_layout.addWidget(self.toggle_confirm_password_btn)
+        
+        form_layout.addRow(confirm_password_label, confirm_password_container)
+    
         # Status
         self.status_label = QLabel("New User")
         self.status_label.setFont(self.fonts['entry'])
         self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
         form_layout.addRow(self.create_label("Status:"), self.status_label)
-
+    
+        # Security status (new fields)
+        self.failed_attempts_label = QLabel("0")
+        self.failed_attempts_label.setFont(self.fonts['entry'])
+        self.failed_attempts_label.setStyleSheet(f"color: {self.colors['text_primary']};")
+        form_layout.addRow(self.create_label("Failed Login Attempts:"), self.failed_attempts_label)
+    
+        self.lock_status_label = QLabel("Not Locked")
+        self.lock_status_label.setFont(self.fonts['entry'])
+        self.lock_status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
+        form_layout.addRow(self.create_label("Account Lock Status:"), self.lock_status_label)
+    
         layout.addWidget(form_group)
-
+    
         # Load teachers and set initial state
         self.load_teachers()
         self.on_role_change("Teacher")
-
+    
         # Buttons
         self.setup_buttons(layout)
+        
+        # Add some stretch to ensure proper scrolling
+        layout.addStretch()
 
     def create_label(self, text):
         """Create a styled label"""
@@ -229,67 +579,113 @@ class UsersForm(QWidget):
         return label
 
     def setup_entry_style(self, entry):
-        """Setup consistent entry styling"""
+        """Setup consistent entry styling matching TeachersForm"""
         entry.setStyleSheet(f"""
             QLineEdit {{
-                padding: 8px;
-                border: 2px solid {self.colors['border']};
+                border: 2px solid {self.colors['input_border']};
                 border-radius: 6px;
-                background-color: {self.colors['background']};
+                padding: 12px 16px;
+                font-size: 13px;
+                background-color: {self.colors['input_background']};
                 color: {self.colors['text_primary']};
+                min-height: 20px;
+                line-height: 1.4;
             }}
             QLineEdit:focus {{
-                border-color: {self.colors['primary']};
+                border-color: {self.colors['input_focus']};
+                background-color: {self.colors['input_background']};
+                border-width: 2px;
             }}
             QLineEdit:disabled {{
-                background-color: {self.colors['surface']};
-                color: {self.colors['text_secondary']};
+                background-color: #f1f5f9;
+                color: #64748b;
+                border-color: #cbd5e1;
+            }}
+            QLineEdit::placeholder {{
+                color: #94a3b8;
+                font-style: italic;
             }}
         """)
 
     def setup_combo_style(self, combo):
-        """Setup consistent combobox styling"""
+        """Setup consistent combobox styling matching TeachersForm"""
         combo.setStyleSheet(f"""
             QComboBox {{
-                padding: 8px;
-                border: 2px solid {self.colors['border']};
+                border: 2px solid {self.colors['input_border']};
                 border-radius: 6px;
-                background-color: {self.colors['background']};
+                padding: 12px 16px;
+                font-size: 13px;
+                background-color: {self.colors['input_background']};
                 color: {self.colors['text_primary']};
                 min-height: 20px;
+                line-height: 1.4;
             }}
             QComboBox:focus {{
-                border-color: {self.colors['primary']};
+                border-color: {self.colors['input_focus']};
+                background-color: {self.colors['input_background']};
+                border-width: 2px;
+            }}
+            QComboBox:disabled {{
+                background-color: #f1f5f9;
+                color: #64748b;
+                border-color: #cbd5e1;
             }}
             QComboBox::drop-down {{
                 border: none;
                 width: 20px;
             }}
             QComboBox::down-arrow {{
-                width: 12px;
-                height: 12px;
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid {self.colors['text_secondary']};
             }}
         """)
-
+    
+    def setup_size_policies(self):
+        """Set consistent size policies for all widgets"""
+        # Form widgets
+        widgets_to_size = [
+            'username_entry', 'fullname_entry', 'role_combo', 'teacher_combo',
+            'position_entry', 'password_entry', 'confirm_password_entry'
+        ]
+        
+        for widget_name in widgets_to_size:
+            widget = getattr(self, widget_name, None)
+            if widget:
+                widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        
+        # Buttons - only apply to action buttons, not toggle buttons
+        action_buttons = []
+        for btn in self.findChildren(QPushButton):
+            if btn not in [self.toggle_password_btn, self.toggle_confirm_password_btn]:
+                btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                action_buttons.append(btn)
+                
     def setup_icon_button_style(self, button):
-        """Setup icon button styling"""
+        """Setup icon button styling matching TeachersForm"""
         button.setStyleSheet(f"""
             QPushButton {{
                 border: 2px solid {self.colors['border']};
-                border-radius: 6px;
+                border-radius: 4px;
+                padding: 4px;
                 background-color: {self.colors['surface']};
                 color: {self.colors['text_primary']};
+                min-width: 25px;
+                min-height: 25px;
             }}
             QPushButton:hover {{
                 background-color: {self.colors['border']};
+                border-color: {self.colors['primary']};
             }}
             QPushButton:pressed {{
                 background-color: {self.colors['secondary']};
+                color: white;
             }}
         """)
 
     def setup_buttons(self, layout):
-        """Setup buttons in organized rows"""
+        """Setup buttons in organized rows with equal width"""
         buttons_group = QGroupBox("Actions")
         buttons_group.setFont(self.fonts['label'])
         buttons_group.setStyleSheet(f"""
@@ -309,71 +705,71 @@ class UsersForm(QWidget):
         """)
         
         buttons_layout = QVBoxLayout(buttons_group)
-
-        # Row 1 - Primary actions
+    
+        # Create all buttons
+        buttons = [
+            self.create_button("Add User", self.colors['success'], self.add_user),
+            self.create_button("Update", self.colors['primary'], self.update_user),
+            self.create_button("Clear", self.colors['secondary'], self.clear_form),
+            self.create_button("Deactivate", self.colors['danger'], self.deactivate_user),
+            self.create_button("Reactivate", self.colors['info'], self.reactivate_user),
+            self.create_button("Reset Pwd", self.colors['warning'], self.reset_password),
+            self.create_button("Unlock Account", self.colors['info'], self.unlock_account),
+            self.create_button("Delete", '#8B0000', self.delete_user)
+        ]
+    
+        # Arrange in rows with equal width
         row1_layout = QHBoxLayout()
-        
-        self.add_btn = self.create_button("Add User", self.colors['success'], self.add_user)
-        self.update_btn = self.create_button("Update", self.colors['primary'], self.update_user)
-        self.clear_btn = self.create_button("Clear", self.colors['secondary'], self.clear_form)
-        
-        row1_layout.addWidget(self.add_btn)
-        row1_layout.addWidget(self.update_btn)
-        row1_layout.addWidget(self.clear_btn)
+        for btn in buttons[:3]:
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            row1_layout.addWidget(btn)
         buttons_layout.addLayout(row1_layout)
-
-        # Row 2 - Status actions
+    
         row2_layout = QHBoxLayout()
-        
-        self.deactivate_btn = self.create_button("Deactivate", self.colors['danger'], self.deactivate_user)
-        self.reactivate_btn = self.create_button("Reactivate", self.colors['info'], self.reactivate_user)
-        
-        row2_layout.addWidget(self.deactivate_btn)
-        row2_layout.addWidget(self.reactivate_btn)
-        row2_layout.addStretch()
+        for btn in buttons[3:6]:
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            row2_layout.addWidget(btn)
         buttons_layout.addLayout(row2_layout)
-
-        # Row 3 - Other actions
+    
         row3_layout = QHBoxLayout()
-        
-        self.reset_btn = self.create_button("Reset Pwd", self.colors['warning'], self.reset_password)
-        self.delete_btn = self.create_button("Delete", '#8B0000', self.delete_user)
-        
-        row3_layout.addWidget(self.reset_btn)
-        row3_layout.addWidget(self.delete_btn)
-        row3_layout.addStretch()
+        for btn in buttons[6:]:
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            row3_layout.addWidget(btn)
         buttons_layout.addLayout(row3_layout)
-
+    
         layout.addWidget(buttons_group)
-        layout.addStretch()
-
+    
     def create_button(self, text, color, callback):
-        """Create a styled button"""
+        """Create a styled button matching TeachersForm"""
         button = QPushButton(text)
         button.setFont(self.fonts['button'])
         button.clicked.connect(callback)
         button.setMinimumHeight(35)
+        button.setMinimumWidth(120)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADD THIS LINE
         button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {color};
                 color: white;
                 border: none;
                 border-radius: 6px;
-                padding: 8px 16px;
-                font-weight: bold;
+                padding: 12px 20px;
+                font-weight: 600;
+                font-size: 13px;
             }}
             QPushButton:hover {{
                 background-color: {self.adjust_color_brightness(color, -20)};
+                border: 1px solid rgba(255, 255, 255, 0.3);
             }}
             QPushButton:pressed {{
                 background-color: {self.adjust_color_brightness(color, -40)};
+                padding: 13px 19px 11px 21px;
             }}
         """)
         return button
 
     def adjust_color_brightness(self, color, amount):
         """Adjust color brightness by amount (positive = lighter, negative = darker)"""
-        # Simple color adjustment - in a real app you might want more sophisticated color manipulation
         if color.startswith('#'):
             color = color[1:]
         
@@ -393,22 +789,28 @@ class UsersForm(QWidget):
         """Setup the table section"""
         layout = QVBoxLayout(parent)
         layout.setContentsMargins(10, 10, 10, 10)
-
+    
         # Search frame
         search_frame = QFrame()
+        search_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         search_layout = QHBoxLayout(search_frame)
         
         search_label = QLabel("Search Users:")
         search_label.setFont(self.fonts['label'])
         search_label.setStyleSheet(f"color: {self.colors['text_primary']};")
+        search_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADDED
         
         self.search_entry = QLineEdit()
         self.search_entry.setFont(self.fonts['entry'])
         self.search_entry.setPlaceholderText("Enter username or full name...")
+        self.search_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.search_entry)
         
         search_btn = self.create_button("Search", self.colors['primary'], self.search_users)
+        search_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADDED
+        
         clear_search_btn = self.create_button("Clear", self.colors['secondary'], self.clear_search)
+        clear_search_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADDED
         
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_entry)
@@ -416,15 +818,16 @@ class UsersForm(QWidget):
         search_layout.addWidget(clear_search_btn)
         
         layout.addWidget(search_frame)
-
+    
         # Table
         self.users_table = QTableWidget()
+        self.users_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setup_table()
         layout.addWidget(self.users_table)
 
     def setup_table(self):
-        """Setup the users table"""
-        headers = ["ID", "Username", "Full Name", "Role", "Position", "Status"]
+        """Setup the users table matching TeachersForm styling"""
+        headers = ["ID", "Username", "Full Name", "Role", "Position", "Status", "Failed Attempts", "Lock Status"]
         self.users_table.setColumnCount(len(headers))
         self.users_table.setHorizontalHeaderLabels(headers)
         
@@ -437,36 +840,58 @@ class UsersForm(QWidget):
         # Set fonts
         self.users_table.setFont(self.fonts['table'])
         
-        # Header styling
+        # Header styling with green headers
         header = self.users_table.horizontalHeader()
         header.setFont(self.fonts['table_header'])
         header.setStyleSheet(f"""
             QHeaderView::section {{
-                background-color: {self.colors['table_header']};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
                 color: white;
-                padding: 8px;
-                border: 1px solid {self.colors['table_header_dark']};
-                font-weight: bold;
+                padding: 16px;
+                border: none;
+                font-weight: 700;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            QHeaderView::section:first {{
+                border-top-left-radius: 6px;
+            }}
+            QHeaderView::section:last {{
+                border-top-right-radius: 6px;
             }}
             QHeaderView::section:hover {{
-                background-color: {self.colors['table_header_dark']};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0f766e, stop:1 #115e59);
             }}
         """)
         
         # Table styling
         self.users_table.setStyleSheet(f"""
             QTableWidget {{
-                gridline-color: {self.colors['border']};
+                border: 2px solid {self.colors['border']};
+                border-radius: 8px;
                 background-color: {self.colors['background']};
-                alternate-background-color: {self.colors['light']};
+                alternate-background-color: #f8fafc;
+                gridline-color: {self.colors['border']};
+                selection-background-color: rgba(13, 148, 136, 0.15);
+                selection-color: {self.colors['text_primary']};
+                font-size: 13px;
             }}
             QTableWidget::item {{
-                padding: 8px;
+                padding: 12px 16px;
                 border-bottom: 1px solid {self.colors['border']};
+                color: {self.colors['text_primary']};
             }}
             QTableWidget::item:selected {{
-                background-color: {self.colors['primary']};
-                color: white;
+                background-color: rgba(13, 148, 136, 0.2);
+                color: {self.colors['text_primary']};
+                border: 1px solid {self.colors['table_header']};
+                font-weight: 600;
+            }}
+            QTableWidget::item:hover {{
+                background-color: rgba(13, 148, 136, 0.1);
             }}
         """)
         
@@ -476,6 +901,26 @@ class UsersForm(QWidget):
         
         # Connect selection signal
         self.users_table.itemSelectionChanged.connect(self.on_user_select)
+
+    def toggle_password_visibility(self):
+        """Toggle password visibility"""
+        self.password_visible = not self.password_visible
+        if self.password_visible:
+            self.password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.toggle_password_btn.setText("🔒")
+        else:
+            self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
+            self.toggle_password_btn.setText("👁")
+
+    def toggle_confirm_password_visibility(self):
+        """Toggle confirm password visibility"""
+        self.confirm_password_visible = not self.confirm_password_visible
+        if self.confirm_password_visible:
+            self.confirm_password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.toggle_confirm_password_btn.setText("🔒")
+        else:
+            self.confirm_password_entry.setEchoMode(QLineEdit.EchoMode.Password)
+            self.toggle_confirm_password_btn.setText("👁")
 
     def load_teachers(self):
         """Load available teachers for the dropdown"""
@@ -563,23 +1008,14 @@ class UsersForm(QWidget):
                 self.position_entry.setText(teacher_info['position'])
                 self.current_teacher_id = teacher_info['id']
 
-    def toggle_password_visibility(self):
-        """Toggle password visibility"""
-        if self.password_visible:
-            self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
-            self.toggle_password_btn.setText("👁")
-            self.password_visible = False
-        else:
-            self.password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.toggle_password_btn.setText("🙈")
-            self.password_visible = True
-
     def load_users(self):
-        """Load all users from database with teacher position info"""
+        """Load all users from database with teacher position info and security status"""
         try:
             query = '''
                 SELECT u.id, u.username, u.full_name, u.role, u.is_active,
-                       COALESCE(t.position, 'N/A') as position
+                       COALESCE(t.position, 'N/A') as position,
+                       u.failed_login_attempts,
+                       u.account_locked_until
                 FROM users u
                 LEFT JOIN teachers t ON t.full_name = u.full_name
                 ORDER BY u.username
@@ -591,15 +1027,28 @@ class UsersForm(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to load users: {e}")
 
     def update_user_table(self, users):
-        """Update the user table with new data"""
+        """Update the user table with new data including security info"""
         self.users_table.setRowCount(len(users))
         
         for row, user in enumerate(users):
             # Convert is_active boolean to status text
             status = "Active" if user[4] else "Inactive"
             position = user[5] if len(user) > 5 and user[5] else "N/A"
+            failed_attempts = user[6] if len(user) > 6 and user[6] is not None else 0
+            locked_until = user[7] if len(user) > 7 and user[7] else None
             
-            row_data = [str(user[0]), user[1], user[2], user[3], position, status]
+            # Determine lock status
+            lock_status = "Not Locked"
+            if locked_until:
+                if locked_until > datetime.now():
+                    lock_status = f"Locked until {locked_until.strftime('%Y-%m-%d %H:%M')}"
+                else:
+                    lock_status = "Lock Expired"
+            
+            row_data = [
+                str(user[0]), user[1], user[2], user[3], position, status,
+                str(failed_attempts), lock_status
+            ]
             
             for col, data in enumerate(row_data):
                 item = QTableWidgetItem(str(data))
@@ -611,6 +1060,15 @@ class UsersForm(QWidget):
                         item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['success'])
                     else:
                         item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['danger'])
+                
+                # Color code lock status
+                if col == 7:  # Lock status column
+                    if "Locked" in data:
+                        item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['danger'])
+                    elif "Expired" in data:
+                        item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['warning'])
+                    else:
+                        item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['success'])
                 
                 self.users_table.setItem(row, col, item)
 
@@ -631,10 +1089,11 @@ class UsersForm(QWidget):
             except ValueError:
                 return
                 
-            # Load user data from database with teacher info
+            # Load user data from database with teacher info and security status
             query = '''
                 SELECT u.id, u.username, u.full_name, u.role, u.is_active,
-                       t.id as teacher_id, t.position, t.teacher_id_code
+                       t.id as teacher_id, t.position, t.teacher_id_code,
+                       u.failed_login_attempts, u.account_locked_until
                 FROM users u
                 LEFT JOIN teachers t ON t.full_name = u.full_name
                 WHERE u.id = %s
@@ -670,12 +1129,29 @@ class UsersForm(QWidget):
                 
                 # Clear password field for security
                 self.password_entry.clear()
+                self.confirm_password_entry.clear()
                 
                 # Update status display
                 status = "Active" if user_data[4] else "Inactive"
                 status_color = self.colors['success'] if user_data[4] else self.colors['danger']
                 self.status_label.setText(status)
                 self.status_label.setStyleSheet(f"color: {status_color}; font-weight: bold;")
+                
+                # Update security status
+                failed_attempts = user_data[8] if len(user_data) > 8 and user_data[8] is not None else 0
+                locked_until = user_data[9] if len(user_data) > 9 and user_data[9] else None
+                
+                self.failed_attempts_label.setText(str(failed_attempts))
+                
+                if locked_until and locked_until > datetime.now():
+                    lock_status = f"Locked until {locked_until.strftime('%Y-%m-%d %H:%M')}"
+                    lock_color = self.colors['danger']
+                else:
+                    lock_status = "Not Locked"
+                    lock_color = self.colors['success']
+                
+                self.lock_status_label.setText(lock_status)
+                self.lock_status_label.setStyleSheet(f"color: {lock_color}; font-weight: bold;")
                 
                 # Show success notification
                 username = self.username_entry.text() or "User"
@@ -697,7 +1173,9 @@ class UsersForm(QWidget):
         try:
             query = '''
                 SELECT u.id, u.username, u.full_name, u.role, u.is_active,
-                       COALESCE(t.position, 'N/A') as position
+                       COALESCE(t.position, 'N/A') as position,
+                       u.failed_login_attempts,
+                       u.account_locked_until
                 FROM users u
                 LEFT JOIN teachers t ON t.full_name = u.full_name
                 WHERE u.username LIKE %s OR u.full_name LIKE %s
@@ -716,11 +1194,25 @@ class UsersForm(QWidget):
         self.load_users()
 
     def add_user(self):
+        print(f"DEBUG: User session role = '{self.user_session.get('role')}'")
+        print(f"DEBUG: User session = {self.user_session}")
         """Add new user to database"""
+        # Check user permissions
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "create_user"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to create users.")
+            return
+            
         username = self.username_entry.text().strip()
         full_name = self.fullname_entry.text().strip()
         role = self.role_combo.currentText().strip()
         password = self.password_entry.text().strip()
+        confirm_password = self.confirm_password_entry.text().strip()
+
+        # Validate confirm password
+        if password != confirm_password:
+            QMessageBox.warning(self, "Error", "Password and Confirm Password do not match!")
+            return
 
         if not all([username, full_name, password]):
             QMessageBox.warning(self, "Error", "Please fill in all required fields.")
@@ -730,16 +1222,19 @@ class UsersForm(QWidget):
             password_hash = hash_password(password)
             
             query = """
-                INSERT INTO users (username, full_name, role, password_hash, is_active)
-                VALUES (%s, %s, %s, %s, 1)
+                INSERT INTO users (username, full_name, role, password_hash, is_active, failed_login_attempts)
+                VALUES (%s, %s, %s, %s, 1, 0)
             """
             self.cursor.execute(query, (username, full_name, role, password_hash))
             self.db_connection.commit()
             
+            # Log the action
+            self.log_audit_action("CREATE", "users", self.cursor.lastrowid, 
+                                 f"Created user {username} with role {role}")
+            
             QMessageBox.information(self, "Success", "User added successfully!")
             self.clear_form()
             self.load_users()
-            self.load_teachers()  # Refresh teacher dropdown
             
         except mysql.connector.IntegrityError:
             QMessageBox.critical(self, "Error", "Username already exists.")
@@ -751,6 +1246,12 @@ class UsersForm(QWidget):
         if not self.current_user_id:
             QMessageBox.warning(self, "Error", "No user selected for update")
             return
+            
+        # Check user permissions
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "update_user"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to update users.")
+            return
 
         username = self.username_entry.text().strip()
         full_name = self.fullname_entry.text().strip()
@@ -761,12 +1262,21 @@ class UsersForm(QWidget):
             return
 
         try:
+            # Get old values for audit log
+            old_query = "SELECT username, full_name, role FROM users WHERE id = %s"
+            self.cursor.execute(old_query, (self.current_user_id,))
+            old_values = self.cursor.fetchone()
+            
             query = """
                 UPDATE users SET username=%s, full_name=%s, role=%s
                 WHERE id=%s
             """
             self.cursor.execute(query, (username, full_name, role, self.current_user_id))
             self.db_connection.commit()
+            
+            # Log the action
+            self.log_audit_action("UPDATE", "users", self.current_user_id, 
+                                 f"Updated user {username}. Old: {old_values[0]}/{old_values[1]}/{old_values[2]}, New: {username}/{full_name}/{role}")
             
             QMessageBox.information(self, "Success", "User updated successfully!")
             self.clear_form()
@@ -783,8 +1293,20 @@ class UsersForm(QWidget):
         if not self.current_user_id:
             QMessageBox.warning(self, "Warning", "Please select a user to reset password.")
             return
+            
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "reset_password"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to reset passwords.")
+            return
 
         password = self.password_entry.text().strip()
+        confirm_password = self.confirm_password_entry.text().strip()
+
+        # Validate confirm password
+        if password != confirm_password:
+            QMessageBox.warning(self, "Error", "Password and Confirm Password do not match!")
+            return
+
         if not password:
             QMessageBox.warning(self, "Warning", "Please enter a new password.")
             return
@@ -795,8 +1317,13 @@ class UsersForm(QWidget):
             self.cursor.execute(query, (hashed, self.current_user_id))
             self.db_connection.commit()
             
+            # Log the action
+            self.log_audit_action("UPDATE", "users", self.current_user_id, 
+                                 "Password reset by administrator")
+            
             QMessageBox.information(self, "Success", "Password reset successfully!")
-            self.password_entry.clear()  # Clear password field
+            self.password_entry.clear()
+            self.confirm_password_entry.clear()
         except Error as e:
             QMessageBox.critical(self, "Error", f"Failed to reset password: {e}")
 
@@ -804,6 +1331,11 @@ class UsersForm(QWidget):
         """Deactivate user"""
         if not self.current_user_id:
             QMessageBox.warning(self, "Warning", "Please select a user to deactivate.")
+            return
+            
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "deactivate_user"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to deactivate user.")
             return
 
         reply = QMessageBox.question(
@@ -820,6 +1352,10 @@ class UsersForm(QWidget):
                 self.cursor.execute(query, (self.current_user_id,))
                 self.db_connection.commit()
                 
+                # Log the action
+                self.log_audit_action("UPDATE", "users", self.current_user_id, 
+                                     "User deactivated by administrator")
+                
                 QMessageBox.information(self, "Success", "User deactivated successfully!")
                 self.clear_form()
                 self.load_users()
@@ -830,6 +1366,11 @@ class UsersForm(QWidget):
         """Reactivate user"""
         if not self.current_user_id:
             QMessageBox.warning(self, "Warning", "Please select a user to reactivate.")
+            return
+            
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "reactivate_user"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to reactivate user.")
             return
 
         reply = QMessageBox.question(
@@ -846,16 +1387,60 @@ class UsersForm(QWidget):
                 self.cursor.execute(query, (self.current_user_id,))
                 self.db_connection.commit()
                 
+                # Log the action
+                self.log_audit_action("UPDATE", "users", self.current_user_id, 
+                                     "User reactivated by administrator")
+                
                 QMessageBox.information(self, "Success", "User reactivated successfully!")
                 self.clear_form()
                 self.load_users()
             except Error as e:
                 QMessageBox.critical(self, "Error", f"Failed to reactivate user: {e}")
 
+    def unlock_account(self):
+        """Unlock user account"""
+        if not self.current_user_id:
+            QMessageBox.warning(self, "Warning", "Please select a user to unlock.")
+            return
+            
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "unlock_user"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to unlock user.")
+            return
+        
+        reply = QMessageBox.question(
+            self, 
+            "Confirm Unlock", 
+            "Are you sure you want to unlock this user account and reset failed login attempts?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                query = "UPDATE users SET failed_login_attempts=0, account_locked_until=NULL WHERE id=%s"
+                self.cursor.execute(query, (self.current_user_id,))
+                self.db_connection.commit()
+                
+                # Log the action
+                self.log_audit_action("UPDATE", "users", self.current_user_id, 
+                                     "Account unlocked and failed attempts reset by administrator")
+                
+                QMessageBox.information(self, "Success", "Account unlocked successfully!")
+                self.clear_form()
+                self.load_users()
+            except Error as e:
+                QMessageBox.critical(self, "Error", f"Failed to unlock account: {e}")
+
     def delete_user(self):
         """Delete user permanently"""
         if not self.current_user_id:
             QMessageBox.warning(self, "Warning", "Please select a user to delete.")
+            return
+            
+        # Check user permissions - FIXED
+        if not has_permission(self.user_session, "delete_user"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete user.")
             return
 
         # Get username for confirmation
@@ -871,9 +1456,19 @@ class UsersForm(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
+                # Get user info for audit log before deletion
+                user_query = "SELECT username, full_name, role FROM users WHERE id = %s"
+                self.cursor.execute(user_query, (self.current_user_id,))
+                user_info = self.cursor.fetchone()
+                
                 query = "DELETE FROM users WHERE id=%s"
                 self.cursor.execute(query, (self.current_user_id,))
                 self.db_connection.commit()
+                
+                # Log the action
+                if user_info:
+                    self.log_audit_action("DELETE", "users", self.current_user_id, 
+                                         f"Deleted user {user_info[0]} ({user_info[1]}) with role {user_info[2]}")
                 
                 QMessageBox.information(self, "Success", "User deleted successfully!")
                 self.clear_form()
@@ -896,14 +1491,22 @@ class UsersForm(QWidget):
         # Clear position entry
         self.position_entry.clear()
         self.password_entry.clear()
+        self.confirm_password_entry.clear()
         
         # Reset password visibility
         if self.password_visible:
             self.toggle_password_visibility()
+        if self.confirm_password_visible:
+            self.toggle_confirm_password_visibility()
         
         # Reset status
         self.status_label.setText("New User")
         self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
+        
+        # Reset security status
+        self.failed_attempts_label.setText("0")
+        self.lock_status_label.setText("Not Locked")
+        self.lock_status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
         
         # Reset current selections
         self.current_user_id = None
@@ -911,41 +1514,80 @@ class UsersForm(QWidget):
         
         # Handle role change to show/hide teacher fields
         self.on_role_change("Teacher")
+    
+    def refresh_data(self):
+        """Refresh all data in the form with progress indication"""
+        try:
+            # Show loading state
+            self.status_label.setText("Refreshing...")
+            self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
+            
+            # Process events to update UI
+            QApplication.processEvents()
+            
+            # Clear current selection
+            self.current_user_id = None
+            self.current_teacher_id = None
+            
+            # Reload users data
+            self.load_users()
+            
+            # Reload teachers for dropdown
+            self.load_teachers()
+            
+            # Clear form fields
+            self.username_entry.clear()
+            self.fullname_entry.clear()
+            self.fullname_entry.setEnabled(True)
+            self.password_entry.clear()
+            self.confirm_password_entry.clear()
+            self.position_entry.clear()
+            self.role_combo.setCurrentText("Teacher")
+            self.teacher_combo.setCurrentText("None - Manual Entry")
+            
+            # Reset security status
+            self.failed_attempts_label.setText("0")
+            self.lock_status_label.setText("Not Locked")
+            self.lock_status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
+            
+            # Clear search
+            self.search_entry.clear()
+            
+            # Update status message
+            self.status_label.setText("Data Refreshed")
+            self.status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
+            
+            # Show brief success message (optional)
+            # QMessageBox.information(self, "Success", "User data refreshed successfully!")
+            
+        except Error as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh data: {e}")
+            self.status_label.setText("Refresh Failed")
+            self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Unexpected error during refresh: {e}")
+            self.status_label.setText("Refresh Failed")
+            self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
 
-    def validate_form_data(self):
-        """Validate form data before submission"""
-        username = self.username_entry.text().strip()
-        full_name = self.fullname_entry.text().strip()
-        role = self.role_combo.currentText().strip()
-        password = self.password_entry.text().strip()
-
-        if not username:
-            QMessageBox.warning(self, "Validation Error", "Username is required.")
-            return False
-        
-        if len(username) < 3:
-            QMessageBox.warning(self, "Validation Error", "Username must be at least 3 characters long.")
-            return False
-            
-        if not full_name:
-            QMessageBox.warning(self, "Validation Error", "Full Name is required.")
-            return False
-            
-        valid_roles = ["Admin", "Headteacher", "Teacher", "Finance", "Subject Head", "Staff"]
-        if not role or role not in valid_roles:
-            QMessageBox.warning(self, "Validation Error", "Please select a valid role.")
-            return False
-            
-        # Password validation for new users
-        if not self.current_user_id and not password:
-            QMessageBox.warning(self, "Validation Error", "Password is required for new users.")
-            return False
-            
-        if password and len(password) < 6:
-            QMessageBox.warning(self, "Validation Error", "Password must be at least 6 characters long.")
-            return False
-
-        return True
+    def log_audit_action(self, action, table_name, record_id, description):
+        """Log user action to audit log"""
+        try:
+            query = """
+                INSERT INTO audit_log (user_id, action, table_name, record_id, description, ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            ip_address = self.user_session.get('ip_address', '127.0.0.1') if self.user_session else '127.0.0.1'
+            self.cursor.execute(query, (
+                self.user_session.get('user_id'),
+                action,
+                table_name,
+                record_id,
+                description,
+                ip_address
+            ))
+            self.db_connection.commit()
+        except Error as e:
+            print(f"Failed to log audit action: {e}")
 
     def get_user_stats(self):
         """Get user statistics for display"""
@@ -958,6 +1600,10 @@ class UsersForm(QWidget):
             self.cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
             active_users = self.cursor.fetchone()[0]
             
+            # Locked users
+            self.cursor.execute("SELECT COUNT(*) FROM users WHERE account_locked_until > NOW()")
+            locked_users = self.cursor.fetchone()[0]
+            
             # Users by role
             self.cursor.execute("SELECT role, COUNT(*) FROM users GROUP BY role")
             role_stats = dict(self.cursor.fetchall())
@@ -966,11 +1612,12 @@ class UsersForm(QWidget):
                 'total': total_users,
                 'active': active_users,
                 'inactive': total_users - active_users,
+                'locked': locked_users,
                 'roles': role_stats
             }
         except Error as e:
             print(f"Error getting user stats: {e}")
-            return {'total': 0, 'active': 0, 'inactive': 0, 'roles': {}}
+            return {'total': 0, 'active': 0, 'inactive': 0, 'locked': 0, 'roles': {}}
 
     def export_users(self):
         """Export users to CSV file"""
@@ -988,6 +1635,8 @@ class UsersForm(QWidget):
                     SELECT u.id, u.username, u.full_name, u.role, 
                            CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END as status,
                            COALESCE(t.position, 'N/A') as position,
+                           u.failed_login_attempts,
+                           CASE WHEN u.account_locked_until > NOW() THEN 'Locked' ELSE 'Not Locked' END as lock_status,
                            u.created_at
                     FROM users u
                     LEFT JOIN teachers t ON t.full_name = u.full_name
@@ -999,7 +1648,8 @@ class UsersForm(QWidget):
                 with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
                     writer = csv.writer(csvfile)
                     # Write header
-                    writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Status', 'Position', 'Created At'])
+                    writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Status', 'Position', 
+                                   'Failed Attempts', 'Lock Status', 'Created At'])
                     # Write data
                     writer.writerows(users)
                 
@@ -1039,4 +1689,3 @@ class UsersForm(QWidget):
                 self.db_connection.close()
         except:
             pass
-

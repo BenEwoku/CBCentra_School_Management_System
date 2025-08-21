@@ -44,32 +44,35 @@ class SchoolsForm(QWidget):
         self.load_schools()
 
     def setup_styling(self):
-        """Set up modern professional styling"""
-        # Define color palette
+        """Set up modern professional styling with better contrast"""
+        # Define color palette with better contrast
         self.colors = {
-            'primary': '#2563eb',        # Blue
-            'primary_dark': '#1d4ed8',   # Darker blue
-            'secondary': '#64748b',      # Slate
-            'success': '#059669',        # Emerald
-            'warning': '#d97706',        # Amber
-            'danger': '#dc2626',         # Red
-            'info': '#0891b2',          # Cyan
-            'light': '#f8fafc',         # Very light gray
-            'dark': '#0f172a',          # Very dark blue
-            'border': '#e2e8f0',        # Light border
-            'text_primary': '#1e293b',   # Dark slate
-            'text_secondary': '#64748b', # Medium slate
+            'primary': '#1e40af',        # Darker blue for better contrast
+            'primary_dark': '#1e3a8a',   # Even darker blue
+            'secondary': '#475569',      # Darker slate
+            'success': '#065f46',        # Darker emerald
+            'warning': '#b45309',        # Darker amber
+            'danger': '#b91c1c',         # Darker red
+            'info': '#0e7490',           # Darker cyan
+            'light': '#f1f5f9',          # Light gray
+            'dark': '#0f172a',           # Very dark blue
+            'border': '#cbd5e1',         # Medium border color
+            'text_primary': '#0f172a',   # Darker text for better contrast
+            'text_secondary': '#475569', # Darker secondary text
             'background': '#ffffff',     # White
-            'surface': '#f1f5f9',       # Light surface
-            'table_header': '#10b981',   # Nice green for table headers
-            'table_header_dark': '#059669'  # Darker green for hover
+            'surface': '#f8fafc',        # Very light surface
+            'input_background': '#ffffff', # Pure white for inputs
+            'input_border': '#94a3b8',   # Medium border for inputs
+            'input_focus': '#3b82f6',    # Blue for focus
+            'table_header': '#0d9488',   # Teal for table headers
+            'table_header_dark': '#0f766e'  # Darker teal
         }
         
-        # Set application style
+        # Set application style with better contrast
         self.setStyleSheet(f"""
             QWidget {{
                 font-family: 'Segoe UI', 'Arial', sans-serif;
-                font-size: 12px;
+                font-size: 13px;
                 color: {self.colors['text_primary']};
                 background-color: {self.colors['background']};
             }}
@@ -82,7 +85,7 @@ class SchoolsForm(QWidget):
             
             /* Tab Widget */
             QTabWidget::pane {{
-                border: 1px solid {self.colors['border']};
+                border: 2px solid {self.colors['border']};
                 border-radius: 8px;
                 background-color: {self.colors['background']};
                 margin-top: -1px;
@@ -95,31 +98,31 @@ class SchoolsForm(QWidget):
                 margin-right: 2px;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
-                font-weight: 500;
+                font-weight: 600;
                 color: {self.colors['text_secondary']};
             }}
             
             QTabBar::tab:selected {{
                 background-color: {self.colors['background']};
                 color: {self.colors['primary']};
-                border-bottom: 2px solid {self.colors['primary']};
-                font-weight: 600;
+                border-bottom: 3px solid {self.colors['primary']};
+                font-weight: 700;
             }}
             
             QTabBar::tab:hover:!selected {{
-                background-color: {self.colors['border']};
+                background-color: #e2e8f0;
                 color: {self.colors['text_primary']};
             }}
             
-            /* Group boxes and frames */
+            /* Group boxes and frames - More visible borders */
             QGroupBox {{
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 14px;
                 color: {self.colors['text_primary']};
                 border: 2px solid {self.colors['border']};
                 border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 8px;
+                margin-top: 16px;
+                padding-top: 10px;
                 background-color: {self.colors['background']};
             }}
             
@@ -129,19 +132,13 @@ class SchoolsForm(QWidget):
                 padding: 0 8px 0 8px;
                 color: {self.colors['primary']};
                 background-color: {self.colors['background']};
+                font-weight: 700;
             }}
             
-            QFrame[frameShape="4"] {{
-                background-color: {self.colors['background']};
-                border: 1px solid {self.colors['border']};
-                border-radius: 8px;
-                margin: 4px;
-            }}
-            
-            /* Labels */
+            /* Labels - Better contrast */
             QLabel {{
                 color: {self.colors['text_primary']};
-                font-weight: 500;
+                font-weight: 600;
             }}
             
             .section-title {{
@@ -149,46 +146,54 @@ class SchoolsForm(QWidget):
                 font-weight: 700;
                 color: {self.colors['primary']};
                 padding: 8px 0px;
-                border-bottom: 2px solid {self.colors['border']};
-                margin-bottom: 12px;
+                border-bottom: 2px solid {self.colors['primary']};
+                margin-bottom: 16px;
             }}
             
             .field-label {{
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: 600;
-                color: {self.colors['text_secondary']};
-                margin-bottom: 6px;
+                color: {self.colors['text_primary']};
+                margin-bottom: 8px;
             }}
             
-            /* Input fields with better padding */
+            /* Input fields with better contrast and visibility */
             QLineEdit {{
-                border: 2px solid {self.colors['border']};
+                border: 2px solid {self.colors['input_border']};
                 border-radius: 6px;
                 padding: 12px 16px;
                 font-size: 13px;
-                background-color: {self.colors['background']};
+                background-color: {self.colors['input_background']};
                 selection-background-color: {self.colors['primary']};
-                min-height: 18px;
+                min-height: 20px;
                 line-height: 1.4;
+                color: {self.colors['text_primary']};
             }}
             
             QLineEdit:focus {{
-                border-color: {self.colors['primary']};
-                background-color: #ffffff;
+                border-color: {self.colors['input_focus']};
+                background-color: {self.colors['input_background']};
+                border-width: 2px;
             }}
             
             QLineEdit:disabled {{
-                background-color: {self.colors['light']};
-                color: {self.colors['text_secondary']};
+                background-color: #f1f5f9;
+                color: #64748b;
+                border-color: #cbd5e1;
             }}
             
-            /* Buttons */
+            QLineEdit::placeholder {{
+                color: #94a3b8;
+                font-style: italic;
+            }}
+            
+            /* Buttons - More visible */
             QPushButton {{
                 border: none;
                 border-radius: 6px;
                 padding: 12px 24px;
                 font-weight: 600;
-                font-size: 12px;
+                font-size: 13px;
                 min-height: 20px;
             }}
             
@@ -220,8 +225,8 @@ class SchoolsForm(QWidget):
             }}
             
             .btn-success:hover {{
-                background-color: #047857;
-                border: 1px solid #047857;
+                background-color: #065f46;
+                border: 1px solid #065f46;
             }}
             
             /* Warning buttons */
@@ -244,8 +249,8 @@ class SchoolsForm(QWidget):
             }}
             
             .btn-danger:hover {{
-                background-color: #b91c1c;
-                border: 1px solid #b91c1c;
+                background-color: #991b1b;
+                border: 1px solid #991b1b;
             }}
             
             /* Info buttons */
@@ -268,48 +273,48 @@ class SchoolsForm(QWidget):
             }}
             
             .btn-secondary:hover {{
-                background-color: #475569;
-                border: 1px solid #475569;
+                background-color: #374151;
+                border: 1px solid #374151;
             }}
             
-            /* Enhanced Table styling with green headers and better scrollbars */
+            /* Enhanced Table styling with better contrast */
             QTableWidget {{
-                border: 1px solid {self.colors['border']};
+                border: 2px solid {self.colors['border']};
                 border-radius: 8px;
                 background-color: {self.colors['background']};
-                alternate-background-color: #f9fafb;
+                alternate-background-color: #f8fafc;
                 gridline-color: {self.colors['border']};
-                selection-background-color: rgba(16, 185, 129, 0.15);
+                selection-background-color: rgba(13, 148, 136, 0.15);
                 selection-color: {self.colors['text_primary']};
-                font-size: 12px;
+                font-size: 13px;
             }}
             
             QTableWidget::item {{
-                padding: 10px 12px;
+                padding: 12px 16px;
                 border-bottom: 1px solid {self.colors['border']};
                 color: {self.colors['text_primary']};
             }}
             
             QTableWidget::item:selected {{
-                background-color: rgba(16, 185, 129, 0.15);
+                background-color: rgba(13, 148, 136, 0.2);
                 color: {self.colors['text_primary']};
                 border: 1px solid {self.colors['table_header']};
+                font-weight: 600;
             }}
             
             QTableWidget::item:hover {{
-                background-color: rgba(16, 185, 129, 0.08);
+                background-color: rgba(13, 148, 136, 0.1);
             }}
             
-            /* Beautiful green header styling */
+            /* Beautiful header styling */
             QHeaderView::section {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
                 color: white;
-                padding: 14px 16px;
+                padding: 16px;
                 border: none;
                 font-weight: 700;
                 font-size: 13px;
-                text-transform: uppercase;
                 letter-spacing: 0.5px;
             }}
             
@@ -323,102 +328,55 @@ class SchoolsForm(QWidget):
             
             QHeaderView::section:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #12d490, stop:1 {self.colors['table_header']});
+                    stop:0 #0f766e, stop:1 #115e59);
             }}
             
-            /* Table corner button styling */
-            QTableCornerButton::section {{
-                background: {self.colors['table_header']};
-                border: none;
-                border-top-left-radius: 6px;
-            }}
-            
-            /* Logo area */
+            /* Logo area - More visible */
             .logo-container {{
                 border: 2px dashed {self.colors['border']};
                 border-radius: 8px;
                 background-color: {self.colors['light']};
                 color: {self.colors['text_secondary']};
                 font-size: 14px;
-                font-weight: 500;
+                font-weight: 600;
             }}
             
             .logo-container:hover {{
                 border-color: {self.colors['primary']};
-                background-color: rgba(37, 99, 235, 0.02);
+                background-color: rgba(59, 130, 246, 0.05);
             }}
             
-            /* Search section with compact design */
+            /* Search section */
             .search-section {{
                 background-color: {self.colors['background']};
-                border: 1px solid {self.colors['border']};
+                border: 2px solid {self.colors['border']};
                 border-radius: 8px;
-                padding: 12px;
-                margin-bottom: 12px;
+                padding: 16px;
+                margin-bottom: 16px;
             }}
             
             /* Enhanced Scrollbars */
             QScrollBar:vertical {{
                 background: {self.colors['light']};
-                width: 14px;
-                border-radius: 7px;
+                width: 16px;
+                border-radius: 8px;
                 margin: 0px;
             }}
             
             QScrollBar::handle:vertical {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                     stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
-                border-radius: 7px;
-                min-height: 20px;
+                border-radius: 8px;
+                min-height: 30px;
                 margin: 2px;
             }}
             
             QScrollBar::handle:vertical:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #12d490, stop:1 {self.colors['table_header']});
-            }}
-            
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                border: none;
-                background: none;
-                height: 0px;
-            }}
-            
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                background: none;
-            }}
-            
-            QScrollBar:horizontal {{
-                background: {self.colors['light']};
-                height: 14px;
-                border-radius: 7px;
-                margin: 0px;
-            }}
-            
-            QScrollBar::handle:horizontal {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
-                border-radius: 7px;
-                min-width: 20px;
-                margin: 2px;
-            }}
-            
-            QScrollBar::handle:horizontal:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #12d490, stop:1 {self.colors['table_header']});
-            }}
-            
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                border: none;
-                background: none;
-                width: 0px;
-            }}
-            
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
-                background: none;
+                    stop:0 #0f766e, stop:1 {self.colors['table_header']});
             }}
         """)
-
+    
     def setup_ui(self):
         self.setWindowTitle("School Management System")
         self.resize(1400, 900)
@@ -895,19 +853,19 @@ class SchoolsForm(QWidget):
                 year = int(year_text)
                 current_year = datetime.now().year
                 if year < 1800 or year > current_year:
-                    QMessageBox.warning(self, "⚠️ Validation Error", 
+                    QMessageBox.warning(self, "Validation Error", 
                                       f"Please enter a valid year between 1800 and {current_year}")
                     self.year_entry.setFocus()
                     return False
             except ValueError:
-                QMessageBox.warning(self, "⚠️ Validation Error", "Please enter a valid year (numbers only)")
+                QMessageBox.warning(self, "Validation Error", "Please enter a valid year (numbers only)")
                 self.year_entry.setFocus()
                 return False
         
         # Validate email format if provided
         email_text = self.email_entry.text().strip()
         if email_text and '@' not in email_text:
-            QMessageBox.warning(self, "⚠️ Validation Error", "Please enter a valid email address")
+            QMessageBox.warning(self, "Validation Error", "Please enter a valid email address")
             self.email_entry.setFocus()
             return False
         
