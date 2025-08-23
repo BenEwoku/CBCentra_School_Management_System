@@ -1,0 +1,763 @@
+# ui/audit_base_form.py
+from PySide6.QtWidgets import QWidget, QLineEdit, QMessageBox, QFileDialog
+from PySide6.QtGui import QFont
+from typing import Optional, Dict, Any
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.cell.cell import MergedCell  # For checking merged cells
+from models.models import get_db_connection
+
+
+class AuditBaseForm(QWidget):
+    """
+    Base form class with shared styling, user session, and audit logging.
+    All forms should inherit from this.
+    """
+
+    def __init__(self, parent=None, user_session: Optional[Dict[str, Any]] = None):
+        super().__init__(parent)
+        self.user_session = user_session
+        self.colors = {}
+        self.fonts = {}
+        self.setup_styling()
+
+    def setup_styling(self):
+        """Set up shared colors, fonts, and QSS styling"""
+        # === Color Palette ===
+        self.colors = {
+            'primary': '#007BFF',           # Blue
+            'primary_dark': '#0056b3',
+            'success': '#28a745',          # Green
+            'danger': '#dc3545',           # Red
+            'warning': '#ffc107',          # Amber
+            'info': '#17a2b8',             # Cyan
+            'secondary': '#475569',        # Slate
+            'secondary_hover': '#374151',  # Darker on hover
+            'text_primary': '#212529',     # Dark text
+            'text_secondary': '#6c757d',
+            'background': '#ffffff',       # White
+            'surface': '#f8f9fa',          # Light gray surface
+            'border': '#dee2e6',           # Light border
+            'input_border': '#ced4da',
+            'input_focus': '#80bdff',
+            'input_background': '#ffffff',
+            'table_header': '#10b981',     # Teal
+            'table_header_dark': '#059669', # Darker teal
+            'light': '#f1f5f9',             # Light background (for scrollbars)
+            'main_tab_gradient_start': '#0066cc',  # Main tab gradient start
+            'main_tab_gradient_end': '#004499',    # Main tab gradient end
+            'main_tab_border': '#003366',          # Main tab border
+            'tab_active': '#ffffff',               # Active tab background
+            'tab_hover': 'rgba(255,255,255,0.15)', # Tab hover effect
+            'tab_checked': 'rgba(255,255,255,0.2)' # Checked tab background
+        }
+    
+        # === Fonts ===
+        self.fonts = {
+            'label': QFont("Arial", 14, QFont.Weight.Bold),
+            'entry': QFont("Arial", 14),
+            'button': QFont("Arial", 12, QFont.Weight.Bold),
+            'table': QFont("Tahoma", 11),  # Slightly smaller for better fit
+            'table_header': QFont("Tahoma", 12, QFont.Weight.Bold),  # Reduced from 13
+            'section': QFont("Arial", 16, QFont.Weight.Bold),
+            'title': QFont("Arial", 18, QFont.Weight.Bold),
+            'tab': QFont("Segoe UI", 13, QFont.Weight.Medium),      # Tab font
+            'tab_active': QFont("Segoe UI", 13, QFont.Weight.Bold)  # Active tab font
+        }
+    
+        # === QSS Styling ===
+        self.setStyleSheet(self.get_global_stylesheet())
+
+    def get_global_stylesheet(self):
+        """Get the complete global stylesheet that can be applied to any widget"""
+        return f"""
+            /* === GLOBAL BASE STYLES === */
+            QWidget {{
+                background-color: #f5f5f5;
+                color: {self.colors['text_primary']};
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 13px;
+            }}
+
+            /* === MAIN NAVIGATION TABS (ENHANCED WITH ROUNDED CORNERS) === */
+            QToolBar#mainTabs {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {self.colors['main_tab_gradient_start']}, 
+                    stop: 1 {self.colors['main_tab_gradient_end']});
+                color: white;
+                spacing: 2px;
+                padding: 4px 8px;
+                border: none;
+                border-bottom: 2px solid {self.colors['main_tab_border']};
+                border-top: none;
+                min-height: 50px;
+                max-height: 60px;
+            }}
+            
+            /* Menu Toggle Button (Left Side) */
+            QPushButton#menuToggle {{
+                background: rgba(255, 255, 255, 0.1);
+                color: white;
+                padding: 10px 15px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                min-width: 40px;
+                max-width: 50px;
+                font-size: 16px;
+                font-weight: bold;
+                margin: 2px;
+            }}
+            
+            QPushButton#menuToggle:hover {{
+                background: rgba(255, 255, 255, 0.25);
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }}
+            
+            QPushButton#menuToggle:checked {{
+                background: {self.colors['tab_checked']};
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                font-weight: bold;
+            }}
+            
+            /* Main Tab Buttons (Center) */
+            QPushButton#tabButton {{
+                background: transparent;
+                color: white;
+                padding: 12px 20px;
+                border: none;
+                border-radius: 10px;
+                min-width: 80px;
+                font-size: 13px;
+                font-weight: 500;
+                margin: 2px 3px;
+                transition: all 0.3s ease;
+            }}
+            
+            QPushButton#tabButton:hover {{
+                background: {self.colors['tab_hover']};
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                transform: translateY(-1px);
+            }}
+            
+            QPushButton#tabButton:checked {{
+                background: {self.colors['tab_checked']};
+                border: 1px solid rgba(255, 255, 255, 0.4);
+                font-weight: bold;
+                color: #ffffff;
+            }}
+            
+            QPushButton#tabButton:pressed {{
+                background: rgba(255, 255, 255, 0.3);
+                transform: translateY(1px);
+            }}
+
+            /* Profile Section Styling (Right Side) */
+            QWidget#profileContainer {{
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 25px;
+                padding: 5px 15px;
+                margin: 5px;
+            }}
+            
+            QLabel#userName {{
+                color: white;
+                font-size: 14px;
+                font-weight: 600;
+                padding-right: 8px;
+                background: transparent;
+            }}
+            
+            QLabel#profilePic {{
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                border-radius: 18px;
+                background: transparent;
+            }}
+            
+            QLabel#profilePic:hover {{
+                border: 2px solid rgba(255, 255, 255, 0.6);
+            }}
+            
+            QPushButton#ribbonToggle {{
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                padding: 8px 12px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: bold;
+                min-width: 30px;
+                margin-left: 10px;
+            }}
+            
+            QPushButton#ribbonToggle:hover {{
+                background: rgba(255, 255, 255, 0.25);
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }}
+
+            /* === RIBBON CONTAINER === */
+            #ribbonContainer {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #ffffff, stop: 1 #f8f9fa);
+                border-bottom: 1px solid {self.colors['border']};
+                border-top: none;
+                padding: 8px;
+            }}
+            
+            #ribbonPanel {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            /* === GROUP BOXES === */
+            QGroupBox {{
+                font-weight: bold;
+                font-size: 16px;
+                color: #2c3e50;
+                border: 2px solid {self.colors['border']};
+                border-radius: 12px;
+                margin-top: 16px;
+                padding-top: 15px;
+                background-color: {self.colors['background']};
+            }}
+            
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 8px;
+                background-color: {self.colors['background']};
+                color: {self.colors['primary']};
+                font-weight: bold;
+            }}
+
+            /* === LABELS === */
+            QLabel {{
+                font-size: 14px;
+                font-weight: 500;
+                color: {self.colors['text_primary']};
+                padding: 2px;
+            }}
+
+            /* === INPUT FIELDS === */
+            QLineEdit, QComboBox, QDateEdit {{
+                padding: 10px 14px;
+                border: 2px solid {self.colors['input_border']};
+                border-radius: 8px;
+                font-size: 13px;
+                background-color: {self.colors['input_background']};
+                color: {self.colors['text_primary']};
+                min-height: 18px;
+            }}
+            
+            QLineEdit:focus, QComboBox:focus, QDateEdit:focus {{
+                border-color: {self.colors['input_focus']};
+                background-color: #f8f9fa;
+                box-shadow: 0 0 5px rgba(128, 189, 255, 0.3);
+            }}
+            
+            QLineEdit:disabled, QComboBox:disabled {{
+                background-color: #f1f5f9;
+                color: #64748b;
+                border-color: #cbd5e1;
+            }}
+
+            /* === COMBO BOX DROPDOWN === */
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid {self.colors['text_secondary']};
+            }}
+
+            /* === BUTTONS === */
+            QPushButton {{
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-weight: 600;
+                font-size: 12px;
+                min-height: 28px;
+                max-height: 32px;
+                background-color: {self.colors['secondary']};
+                color: white;
+            }}
+            
+            QPushButton:hover {{
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }}
+            
+            QPushButton:pressed {{
+                padding: 9px 15px 7px 17px;
+                transform: translateY(1px);
+            }}
+
+            /* === BUTTON VARIANTS === */
+            QPushButton[class="success"] {{
+                background-color: {self.colors['success']};
+                color: white;
+            }}
+            QPushButton[class="success"]:hover {{
+                background-color: #229954;
+            }}
+
+            QPushButton[class="danger"] {{
+                background-color: {self.colors['danger']};
+                color: white;
+            }}
+            QPushButton[class="danger"]:hover {{
+                background-color: #c0392b;
+            }}
+
+            QPushButton[class="warning"] {{
+                background-color: {self.colors['warning']};
+                color: white;
+            }}
+            QPushButton[class="warning"]:hover {{
+                background-color: #e67e22;
+            }}
+
+            QPushButton[class="info"] {{
+                background-color: {self.colors['info']};
+                color: white;
+            }}
+            QPushButton[class="info"]:hover {{
+                background-color: #7d3c98;
+            }}
+
+            QPushButton[class="primary"] {{
+                background-color: {self.colors['primary']};
+                color: white;
+            }}
+            QPushButton[class="primary"]:hover {{
+                background-color: {self.colors['primary_dark']};
+            }}
+
+            QPushButton[class="secondary"] {{
+                background-color: {self.colors['secondary']};
+                color: white;
+            }}
+            QPushButton[class="secondary"]:hover {{
+                background-color: {self.colors['secondary_hover']};
+            }}
+
+            /* === TABLE STYLING === */
+            QTableWidget {{
+                border: 2px solid {self.colors['border']};
+                border-radius: 12px;
+                background-color: {self.colors['background']};
+                alternate-background-color: #f8fafc;
+                gridline-color: {self.colors['border']};
+                selection-background-color: rgba(13, 148, 136, 0.15);
+                selection-color: {self.colors['text_primary']};
+                font-size: 12px;
+            }}
+            
+            QTableWidget::item {{
+                padding: 6px 10px;
+                border-bottom: 1px solid {self.colors['border']};
+                color: {self.colors['text_primary']};
+                min-height: 20px;
+                max-height: 26px;
+            }}
+            
+            QTableWidget::item:selected {{
+                background-color: rgba(13, 148, 136, 0.2);
+                color: {self.colors['text_primary']};
+                border: 1px solid {self.colors['table_header']};
+                font-weight: 600;
+            }}
+            
+            QTableWidget::item:hover {{
+                background-color: rgba(13, 148, 136, 0.1);
+            }}
+
+            /* === TABLE HEADER === */
+            QHeaderView::section {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {self.colors['table_header']}, 
+                    stop:1 {self.colors['table_header_dark']});
+                color: white;
+                padding: 10px 12px;
+                border: none;
+                font-weight: bold;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                min-height: 20px;
+                max-height: 26px;
+            }}
+
+            QHeaderView::section:first {{
+                border-top-left-radius: 10px;
+            }}
+            
+            QHeaderView::section:last {{
+                border-top-right-radius: 10px;
+            }}
+            
+            QHeaderView::section:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0f766e, stop:1 #115e59);
+            }}
+
+            /* === VERTICAL HEADER (ROW NUMBERS) === */
+            QTableWidget::verticalHeader {{
+                background-color: #f1f5f9;
+                color: #475569;
+                font-size: 12px;
+                font-weight: 500;
+                border-right: 1px solid #cbd5e1;
+                width: 30px;
+            }}
+            
+            QTableWidget::verticalHeader::section {{
+                background-color: #f1f5f9;
+                color: #1e293b;
+                padding: 8px;
+                border-bottom: 1px solid #cbd5e1;
+                font-weight: 600;
+                min-height: 20px;
+                max-height: 26px;
+            }}
+            
+            QTableWidget::verticalHeader::section:selected {{
+                background-color: #e2e8f0;
+                color: #0f172a;
+            }}
+            
+            QTableWidget::verticalHeader::section:hover {{
+                background-color: #e2e8f0;
+            }}
+
+            /* === SCROLLBARS === */
+            QScrollBar:vertical {{
+                background: {self.colors['light']};
+                width: 14px;
+                border-radius: 7px;
+                margin: 0px;
+            }}
+            
+            QScrollBar::handle:vertical {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.colors['table_header']}, 
+                    stop:1 {self.colors['table_header_dark']});
+                border-radius: 7px;
+                min-height: 25px;
+                margin: 2px;
+            }}
+            
+            QScrollBar::handle:vertical:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #0f766e, stop:1 {self.colors['table_header']});
+            }}
+
+            QScrollBar:horizontal {{
+                background: {self.colors['light']};
+                height: 14px;
+                border-radius: 7px;
+                margin: 0px;
+            }}
+            
+            QScrollBar::handle:horizontal {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {self.colors['table_header']}, 
+                    stop:1 {self.colors['table_header_dark']});
+                border-radius: 7px;
+                min-width: 25px;
+                margin: 2px;
+            }}
+
+            /* === PHOTO LABEL === */
+            QLabel[class="photo"] {{
+                border: 2px dashed {self.colors['border']};
+                border-radius: 12px;
+                background-color: {self.colors['surface']};
+                color: #7f8c8d;
+                font-size: 12px;
+                text-align: center;
+                padding: 20px;
+                min-width: 180px;
+                min-height: 180px;
+                max-width: 180px;
+                max-height: 180px;
+            }}
+
+            /* === MENU BAR === */
+            QMenuBar {{
+                background: transparent;
+                border: none;
+                color: #333;
+                spacing: 3px;
+            }}
+            
+            QMenuBar::item {{
+                background: transparent;
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-weight: 500;
+            }}
+            
+            QMenuBar::item:selected {{
+                background: rgba(0, 102, 204, 0.1);
+                color: {self.colors['primary']};
+            }}
+
+            /* === TAB WIDGET (For Content Tabs) === */
+            QTabWidget::pane {{
+                border: 2px solid {self.colors['border']};
+                border-radius: 8px;
+                background-color: {self.colors['background']};
+                margin-top: -1px;
+            }}
+
+            QTabBar::tab {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #e9ecef, stop: 1 #dee2e6);
+                border: 1px solid {self.colors['border']};
+                padding: 8px 16px;
+                margin-right: 2px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                font-weight: 500;
+            }}
+
+            QTabBar::tab:selected {{
+                background: {self.colors['background']};
+                border-bottom: 2px solid {self.colors['primary']};
+                color: {self.colors['primary']};
+                font-weight: bold;
+            }}
+
+            QTabBar::tab:hover:!selected {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #f1f3f4, stop: 1 #e9ecef);
+            }}
+        """
+        
+    def log_audit_action(self, action: str, table_name: str, record_id: int, description: str):
+        """Log an audit action to the audit_log table."""
+        if not hasattr(self, 'cursor') or not hasattr(self, 'db_connection'):
+            print("Error: Database cursor or connection not available.")
+            return
+
+        try:
+            user_id = self.user_session.get('user_id') if self.user_session else None
+            ip_address = self.user_session.get('ip_address', '127.0.0.1') if self.user_session else '127.0.0.1'
+
+            query = """
+                INSERT INTO audit_log (user_id, action, table_name, record_id, description, ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            self.cursor.execute(query, (user_id, action, table_name, record_id, description, ip_address))
+            self.db_connection.commit()
+        except Exception as e:
+            print(f"Failed to log audit action: {e}")
+
+
+    def export_with_green_header(self, data, headers, filename_prefix="export", title=None):
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+            from openpyxl.cell.cell import MergedCell
+            from datetime import datetime
+            import os
+            import platform
+            import subprocess
+    
+            # Use provided title or fallback
+            display_title = title or "CBCENTRA SCHOOL MANAGEMENT SYSTEM"
+    
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Data Export"
+    
+            # === STYLING ===
+            header_font = Font(name='Arial', size=12, bold=True, color='FFFFFF')
+            header_fill = PatternFill(start_color='2E7D32', end_color='2E7D32', fill_type='solid')  # Dark green
+            header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            data_font = Font(name='Arial', size=11)
+            data_alignment = Alignment(horizontal='left', vertical='center')
+    
+            # === METADATA ROWS ===
+            ws.insert_rows(0, 3)
+            total_cols = len(headers)
+            last_col_letter = get_column_letter(total_cols)
+    
+            # Title
+            ws.merge_cells(f'A1:{last_col_letter}1')
+            title_cell = ws['A1']
+            title_cell.value = display_title.upper()
+            title_cell.font = Font(name='Arial', size=16, bold=True, color='2E7D32')
+            title_cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+            # Subtitle
+            ws.merge_cells(f'A2:{last_col_letter}2')
+            subtitle_cell = ws['A2']
+            subtitle_cell.value = f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Exported by: {self.user_session.get('full_name', 'Unknown')}"
+            subtitle_cell.font = Font(name='Arial', size=10, italic=True, color='555555')
+            subtitle_cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+            ws['A3'].value = ""  # Empty row
+    
+            # === WRITE HEADERS (row 4) ===
+            ws.append(headers)
+            for col_num in range(1, len(headers) + 1):
+                cell = ws.cell(row=4, column=col_num)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = thin_border
+    
+            # === WRITE DATA ===
+            for row_data in data:
+                ws.append(row_data)
+    
+            # === COLUMN WIDTH AUTO-FIT (SAFE) ===
+            for column_cells in ws.columns:
+                max_length = 0
+                column_letter = None
+                for cell in column_cells:
+                    if isinstance(cell, MergedCell):
+                        continue
+                    if column_letter is None:
+                        column_letter = cell.column_letter
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                if column_letter:
+                    adjusted_width = min(max_length + 2, 50)
+                    ws.column_dimensions[column_letter].width = adjusted_width
+    
+            # === DATA FORMATTING ===
+            for row in ws.iter_rows(min_row=5, max_row=ws.max_row):
+                for cell in row:
+                    cell.font = data_font
+                    cell.alignment = data_alignment
+                    cell.border = thin_border
+    
+            # === FREEZE HEADER ROW ===
+            ws.freeze_panes = 'A5'
+    
+            # === FOOTER ===
+            footer_row = ws.max_row + 2
+            ws.merge_cells(f'A{footer_row}:{last_col_letter}{footer_row}')
+            footer_cell = ws[f'A{footer_row}']
+            footer_cell.value = "Generated by CBCentra School Management System"
+            footer_cell.font = Font(name='Arial', size=9, italic=True, color='999999')
+            footer_cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+            # === ASK USER FOR SAVE LOCATION ===
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            suggested_filename = f"{filename_prefix}_{timestamp}.xlsx"
+            
+            # Default to exports folder, but let user choose
+            export_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exports")
+            os.makedirs(export_dir, exist_ok=True)
+            suggested_path = os.path.join(export_dir, suggested_filename)
+            
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Export File",
+                suggested_path,
+                "Excel Files (*.xlsx);;All Files (*)"
+            )
+            
+            # If user cancels, abort
+            if not filename:
+                return False
+            
+            # Ensure .xlsx extension
+            if not filename.lower().endswith('.xlsx'):
+                filename += '.xlsx'
+            
+            # === SAVE FILE ===
+            try:
+                wb.save(filename)
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", f"Could not save file:\n{str(e)}")
+                return False
+    
+            # === OPEN FILE ===
+            try:
+                if platform.system() == "Windows":
+                    os.startfile(filename)
+                elif platform.system() == "Darwin":  # macOS
+                    subprocess.call(["open", filename])
+                else:  # Linux
+                    subprocess.call(["xdg-open", filename])
+            except Exception as e:
+                print(f"Could not open file: {e}")
+    
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Data exported successfully!\nSaved to: {os.path.basename(filename)}"
+            )
+    
+        except ImportError:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                "Required library 'openpyxl' not installed.\nRun: pip install openpyxl"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export:\n{str(e)}")
+
+    def get_school_info(self, school_id=None):
+        """
+        Get school info from database
+        If no school_id, return default or first school
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+    
+            if school_id:
+                cursor.execute("SELECT school_name, address, phone, email FROM schools WHERE id = %s", (school_id,))
+            else:
+                cursor.execute("SELECT school_name, address, phone, email FROM schools ORDER BY id LIMIT 1")
+    
+            result = cursor.fetchone()
+            conn.close()
+    
+            if result:
+                return {
+                    'name': result[0],
+                    'address': result[1],
+                    'phone': result[2],
+                    'email': result[3]
+                }
+            else:
+                return {
+                    'name': 'CBCentra School',
+                    'address': 'N/A',
+                    'phone': 'N/A',
+                    'email': 'info@cbcentra.edu'
+                }
+        except Exception as e:
+            print(f"Error fetching school info: {e}")
+            return {
+                'name': 'CBCentra School',
+                'address': 'N/A',
+                'phone': 'N/A',
+                'email': 'info@cbcentra.edu'
+            }
+
+            

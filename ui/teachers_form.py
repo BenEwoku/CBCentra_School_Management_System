@@ -1,3 +1,4 @@
+#ui/teachers_form.py
 import sys
 import os
 import csv
@@ -11,23 +12,27 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QMessageBox, QFileDialog, QScrollArea, QFrame, QSizePolicy,
     QGroupBox, QGridLayout, QSpacerItem, QComboBox, QFormLayout, 
-    QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication
+    QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication, QLineEdit
 )
 from PySide6.QtGui import QFont, QPalette, QIcon, QPixmap, QPainter, QAction
 from PySide6.QtCore import Qt, Signal, QSize, QDate
 import mysql.connector
 from mysql.connector import Error
 from PIL import Image, ImageQt
+from utils.permissions import has_permission
+from ui.audit_base_form import AuditBaseForm
 
 # Add parent directory to path to import models
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.models import get_db_connection
 
-class TeachersForm(QWidget):
-    teacher_selected = Signal(int)  # Signal emitted when a teacher is selected
-    
-    def __init__(self, parent=None, user_session: Optional[Dict[str, Any]] = None):
-        super().__init__(parent)
+
+# Change class definition
+class TeachersForm(AuditBaseForm):
+    teacher_selected = Signal(int)
+
+    def __init__(self, parent=None, user_session=None):
+        super().__init__(parent, user_session)
         self.user_session = user_session
         self.current_teacher_id = None
         self.photo_path = None
@@ -51,268 +56,8 @@ class TeachersForm(QWidget):
         self.setup_ui()
         self.load_teachers()
         self.load_schools()
-
-    def setup_styling(self):
-        """Set up modern QSS styling"""
-        self.setStyleSheet("""
-            /* Main container styling */
-            QWidget {
-                background-color: #f5f5f5;
-                color: #333333;
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
-            
-            /* Tab widget styling */
-            QTabWidget::pane {
-                border: 2px solid #c0c0c0;
-                background-color: white;
-                border-radius: 8px;
-            }
-            
-            QTabWidget::tab-bar {
-                alignment: left;
-            }
-            
-            QTabBar::tab {
-                background-color: #e1e1e1;
-                border: 2px solid #c0c0c0;
-                border-bottom-color: #c0c0c0;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                min-width: 120px;
-                padding: 12px 20px;
-                font-weight: bold;
-                font-size: 14px;
-                color: #555555;
-            }
-            
-            QTabBar::tab:selected {
-                background-color: #4472C4;
-                color: white;
-                border-bottom-color: #4472C4;
-            }
-            
-            QTabBar::tab:hover:!selected {
-                background-color: #d0d0d0;
-            }
-            
-            /* Group box styling */
-            QGroupBox {
-                font-weight: bold;
-                font-size: 16px;
-                color: #2c3e50;
-                border: 2px solid #bdc3c7;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 8px 0 8px;
-                background-color: white;
-                color: #2c3e50;
-            }
-            
-            /* Label styling */
-            QLabel {
-                font-size: 14px;
-                font-weight: 500;
-                color: #2c3e50;
-                padding: 2px;
-            }
-            
-            /* Entry field styling */
-            QLineEdit, QComboBox, QDateEdit {
-                padding: 8px 12px;
-                border: 2px solid #bdc3c7;
-                border-radius: 6px;
-                font-size: 14px;
-                background-color: white;
-                color: #2c3e50;
-                min-height: 20px;
-            }
-            
-            QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
-                border-color: #3498db;
-                background-color: #f8f9fa;
-            }
-            
-            QLineEdit[readOnly="true"] {
-                background-color: #ecf0f1;
-                color: #7f8c8d;
-            }
-            
-            /* ComboBox dropdown styling */
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #7f8c8d;
-            }
-            
-            /* Button styling */
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 100px;
-                min-height: 35px;
-            }
-            
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            
-            QPushButton:pressed {
-                background-color: #21618c;
-            }
-            
-            /* Specific button colors */
-            QPushButton[class="success"] {
-                background-color: #27ae60;
-            }
-            
-            QPushButton[class="success"]:hover {
-                background-color: #229954;
-            }
-            
-            QPushButton[class="danger"] {
-                background-color: #e74c3c;
-            }
-            
-            QPushButton[class="danger"]:hover {
-                background-color: #c0392b;
-            }
-            
-            QPushButton[class="warning"] {
-                background-color: #f39c12;
-            }
-            
-            QPushButton[class="warning"]:hover {
-                background-color: #e67e22;
-            }
-            
-            QPushButton[class="info"] {
-                background-color: #8e44ad;
-            }
-            
-            QPushButton[class="info"]:hover {
-                background-color: #7d3c98;
-            }
-            
-            /* Table styling */
-            QTableWidget {
-                gridline-color: #bdc3c7;
-                background-color: white;
-                alternate-background-color: #f8f9fa;
-                selection-background-color: #3498db;
-                selection-color: white;
-                border: 1px solid #bdc3c7;
-                border-radius: 6px;
-                font-size: 13px;
-            }
-            
-            QTableWidget::item {
-                padding: 8px;
-                border: none;
-            }
-            
-            QTableWidget::item:selected {
-                background-color: #3498db;
-                color: white;
-            }
-            
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 10px 8px;
-                border: none;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            
-            QHeaderView::section:hover {
-                background-color: #2c3e50;
-            }
-            
-            /* Checkbox styling */
-            QCheckBox {
-                font-size: 14px;
-                color: #2c3e50;
-                spacing: 8px;
-            }
-            
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #bdc3c7;
-                border-radius: 4px;
-                background-color: white;
-            }
-            
-            QCheckBox::indicator:checked {
-                background-color: #27ae60;
-                border-color: #27ae60;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xMC42IDEuNEw0LjIgNy44IDEuNCA1IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-            
-            /* Photo label styling */
-            QLabel[class="photo"] {
-                border: 2px dashed #bdc3c7;
-                border-radius: 8px;
-                background-color: #f8f9fa;
-                color: #7f8c8d;
-                font-size: 12px;
-                text-align: center;
-                padding: 20px;
-                min-width: 180px;
-                min-height: 180px;
-                max-width: 180px;
-                max-height: 180px;
-            }
-            
-            /* Scroll area styling */
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            
-            QScrollBar:vertical {
-                background-color: #ecf0f1;
-                width: 12px;
-                border-radius: 6px;
-                margin: 0;
-            }
-            
-            QScrollBar::handle:vertical {
-                background-color: #bdc3c7;
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            
-            QScrollBar::handle:vertical:hover {
-                background-color: #95a5a6;
-            }
-            
-            /* Frame styling */
-            QFrame {
-                border: none;
-                background-color: transparent;
-            }
-        """)
-
+        self.apply_button_permissions()
+    
     def setup_ui(self):
         """Set up the user interface"""
         # Main layout
@@ -341,50 +86,48 @@ class TeachersForm(QWidget):
     def setup_teacher_form_tab(self):
         """Set up the teacher form tab"""
         layout = QHBoxLayout(self.teacher_form_tab)
-        
+    
         # Left side - Form fields (70% width)
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setMinimumWidth(800)
-        
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        
+    
         # Title
         title_label = QLabel("Staff Information")
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #2c3e50;
-                padding: 20px;
-                background-color: #ecf0f1;
-                border-radius: 8px;
-                margin-bottom: 10px;
-            }
-        """)
+        title_label.setStyleSheet("""...""")
         left_layout.addWidget(title_label)
-        
+    
         # Create form sections
         self.create_personal_info_section(left_layout)
         self.create_contact_info_section(left_layout)
         self.create_employment_info_section(left_layout)
-        
+    
+        # === Status Label ===
+        self.status_label = QLabel("Ready")
+        self.status_label.setFont(self.fonts['entry'])
+        self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
+    
+        status_layout = QHBoxLayout()
+        status_layout.addStretch()
+        status_layout.addWidget(self.status_label)
+        status_layout.setContentsMargins(10, 5, 10, 10)
+    
+        left_layout.addLayout(status_layout)  # ✅ Correct layout used
+    
         left_scroll.setWidget(left_widget)
         layout.addWidget(left_scroll, 6)  # 60% width
-        
+    
         # Right side - Photo and actions (30% width)
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_widget.setMaximumWidth(400)
-        
-        # Photo section
+    
         self.create_photo_section(right_layout)
-        
-        # Action buttons
         self.create_action_buttons(right_layout)
-        
+    
         layout.addWidget(right_widget, 3)  # 30% width
 
     def create_personal_info_section(self, parent_layout):
@@ -935,6 +678,11 @@ class TeachersForm(QWidget):
 
     def add_teacher(self):
         """Add new teacher"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "create_teacher"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to add teachers.")
+            return
+    
         if not self.validate_fields():
             return
             
@@ -1006,6 +754,15 @@ class TeachersForm(QWidget):
                                       (photo_path, teacher_id))
             
             self.db_connection.commit()
+    
+            # ✅ Log audit action
+            self.log_audit_action(
+                action="CREATE",
+                table_name="teachers",
+                record_id=teacher_id,
+                description=f"Added teacher {full_name} (ID: {self.teacher_id_entry.text().strip()}) at {self.school_combo.currentText()}"
+            )
+    
             QMessageBox.information(self, "Success", "Teacher added successfully!")
             self.clear_fields()
             self.load_teachers()
@@ -1020,7 +777,12 @@ class TeachersForm(QWidget):
         if not self.current_teacher_id:
             QMessageBox.warning(self, "Error", "Please select a teacher to update!")
             return
-            
+    
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "edit_teacher"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to edit teachers.")
+            return
+    
         if not self.validate_fields():
             return
             
@@ -1098,6 +860,15 @@ class TeachersForm(QWidget):
                                   (photo_path, self.current_teacher_id))
                 
             self.db_connection.commit()
+    
+            # ✅ Log audit action
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="teachers",
+                record_id=self.current_teacher_id,
+                description=f"Updated teacher {full_name} (ID: {self.teacher_id_entry.text().strip()})"
+            )
+    
             QMessageBox.information(self, "Success", "Teacher updated successfully!")
             self.clear_fields()
             self.load_teachers()
@@ -1112,6 +883,11 @@ class TeachersForm(QWidget):
         if not self.current_teacher_id:
             QMessageBox.warning(self, "Error", "Please select a teacher to delete!")
             return
+    
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "delete_teacher"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete teachers.")
+            return
             
         # Confirm deletion
         reply = QMessageBox.question(
@@ -1124,6 +900,12 @@ class TeachersForm(QWidget):
         
         if reply == QMessageBox.Yes:
             try:
+                # Get teacher info before deletion
+                self.cursor.execute("SELECT full_name, teacher_id_code FROM teachers WHERE id = %s", (self.current_teacher_id,))
+                result = self.cursor.fetchone()
+                full_name = result[0] if result else "Unknown"
+                teacher_id_code = result[1] if result else "N/A"
+                
                 # Get photo path before deletion
                 self.cursor.execute("SELECT photo_path FROM teachers WHERE id = %s", (self.current_teacher_id,))
                 result = self.cursor.fetchone()
@@ -1132,6 +914,14 @@ class TeachersForm(QWidget):
                 # Delete teacher
                 self.cursor.execute("DELETE FROM teachers WHERE id = %s", (self.current_teacher_id,))
                 self.db_connection.commit()
+                
+                # ✅ Log audit action BEFORE deleting photo
+                self.log_audit_action(
+                    action="DELETE",
+                    table_name="teachers",
+                    record_id=self.current_teacher_id,
+                    description=f"Deleted teacher {full_name} (ID: {teacher_id_code})"
+                )
                 
                 # Delete photo file if exists
                 if photo_path and os.path.exists(photo_path):
@@ -1147,7 +937,7 @@ class TeachersForm(QWidget):
             except Exception as e:
                 self.db_connection.rollback()
                 QMessageBox.critical(self, "Error", f"Error deleting teacher: {str(e)}")
-
+        
     def clear_fields(self):
         """Clear all form fields and selection"""
         self.current_teacher_id = None
@@ -1191,6 +981,27 @@ class TeachersForm(QWidget):
         self.reset_photo_display()
         
         print("All fields cleared and selection reset")
+
+    def apply_button_permissions(self):
+        """Enable/disable buttons based on user permissions"""
+        can_create = has_permission(self.user_session, "create_teacher")
+        can_edit = has_permission(self.user_session, "edit_teacher")
+        can_delete = has_permission(self.user_session, "delete_teacher")
+    
+        self.add_btn.setEnabled(can_create)
+        self.update_btn.setEnabled(can_edit)
+        self.delete_btn.setEnabled(can_delete)
+        self.edit_selected_btn.setEnabled(can_edit)
+    
+        # Optional: Always enabled
+        self.clear_btn.setEnabled(True)
+        self.refresh_btn.setEnabled(True)
+    
+        # Set tooltips for better UX
+        self.add_btn.setToolTip("Add a new teacher" if can_create else "Permission required: create_teacher")
+        self.update_btn.setToolTip("Update selected teacher" if can_edit else "Permission required: edit_teacher")
+        self.delete_btn.setToolTip("Delete selected teacher" if can_delete else "Permission required: delete_teacher")
+        self.edit_selected_btn.setToolTip("Edit selected teacher" if can_edit else "Permission required: edit_teacher")
 
     def load_teachers(self):
         """Load teachers data into the table"""
@@ -1481,22 +1292,35 @@ class TeachersForm(QWidget):
         QMessageBox.information(self, "Info", "Teacher data loaded in the form. Make changes and click Update.")
 
     def refresh_data(self):
-        """Refresh all data"""
-        self.load_teachers()
-        self.load_schools()
-        QMessageBox.information(self, "Success", "Data refreshed successfully!")
+        """Refresh all data in the form with progress indication"""
+        try:
+            self.status_label.setText("Refreshing...")
+            self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
+            QApplication.processEvents()
+    
+            self.current_teacher_id = None
+            self.load_teachers()
+            self.load_schools()
+            self.clear_fields()
+    
+            # Reapply button permissions after refresh
+            self.apply_button_permissions()
+    
+            self.status_label.setText("Data Refreshed")
+            self.status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
+        except Error as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh data: {e}")
+            self.status_label.setText("Refresh Failed")
+            self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Unexpected error during refresh: {e}")
+            self.status_label.setText("Refresh Failed")
+            self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
 
     def export_teachers_data(self):
-        """Export teachers data to Excel with professional formatting"""
+        """Export teachers data using shared export_with_green_header method"""
         try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from datetime import datetime
-            import os
-            import subprocess
-            import platform
-    
-            # Get all teachers data with school information
+            # Fetch data from database
             self.cursor.execute('''
                 SELECT
                     t.teacher_id_code, t.salutation, t.first_name, t.surname, t.full_name,
@@ -1504,7 +1328,8 @@ class TeachersForm(QWidget):
                     t.home_district, t.subject_specialty, t.qualification, t.date_joined,
                     t.emergency_contact_1, t.emergency_contact_2, t.national_id_number,
                     t.birth_date, t.bank_account_number, t.next_of_kin, t.employment_status,
-                    t.is_active, t.staff_type, t.position, t.monthly_salary, s.school_name
+                    CASE WHEN t.is_active = 1 THEN 'Yes' ELSE 'No' END,
+                    t.staff_type, t.position, t.monthly_salary, s.school_name
                 FROM teachers t
                 LEFT JOIN schools s ON t.school_id = s.id
                 ORDER BY t.full_name
@@ -1512,15 +1337,10 @@ class TeachersForm(QWidget):
             teachers = self.cursor.fetchall()
     
             if not teachers:
-                QMessageBox.information(self, "Info", "No teacher data to export")
+                QMessageBox.information(self, "No Data", "No teacher data found to export.")
                 return
     
-            # Create workbook and worksheet
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Teachers"
-    
-            # Add headers
+            # Define headers (must match SELECT order)
             headers = [
                 "Teacher ID", "Salutation", "First Name", "Surname", "Full Name",
                 "Email", "Gender", "Phone Contact 1", "Day Phone", "Current Address",
@@ -1529,183 +1349,21 @@ class TeachersForm(QWidget):
                 "Birth Date", "Bank Account", "Next of Kin", "Employment Status",
                 "Active Status", "Staff Type", "Position", "Monthly Salary", "School Name"
             ]
-            ws.append(headers)
     
-            # Process and add teacher data
-            processed_teachers = []
-            for teacher in teachers:
-                teacher_row = list(teacher)
-                # Convert is_active boolean to "Yes"/"No"
-                teacher_row[21] = "Yes" if teacher_row[21] else "No"
-                processed_teachers.append(teacher_row)
-                ws.append(teacher_row)
+            # Get school name for title
+            school_info = self.get_school_info()
+            title = f"{school_info['name']} - TEACHERS DATA"
     
-            # === HEADER FORMATTING ===
-            # Define styles
-            header_font = Font(
-                name='Arial',
-                size=12,
-                bold=True,
-                color='FFFFFF'  # White text
-            )
-            
-            header_fill = PatternFill(
-                start_color='2E7D32',  # Professional green for teachers
-                end_color='2E7D32',
-                fill_type='solid'
-            )
-            
-            header_alignment = Alignment(
-                horizontal='center',
-                vertical='center',
-                wrap_text=True
-            )
-            
-            # Define border style
-            thin_border = Border(
-                left=Side(style='thin', color='000000'),
-                right=Side(style='thin', color='000000'),
-                top=Side(style='thin', color='000000'),
-                bottom=Side(style='thin', color='000000')
-            )
-    
-            # Apply header formatting
-            for col_num in range(1, len(headers) + 1):
-                cell = ws.cell(row=1, column=col_num)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = header_alignment
-                cell.border = thin_border
-    
-            # === COLUMN WIDTH ADJUSTMENT ===
-            # Auto-adjust column widths based on content
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                
-                for cell in column:
-                    try:
-                        cell_length = len(str(cell.value)) if cell.value else 0
-                        if cell_length > max_length:
-                            max_length = cell_length
-                    except:
-                        pass
-                
-                # Set column width (with some padding and max limit)
-                adjusted_width = min(max_length + 3, 50)
-                ws.column_dimensions[column_letter].width = max(adjusted_width, 12)  # Minimum width of 12
-    
-            # === DATA FORMATTING ===
-            # Apply border to all data cells
-            data_font = Font(name='Arial', size=10)
-            data_alignment = Alignment(horizontal='left', vertical='center')
-            
-            for row_num in range(2, len(processed_teachers) + 2):  # Start from row 2 (after header)
-                for col_num in range(1, len(headers) + 1):
-                    cell = ws.cell(row=row_num, column=col_num)
-                    cell.border = thin_border
-                    cell.font = data_font
-                    cell.alignment = data_alignment
-                    
-                    # Special formatting for specific columns
-                    if col_num == 1:  # Teacher ID - center align
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    elif col_num == 7:  # Gender - center align
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    elif col_num == 22:  # Active Status - center align
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-    
-            # === ADD TITLE AND METADATA ===
-            # Insert rows at the top for title and metadata
-            ws.insert_rows(1, 3)  # Insert 3 rows at the top
-            
-            # School title
-            total_cols = len(headers)
-            col_letter = chr(64 + total_cols)  # Convert to letter (A=1, B=2, etc.)
-            ws.merge_cells(f'A1:{col_letter}1')  # Merge cells for title
-            title_cell = ws['A1']
-            title_cell.value = "WINSPIRE LEARNING HUB - TEACHERS DATA"
-            title_cell.font = Font(name='Arial', size=16, bold=True, color='2E7D32')
-            title_cell.alignment = Alignment(horizontal='center', vertical='center')
-            
-            # Export info
-            ws.merge_cells(f'A2:{col_letter}2')
-            info_cell = ws['A2']
-            info_cell.value = f"Exported on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Total Teachers: {len(processed_teachers)}"
-            info_cell.font = Font(name='Arial', size=10, italic=True, color='666666')
-            info_cell.alignment = Alignment(horizontal='center', vertical='center')
-            
-            # Empty row for spacing
-            ws['A3'].value = ""
-            
-            # Update header row (now row 4)
-            for col_num in range(1, len(headers) + 1):
-                cell = ws.cell(row=4, column=col_num)  # Header is now in row 4
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = header_alignment
-                cell.border = thin_border
-    
-            # Update data formatting (starts from row 5 now)
-            for row_num in range(5, len(processed_teachers) + 5):  # Start from row 5
-                for col_num in range(1, len(headers) + 1):
-                    cell = ws.cell(row=row_num, column=col_num)
-                    cell.border = thin_border
-                    cell.font = data_font
-                    cell.alignment = data_alignment
-                    
-                    # Special formatting for specific columns
-                    if col_num == 1:  # Teacher ID
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    elif col_num == 7:  # Gender
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    elif col_num == 22:  # Active Status
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-    
-            # === FREEZE PANES ===
-            # Freeze the header row so it stays visible when scrolling
-            ws.freeze_panes = 'A5'  # Freeze everything above row 5 (our data starts at row 5)
-    
-            # === ADD FOOTER ===
-            footer_row = len(processed_teachers) + 6  # Row after all data
-            ws.merge_cells(f'A{footer_row}:{col_letter}{footer_row}')
-            footer_cell = ws[f'A{footer_row}']
-            footer_cell.value = "Generated by CBCentra School Management System"
-            footer_cell.font = Font(name='Arial', size=9, italic=True, color='999999')
-            footer_cell.alignment = Alignment(horizontal='center', vertical='center')
-    
-            # Create filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exports")
-            os.makedirs(export_dir, exist_ok=True)
-            filename = os.path.join(export_dir, f"teachers_export_{timestamp}.xlsx")
-    
-            # Save workbook
-            wb.save(filename)
-    
-            # Auto-open the file
-            try:
-                if platform.system() == "Windows":
-                    os.startfile(filename)
-                elif platform.system() == "Darwin":
-                    subprocess.call(["open", filename])
-                else:
-                    subprocess.call(["xdg-open", filename])
-            except Exception as e:
-                print(f"Error opening file: {e}")
-    
-            QMessageBox.information(
-                self, 
-                "Success", 
-                f"Teacher data exported successfully!\n\nFile: {os.path.basename(filename)}\nTotal Teachers: {len(processed_teachers)}\nLocation: {export_dir}"
+            # Use shared export method
+            self.export_with_green_header(
+                data=teachers,
+                headers=headers,
+                filename_prefix="teachers_export",
+                title=title
             )
     
         except Exception as e:
-            QMessageBox.critical(
-                self, 
-                "Error", 
-                f"Failed to export teacher data: {e}"
-            )
+            QMessageBox.critical(self, "Export Error", f"Failed to export teacher data:\n{str(e)}")
     
     def generate_teacher_report(self):
         """Generate a teacher summary report"""

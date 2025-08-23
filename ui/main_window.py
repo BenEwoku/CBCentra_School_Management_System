@@ -1,10 +1,11 @@
-#ui/main_window.py
+# ui/main_window.py
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QMessageBox, QToolBar, QWidget,
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QStackedWidget,
     QSizePolicy, QScrollArea, QTabWidget, QInputDialog, QGraphicsDropShadowEffect,
-    QDialog, QFileDialog, QGroupBox, QRadioButton, QComboBox, QProgressDialog
+    QDialog, QFileDialog, QGroupBox, QRadioButton, QComboBox, QProgressDialog, QLineEdit,
+    QButtonGroup
 )
 from datetime import datetime
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction
@@ -17,29 +18,41 @@ from ui.users_form import UsersForm
 from ui.teachers_form import TeachersForm
 from ui.login_logs_form import LoginLogsForm
 from ui.audit_logs_form import AuditLogsForm
+from ui.audit_base_form import AuditBaseForm
 from utils.permissions import has_permission
 from fpdf import FPDF
 from docx import Document
 import tempfile
 import csv
 
-
-
 class MainWindow(QMainWindow):
-    # Signals at class level - CORRECT LOCATION
+    # Signals
     logout_requested = Signal()
     user_session_updated = Signal(dict)
     
-    def __init__(self, config=None, user_session=None, db_connection=None, app_paths=None):
-        super().__init__()
+    def __init__(self, config=None, parent=None, user_session=None, db_connection=None, app_paths=None):
+        super().__init__(parent)
         
-        # Store instance variables - CORRECT LOCATION
+        # Store instance variables
         self.user_session = user_session or {}
         self.app_config = config or {}
         self.db_connection = db_connection
         self.app_paths = app_paths or {}
         
-        # Use the passed parameters, don't hardcode defaults
+        # Create AuditBaseForm instance for styling and utilities
+        self.audit_base = AuditBaseForm(user_session=user_session)
+        
+        # 🔥 INHERIT ALL STYLING from AuditBaseForm
+        self.setStyleSheet(self.audit_base.styleSheet())
+        self.colors = self.audit_base.colors
+        self.fonts = self.audit_base.fonts
+        
+        # Store reference to audit methods
+        self.log_audit_action = self.audit_base.log_audit_action
+        self.export_with_green_header = self.audit_base.export_with_green_header
+        self.get_school_info = self.audit_base.get_school_info
+        
+        # Use the passed parameters
         self.app_config = config or {
             'name': 'CBCentra School Management System',
             'window_title': 'CBCentra SMS Desktop', 
@@ -47,16 +60,11 @@ class MainWindow(QMainWindow):
             'default_size': (1200, 700)
         }
         
-        # CRITICAL: Use the passed user_session, don't hardcode
-        # Ensure user_session is a dictionary
+        # Ensure user_session is properly set up
         if isinstance(user_session, dict):
-            self.user_session = user_session.copy()  # Avoid mutating external dict
+            self.user_session = user_session.copy()
         else:
-            # Log invalid session
-            if user_session is not None:
-                print(f"❌ Invalid user_session type: {type(user_session)}, value: {user_session}")
-            
-            # Use safe fallback session with full data including permissions
+            # Use safe fallback session
             self.user_session = {
                 'user_id': 1,
                 'username': 'admin',
@@ -70,7 +78,7 @@ class MainWindow(QMainWindow):
                 ]
             }
         
-        # 🔁 Critical: If permissions are missing, regenerate from role
+        # Auto-generate permissions if missing
         if 'permissions' not in self.user_session or self.user_session['permissions'] is None:
             try:
                 from utils.permissions import get_role_permissions
@@ -79,11 +87,9 @@ class MainWindow(QMainWindow):
                 print(f"🔁 Permissions auto-generated for role '{role}': {self.user_session['permissions']}")
             except Exception as e:
                 print(f"❌ Failed to load permissions: {e}")
-                # Fallback minimal permissions
                 self.user_session['permissions'] = ['view_own_profile'] if self.user_session.get('role') != 'admin' else [
                     'view_login_logs', 'view_audit_logs', 'view_all_data'
                 ]
-                
         
         self.db_connection = db_connection
         self.app_paths = app_paths or {
@@ -94,7 +100,6 @@ class MainWindow(QMainWindow):
         
         self.sidebar_visible = False
         self.ribbon_visible = True
-
         self.current_pdf_bytes = None
         self.current_file_path = None
         self.current_file_type = None
@@ -108,13 +113,13 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(*self.app_config['min_size'])
         if os.path.exists(self.app_paths['app_icon']):
             self.setWindowIcon(QIcon(self.app_paths['app_icon']))
-
+    
     def init_ui(self):
-        self.apply_styles()
+        #self.apply_styles()
         self.create_main_tabs()
         self.create_ribbon_panel()
         self.create_sidebar()
-        self.create_logout_action()
+        #self.create_logout_action()
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
         self.create_content_pages()
@@ -155,6 +160,8 @@ class MainWindow(QMainWindow):
         
         # Update UI elements that depend on user session
         self.update_ui_for_user_session()
+        self.update_profile_picture()
+        self.update_profile_tooltip()
         
         # Emit signal to notify other components
         self.user_session_updated.emit(self.user_session.copy())
@@ -184,25 +191,32 @@ class MainWindow(QMainWindow):
             
         if hasattr(self, 'user_role_label'):
             self.user_role_label.setText(self.user_session.get('role', 'User'))
-    def create_logout_action(self):
-        """Create logout action in menu"""
-        # Get the menu bar (QMainWindow already has menuBar() method)
-        menu_bar = self.menuBar()
+            
+    def update_profile_picture(self):
+        """Update profile picture when session changes"""
+        if not hasattr(self, 'profile_pic'):
+            return
+    
+        size = 36
+        profile_pixmap = None
+        profile_image_path = self.user_session.get('profile_image')
+    
+        if profile_image_path:
+            full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
+            if os.path.exists(full_path):
+                profile_pixmap = QPixmap(full_path)
+    
+        if not profile_pixmap or profile_pixmap.isNull():
+            fallback_path = "static/icons/profile.jpg"
+            if os.path.exists(fallback_path):
+                profile_pixmap = QPixmap(fallback_path)
+    
+        if profile_pixmap and not profile_pixmap.isNull():
+            circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
+            self.profile_pic.setPixmap(circular_pixmap)
+        else:
+            self.profile_pic.setPixmap(self.create_profile_placeholder(size))
         
-        # Create file menu
-        file_menu = menu_bar.addMenu("&File")
-        
-        # Logout action
-        logout_action = QAction("Logout", self)
-        logout_action.setShortcut("Ctrl+Q")
-        logout_action.triggered.connect(self.on_logout)
-        file_menu.addAction(logout_action)
-        
-        # Exit action
-        exit_action = QAction("Exit", self)
-        exit_action.setShortcut("Ctrl+W")
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
     
     def on_logout(self):
         """Handle logout request"""
@@ -318,228 +332,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Invalid Input", "Please enter a valid page range (e.g. 1-3)")
         return None, None
 
-    # --- your existing UI, ribbon, sidebar, main tabs, and other methods follow here ---
-
-    def apply_styles(self):
-        """Apply the main application stylesheet"""
-        self.setStyleSheet("""
-            QMainWindow { 
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #f8f9fa, stop: 1 #e9ecef);
-            }
-            
-            QToolBar#mainTabs {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #0066cc, stop: 1 #004499);
-                color: white;
-                spacing: 0px;
-                padding: 0px;
-                border: none;
-                border-bottom: 2px solid #003366;
-            }
-            
-            QPushButton#tabButton {
-                background: transparent;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                min-width: 60px;
-                font-size: 13px;
-                font-weight: 500;
-                border-radius: 0px;
-            }
-            
-            QPushButton#tabButton:hover {
-                background: rgba(255,255,255,0.15);
-                border-bottom: 3px solid #00aaff;
-            }
-            
-            QPushButton#tabButton:checked {
-                background: rgba(255,255,255,0.2);
-                border-bottom: 3px solid #ffffff;
-                font-weight: bold;
-            }
-            
-            QFrame#sideMenu {
-                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
-                    stop: 0 #2c3e50, stop: 1 #34495e);
-                border-radius: 8px;
-                border: 1px solid rgba(255,255,255,0.1);
-            }
-            
-            QPushButton#menuAction {
-                color: white;
-                background-color: transparent;
-                text-align: left;
-                padding: 12px 20px;
-                border: none;
-                border-radius: 8px;
-                margin: 3px 10px;
-                font-size: 13px;
-                font-weight: 500;
-                border-left: 3px solid transparent;
-            }
-            
-            QPushButton#menuAction:hover {
-                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
-                    stop: 0 rgba(52, 152, 219, 0.9), stop: 1 rgba(41, 128, 185, 0.9));
-                border-left: 3px solid #ffffff;
-                color: white;
-                font-weight: 600;
-                padding-left: 25px;
-            }
-            
-            QPushButton#menuAction:pressed {
-                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
-                    stop: 0 rgba(41, 128, 185, 1.0), stop: 1 rgba(39, 120, 180, 1.0));
-                border-left: 3px solid #ffffff;
-                padding-left: 25px;
-            }
-            
-            #ribbonContainer {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #ffffff, stop: 1 #f8f9fa);
-                border-bottom: 1px solid #dee2e6;
-                border-top: 1px solid #e9ecef;
-            }
-            
-            #ribbonPanel {
-                background-color: transparent;
-                border: none;
-            }
-            
-            .ribbonGroup {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #ffffff, stop: 1 #f8f9fa);
-                border: 1px solid #dee2e6;
-                border-radius: 8px;
-                margin: 6px 3px;
-                padding: 8px;
-            }
-            
-            .ribbonGroupTitle {
-                font-size: 11px;
-                font-weight: 600;
-                text-align: center;
-                margin-top: 8px;
-                color: #495057;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            
-            QPushButton.ribbonButton {
-                background: transparent;
-                border: 1px solid transparent;
-                border-radius: 6px;
-                padding: 6px;
-                min-width: 64px;
-                max-width: 64px;
-                min-height: 64px;
-                margin: 2px;
-            }
-            
-            QPushButton.ribbonButton:hover {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #e3f2fd, stop: 1 #bbdefb);
-                border: 1px solid #2196f3;
-                transform: translateY(-1px);
-            }
-            
-            QPushButton.ribbonButton:pressed {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #1976d2, stop: 1 #1565c0);
-                transform: translateY(0px);
-            }
-            
-            QLabel#ribbonTitle {
-                font-size: 14px;
-                font-weight: 600;
-                color: #212529;
-                padding: 8px 15px;
-                background: transparent;
-            }
-            
-            QLineEdit {
-                border: 2px solid #e9ecef;
-                border-radius: 6px;
-                padding: 8px 12px;
-                min-height: 20px;
-                background: white;
-                font-size: 13px;
-                selection-background-color: #0066cc;
-            }
-            
-            QLineEdit:focus {
-                border-color: #0066cc;
-                background-color: #ffffff;
-            }
-            
-            QLineEdit:hover {
-                border-color: #6c757d;
-            }
-            
-            QStatusBar {
-                background: #f8f9fa;
-                border-top: 1px solid #dee2e6;
-                color: #6c757d;
-                font-size: 12px;
-            }
-            
-            QLabel#profilePic {
-                border: 2px solid white;
-                border-radius: 18px;
-                background: white;
-                margin: 6px;
-            }
-            
-            QPushButton#ribbonToggle {
-                background: white;
-                border: none;
-                padding: 4px;
-                margin-right: 10px;
-            }
-            
-            QPushButton#ribbonToggle:hover {
-                background: rgba(0,0,0,0.1);
-                border-radius: 4px;
-            }
-            
-            /* Tab Widget Styling */
-            QTabWidget::pane {
-                border: 1px solid #dee2e6;
-                border-radius: 8px;
-                margin: 10px 0 0 0;
-                padding: 0;
-                background: #ffffff;
-            }
-
-            QTabBar::tab {
-                background: #f8f9fa;
-                color: #495057;
-                border: 1px solid #dee2e6;
-                border-bottom: none;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                padding: 12px 20px;
-                margin: 0 4px 0 0;
-                min-width: 120px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-
-            QTabBar::tab:hover {
-                background: #e9ecef;
-                color: #2c3e50;
-            }
-
-            QTabBar::tab:selected {
-                background: #ffffff;
-                color: #1e40af;
-                border-color: #dee2e6;
-                border-bottom-color: #ffffff; /* Creates clean separation */
-                font-weight: 600;
-            }
-        """)
+    # --- your existing UI, ribbon, sidebar, main tabs, and other methods follow here -
 
     def create_profile_section(self):
         """Create a modern profile section with user name and toggle button"""
@@ -570,17 +363,45 @@ class MainWindow(QMainWindow):
         self.profile_pic.setScaledContents(True)
         
         # Try to load profile image, create placeholder if not found
-        profile_path = "static/icons/profile.jpg"
-        if os.path.exists(profile_path):
-            profile_pixmap = QPixmap(profile_path)
-            if not profile_pixmap.isNull():
-                # Create circular mask
-                circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
-                self.profile_pic.setPixmap(circular_pixmap)
-            else:
-                self.profile_pic.setPixmap(self.create_profile_placeholder(size))
+        # Try to load profile image, create placeholder if not found
+        profile_pixmap = None
+        profile_image_path = self.user_session.get('profile_image')
+        
+        if profile_image_path:
+            full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
+            if os.path.exists(full_path):
+                profile_pixmap = QPixmap(full_path)
+        
+        if not profile_pixmap or profile_pixmap.isNull():
+            fallback_path = "static/icons/profile.jpg"
+            if os.path.exists(fallback_path):
+                profile_pixmap = QPixmap(fallback_path)
+        
+        if profile_pixmap and not profile_pixmap.isNull():
+            circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
         else:
-            self.profile_pic.setPixmap(self.create_profile_placeholder(size))
+            circular_pixmap = self.create_profile_placeholder(size)
+        
+        # ✅ Set tooltip with user info
+        full_name = self.user_session.get('full_name', 'User')
+        position = self.user_session.get('position', 'N/A')
+        login_time = self.user_session.get('login_time', 'Unknown')
+        
+        try:
+            login_dt = datetime.fromisoformat(login_time)
+            login_str = login_dt.strftime('%Y-%m-%d %H:%M')
+        except:
+            login_str = 'Just now'
+        
+        tooltip_text = f"""
+        <b>Full Name:</b> {full_name}<br>
+        <b>Position:</b> {position}<br>
+        <b>Status:</b> <span style="color: #00aa00;">Signed In</span><br>
+        <b>Since:</b> {login_str}
+        """.strip()
+        
+        self.profile_pic.setToolTip(tooltip_text)
+        self.profile_pic.setPixmap(circular_pixmap)
         
         profile_layout.addWidget(self.profile_pic)
         
@@ -593,6 +414,30 @@ class MainWindow(QMainWindow):
         
         # Add the complete profile container to the toolbar
         self.main_tabbar.addWidget(profile_container)
+
+    def update_profile_tooltip(self):
+        """Update the profile picture tooltip when session changes"""
+        if not hasattr(self, 'profile_pic'):
+            return
+    
+        full_name = self.user_session.get('full_name', 'User')
+        position = self.user_session.get('position', 'N/A')
+        login_time = self.user_session.get('login_time', 'Unknown')
+    
+        try:
+            login_dt = datetime.fromisoformat(login_time)
+            login_str = login_dt.strftime('%Y-%m-%d %H:%M')
+        except:
+            login_str = 'Just now'
+    
+        tooltip_text = f"""
+        <b>Full Name:</b> {full_name}<br>
+        <b>Position:</b> {position}<br>
+        <b>Status:</b> <span style="color: #00aa00;">Signed In</span><br>
+        <b>Since:</b> {login_str}
+        """.strip()
+    
+        self.profile_pic.setToolTip(tooltip_text)
     
     def create_main_tabs(self):
         """Create the main navigation tabs"""
@@ -632,14 +477,46 @@ class MainWindow(QMainWindow):
         # Create profile section (now includes the toggle button)
         self.create_profile_section()
 
+    def create_content_pages(self):
+        """Create all content pages for the application"""
+        # Initialize users_form early
+        self.users_form = UsersForm(parent=self, user_session=self.user_session)
     
+        # Dashboard Page (now with tabs)
+        dashboard_page = self.create_dashboard_page()
+        self.stacked_widget.addWidget(dashboard_page)
+    
+        # Schools Page
+        self.schools_form = SchoolsForm(self)
+        self.stacked_widget.addWidget(self.schools_form)
+    
+        # Staff Page (TeachersForm)
+        self.staff_form = TeachersForm(parent=self, user_session=self.user_session)
+        self.stacked_widget.addWidget(self.staff_form)
+    
+        # Other pages (Students to Others)
+        for i in range(3, 8):  # Students (3) to Others (7)
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(20, 20, 20, 20)
+            page_label = QLabel(f"Content for Module {i+1} - Coming Soon")
+            page_label.setStyleSheet("""
+                font-size: 18px;
+                color: #6c757d;
+                padding: 40px;
+                text-align: center;
+            """)
+            page_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(page_label)
+            self.stacked_widget.addWidget(page)
+
     def create_dashboard_page(self):
-        """Create dashboard page with flat tabs: Overview, User Management, Login Activity, Audit Trail"""
+        """Create dashboard page with flat tabs: Overview, User Management, Permissions, Login Activity, Audit Trail"""
         dashboard_page = QWidget()
         dashboard_layout = QVBoxLayout(dashboard_page)
         dashboard_layout.setContentsMargins(0, 0, 0, 0)
     
-        # Create tab widget for dashboard
+        # ✅ Create tab widget FIRST
         self.dashboard_tabs = QTabWidget()
         self.dashboard_tabs.setDocumentMode(True)
         self.dashboard_tabs.setTabPosition(QTabWidget.North)
@@ -657,97 +534,49 @@ class MainWindow(QMainWindow):
         """)
         welcome_label.setAlignment(Qt.AlignCenter)
         overview_layout.addWidget(welcome_label)
-    
-        # Add some dashboard widgets
-        stats_widget = QWidget()
-        stats_layout = QHBoxLayout(stats_widget)
-        for i, (title, value) in enumerate([("Schools", "12"), ("Teachers", "45"), ("Students", "1200")]):
-            stat_box = QFrame()
-            stat_box.setStyleSheet("""
-                QFrame {
-                    background: #ffffff;
-                    border-radius: 8px;
-                    border: 1px solid #dee2e6;
-                }
-            """)
-            box_layout = QVBoxLayout(stat_box)
-            box_layout.setContentsMargins(15, 15, 15, 15)
-            val_label = QLabel(value)
-            val_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #2c3e50;")
-            val_label.setAlignment(Qt.AlignCenter)
-            title_label = QLabel(title)
-            title_label.setStyleSheet("font-size: 14px; color: #6c757d;")
-            title_label.setAlignment(Qt.AlignCenter)
-            box_layout.addWidget(val_label)
-            box_layout.addWidget(title_label)
-            stats_layout.addWidget(stat_box)
-        overview_layout.addWidget(stats_widget)
-        overview_layout.addStretch()
         self.dashboard_tabs.addTab(overview_tab, "Overview")
-        # After adding Overview
         self.dashboard_tabs.setTabIcon(0, QIcon("static/icons/home.jpg"))
     
         # 2. User Management Tab
         self.users_form = UsersForm(parent=self, user_session=self.user_session)
         self.dashboard_tabs.addTab(self.users_form, "User Management")
+        self.dashboard_tabs.setTabIcon(1, QIcon("static/icons/users.png"))
     
-        # 3. Login Activity Tab (now top-level)
+        # 3. Permissions Tab (Admin & Headteacher Only)
+        if has_permission(self.user_session, "manage_system_settings"):
+            from ui.permissions_form import PermissionsForm
+            self.permissions_form = PermissionsForm(parent=self, user_session=self.user_session)
+            self.dashboard_tabs.addTab(self.permissions_form, "Permissions")
+            self.dashboard_tabs.setTabIcon(self.dashboard_tabs.count() - 1, QIcon("static/icons/lock.png"))
+    
+        # 4. User Permissions Tab (Admin Only)
+        if has_permission(self.user_session, "manage_system_settings"):
+            from ui.user_permissions_form import UserPermissionsForm
+            self.user_perms_tab = UserPermissionsForm(parent=self, user_session=self.user_session)
+            self.dashboard_tabs.addTab(self.user_perms_tab, "User Permissions")
+            self.dashboard_tabs.setTabIcon(self.dashboard_tabs.count() - 1, QIcon("static/icons/user-star.png"))
+    
+        # 5. Login Activity Tab
         login_logs_tab = QWidget()
         login_logs_layout = QVBoxLayout(login_logs_tab)
-        login_logs_layout.setContentsMargins(0, 0, 0, 0)
         self.login_logs_form = LoginLogsForm(user_session=self.user_session)
         login_logs_layout.addWidget(self.login_logs_form)
         self.dashboard_tabs.addTab(login_logs_tab, "Login Activity")
-        # After adding User Management
-        self.dashboard_tabs.setTabIcon(1, QIcon("static/icons/users.png"))
+        self.dashboard_tabs.setTabIcon(3 if has_permission(self.user_session, "manage_system_settings") else 2, QIcon("static/icons/login.png"))
     
-        # 4. Audit Trail Tab (now top-level)
+        # 6. Audit Trail Tab
         audit_logs_tab = QWidget()
         audit_logs_layout = QVBoxLayout(audit_logs_tab)
-        audit_logs_layout.setContentsMargins(0, 0, 0, 0)
         self.audit_logs_form = AuditLogsForm(parent=audit_logs_tab, user_session=self.user_session)
         audit_logs_layout.addWidget(self.audit_logs_form)
         self.dashboard_tabs.addTab(audit_logs_tab, "Audit Trail")
-        # After adding Audit Trail
-        self.dashboard_tabs.setTabIcon(3, QIcon("static/icons/audit.jpg"))
+        self.dashboard_tabs.setTabIcon(4 if has_permission(self.user_session, "manage_system_settings") else 3, QIcon("static/icons/audit.jpg"))
     
-        # Add the tab widget to the layout
+        # ✅ Add tabs to layout
         dashboard_layout.addWidget(self.dashboard_tabs)
     
         return dashboard_page
     
-    def create_content_pages(self):
-        """Create all content pages for the application"""
-        # Dashboard Page (now with tabs)
-        dashboard_page = self.create_dashboard_page()
-        self.stacked_widget.addWidget(dashboard_page)
-
-        # Schools Page
-        self.schools_form = SchoolsForm(self)
-        self.stacked_widget.addWidget(self.schools_form)
-
-        # Staff Page (TeachersForm)
-        self.staff_form = TeachersForm(parent=self, user_session=self.user_session)
-        self.stacked_widget.addWidget(self.staff_form)
-
-        # Other pages (Students to Others)
-        for i in range(3, 8):  # Students (3) to Others (7)
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(20, 20, 20, 20)
-            
-            page_label = QLabel(f"Content for Module {i+1} - Coming Soon")
-            page_label.setStyleSheet("""
-                font-size: 18px;
-                color: #6c757d;
-                padding: 40px;
-                text-align: center;
-            """)
-            page_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(page_label)
-            
-            self.stacked_widget.addWidget(page)
-
     def toggle_ribbon(self):
         """Toggle ribbon visibility with animation"""
         if self.ribbon_visible:
@@ -757,7 +586,7 @@ class MainWindow(QMainWindow):
             self.ribbon_visible = False
         else:
             # Show ribbon
-            self.ribbon_toolbar.setFixedHeight(120)
+            self.ribbon_toolbar.setFixedHeight(90)
             self.ribbon_toggle_btn.setText("▴")
             self.ribbon_visible = True
 
@@ -813,17 +642,17 @@ class MainWindow(QMainWindow):
         """Create the modern ribbon-style panel"""
         self.ribbon_container = QWidget()
         self.ribbon_container.setObjectName("ribbonContainer")
-        self.ribbon_container.setFixedHeight(120)
+        self.ribbon_container.setFixedHeight(90)
 
         ribbon_layout = QVBoxLayout(self.ribbon_container)
         ribbon_layout.setContentsMargins(0, 0, 0, 0)
         ribbon_layout.setSpacing(0)
 
         # Modern ribbon title
-        self.ribbon_title = QLabel("Dashboard")
-        self.ribbon_title.setObjectName("ribbonTitle")
-        self.ribbon_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        ribbon_layout.addWidget(self.ribbon_title)
+        #self.ribbon_title = QLabel("Dashboard")
+        #self.ribbon_title.setObjectName("ribbonTitle")
+        #self.ribbon_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        #ribbon_layout.addWidget(self.ribbon_title)
 
         # Scrollable ribbon area
         scroll_area = QScrollArea()
@@ -835,7 +664,7 @@ class MainWindow(QMainWindow):
         self.ribbon_panel = QWidget()
         self.ribbon_panel.setObjectName("ribbonPanel")
         self.ribbon_panel_layout = QHBoxLayout(self.ribbon_panel)
-        self.ribbon_panel_layout.setContentsMargins(10, 0, 10, 8)
+        self.ribbon_panel_layout.setContentsMargins(10, 3, 10, 5)
         self.ribbon_panel_layout.setSpacing(8)
 
         scroll_area.setWidget(self.ribbon_panel)
@@ -868,8 +697,8 @@ class MainWindow(QMainWindow):
         # Buttons container
         buttons_container = QWidget()
         buttons_layout = QHBoxLayout(buttons_container)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(4)
+        buttons_layout.setContentsMargins(6, 5, 6, 5)
+        buttons_layout.setSpacing(3)
 
         for action in actions:
             btn = QPushButton()
@@ -905,15 +734,16 @@ class MainWindow(QMainWindow):
 
     def update_ribbon_panel(self, main_tab):
         """Update ribbon panel with modern styling"""
-        self.ribbon_title.setText(main_tab)
-
+        # Keep this — but just set clean title
+        #self.ribbon_title.setText(main_tab)
+    
         # Clear existing content
         while self.ribbon_panel_layout.count():
             item = self.ribbon_panel_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-
-        # Enhanced ribbon groups
+    
+        #  Keep your existing ribbon_groups logic
         ribbon_groups = {
             "Dashboard": [
                 {"title": "View", "actions": [
@@ -924,10 +754,10 @@ class MainWindow(QMainWindow):
                 {"title": "User Management", "actions": [
                     {"name": "Manage Users", "icon": "users.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(1)},
                     {"name": "Add User", "icon": "adduser.jpg", "handler": self.add_new_user},
-                    {"name": "User Reports", "icon": "report.jpg", "handler": self.export_user_reports},
+                    {"name": "Export User Data", "icon": "export.jpg", "handler": self.execute_user_export_dialog},
                     {"name": "Refresh", "icon": "refresh.jpg", "handler": self.refresh_user_data}
                 ]},
-                {"title": "Security & Reports", "actions": [  # NEW GROUP
+                {"title": "Security & Reports", "actions": [
                     {"name": "Login Logs", "icon": "security.jpg", "handler": self.show_login_logs},
                     {"name": "Audit Trail", "icon": "audit.jpg", "handler": self.show_audit_logs},
                     {"name": "Security Report", "icon": "report_security.jpg", "handler": self.generate_security_report}
@@ -953,19 +783,18 @@ class MainWindow(QMainWindow):
                 {"title": "Staff Records", "actions": [
                     {"name": "Teachers", "icon": "teacher.jpg", "handler": self.show_teachers_form},
                     {"name": "Add Teacher", "icon": "addstaff.jpg", "handler": self.add_new_teacher},
-                    {"name": "View Teacher Summary", "icon": "view.jpg", "handler": self.generate_teacher_summary}  # Changed this
+                    {"name": "View Teacher Summary", "icon": "view.jpg", "handler": self.generate_teacher_summary}
                 ]},
                 {"title": "Actions", "actions": [
                     {"name": "Refresh", "icon": "refresh.jpg", "handler": self.refresh_teachers_data},
-                    {"name": "Print Teacher", "icon": "print.jpg", "handler": self.print_teacher_pdf},  # Changed this
+                    {"name": "Print Teacher", "icon": "print.jpg", "handler": self.print_teacher_pdf},
                     {"name": "Generate Teacher Profile", "icon": "report.jpg", "handler": self.generate_teacher_profile}
                 ]},
                 {"title": "Import & Export", "actions": [
                     {"name": "Import Teacher Data (CSV)", "icon": "import.jpg", "handler": self.import_teachers_data},
-		    {"name": "Export Teacher Data (Excel)", "icon": "export.jpg", "handler": self.export_teachers_data}
+                    {"name": "Export Teacher Data (Excel)", "icon": "export.jpg", "handler": self.export_teachers_data}
                 ]}
             ]
-
         }.get(main_tab, [
             {"title": "Common", "actions": [
                 {"name": "New", "icon": "new.jpg", "handler": self.new_action},
@@ -977,13 +806,13 @@ class MainWindow(QMainWindow):
                 {"name": "Options", "icon": "options.jpg"}
             ]}
         ])
-
+    
         for group in ribbon_groups:
             ribbon_group = self.create_ribbon_group(group["title"], group["actions"])
             self.ribbon_panel_layout.addWidget(ribbon_group)
-
+    
         self.ribbon_panel_layout.addStretch()
-
+    
     # Ribbon button handlers
     #for users
     def open_users_form(self):
@@ -1017,220 +846,32 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Users form not available for refresh")
             QMessageBox.warning(self, "Refresh Failed", "Users form is not initialized")
 
-    def export_user_reports(self):
-        """Export user reports to various formats"""
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(1)  # Switch to Users tab
-        
-        if not hasattr(self, 'users_form'):
-            QMessageBox.warning(self, "Export Failed", "Users form is not available")
+    def execute_user_export_dialog(self):
+        """Open export dialog and safely call users_form.export_users"""
+        if not hasattr(self, 'users_form') or self.users_form is None:
+            QMessageBox.warning(self, "Error", "User management form not available.")
             return
-        
-        # Create export options dialog
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Export User Reports")
-        dialog.setMinimumWidth(400)
-        
-        layout = QVBoxLayout(dialog)
-        
-        # Report type selection
-        type_group = QGroupBox("Report Type")
-        type_layout = QVBoxLayout(type_group)
-        
-        report_types = [
-            ("All Users", "Complete list of all system users"),
-            ("Active Users", "Only currently active users"),
-            ("Inactive Users", "Only deactivated users"),
-            ("User Roles", "Users grouped by role with counts"),
-            ("Login Statistics", "User login activity and statistics")
-        ]
-        
-        self.report_radio_group = QButtonGroup()
-        for i, (title, description) in enumerate(report_types):
-            radio = QRadioButton(title)
-            radio.setToolTip(description)
-            type_layout.addWidget(radio)
-            self.report_radio_group.addButton(radio, i)
-            if i == 0:  # Select first option by default
-                radio.setChecked(True)
-        
-        layout.addWidget(type_group)
-        
-        # Format selection
-        format_group = QGroupBox("Export Format")
-        format_layout = QHBoxLayout(format_group)
-        
-        format_combo = QComboBox()
-        format_combo.addItems(["CSV", "Excel (XLSX)", "PDF", "HTML"])
-        format_layout.addWidget(QLabel("Format:"))
-        format_layout.addWidget(format_combo)
-        format_layout.addStretch()
-        
-        layout.addWidget(format_group)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        export_btn = QPushButton("Export")
-        cancel_btn = QPushButton("Cancel")
-        
-        export_btn.clicked.connect(lambda: self.execute_user_export(
-            self.report_radio_group.checkedId(),
-            format_combo.currentText(),
-            dialog
-        ))
-        cancel_btn.clicked.connect(dialog.reject)
-        
-        button_layout.addWidget(export_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(button_layout)
-        
-        dialog.exec()
-        
-    def execute_user_export(self, report_type, format_name, dialog):
-        """Execute the actual user export based on selections"""
+    
+        # Get filename
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Users",
+            f"users_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            "CSV Files (*.csv);;Excel Files (*.xlsx);;PDF Files (*.pdf);;All Files (*)"
+        )
+        if not filename:
+            return  # Cancelled
+    
         try:
-            # Get filename from user
-            file_extensions = {
-                "CSV": "CSV files (*.csv)",
-                "Excel (XLSX)": "Excel files (*.xlsx)",
-                "PDF": "PDF files (*.pdf)",
-                "HTML": "HTML files (*.html)"
-            }
-            
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                f"Export User Report - {format_name}",
-                f"user_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                file_extensions.get(format_name, "All files (*.*)")
-            )
-            
-            if not filename:
-                return  # User cancelled
-            
-            # Add proper extension if missing
-            if format_name == "CSV" and not filename.lower().endswith('.csv'):
-                filename += '.csv'
-            elif format_name == "Excel (XLSX)" and not filename.lower().endswith('.xlsx'):
-                filename += '.xlsx'
-            elif format_name == "PDF" and not filename.lower().endswith('.pdf'):
-                filename += '.pdf'
-            elif format_name == "HTML" and not filename.lower().endswith('.html'):
-                filename += '.html'
-            
-            # Show progress
-            progress = QProgressDialog("Exporting user report...", "Cancel", 0, 100, self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.show()
-            
-            # Export based on type
-            if report_type == 0:  # All Users
-                success = self.users_form.export_users(filename)
-            elif report_type == 1:  # Active Users
-                success = self.export_active_users(filename)
-            elif report_type == 2:  # Inactive Users
-                success = self.export_inactive_users(filename)
-            elif report_type == 3:  # User Roles
-                success = self.export_user_roles(filename)
-            elif report_type == 4:  # Login Statistics
-                success = self.export_login_statistics(filename)
-            else:
-                success = False
-            
-            progress.close()
-            
+            success = self.users_form.export_users(filename)
             if success:
-                QMessageBox.information(self, "Success", f"User report exported successfully to:\n{filename}")
-                self.statusBar().showMessage(f"User report exported: {os.path.basename(filename)}")
+                QMessageBox.information(self, "Success", f"Users exported to:\n{os.path.basename(filename)}")
+                self.statusBar().showMessage(f"Exported user data to {os.path.basename(filename)}")
             else:
-                QMessageBox.critical(self, "Error", "Failed to export user report")
-                
-            dialog.accept()
-            
+                QMessageBox.critical(self, "Export Failed", "Could not export data.")
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export user report: {str(e)}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export: {str(e)}")
 
-    def export_active_users(self, filename):
-        """Export only active users"""
-        try:
-            # You can implement this directly or modify your users_form.export_users method
-            # to accept filters. For now, let's use a simple approach:
-            query = '''
-                SELECT u.id, u.username, u.full_name, u.role, 
-                       COALESCE(t.position, 'N/A') as position,
-                       u.created_at
-                FROM users u
-                LEFT JOIN teachers t ON t.full_name = u.full_name
-                WHERE u.is_active = 1
-                ORDER BY u.username
-            '''
-            
-            self.users_form.cursor.execute(query)
-            users = self.users_form.cursor.fetchall()
-            
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Position', 'Created At'])
-                writer.writerows(users)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Export active users error: {e}")
-            return False
-    
-    def export_inactive_users(self, filename):
-        """Export only inactive users"""
-        try:
-            query = '''
-                SELECT u.id, u.username, u.full_name, u.role, 
-                       COALESCE(t.position, 'N/A') as position,
-                       u.created_at, u.updated_at
-                FROM users u
-                LEFT JOIN teachers t ON t.full_name = u.full_name
-                WHERE u.is_active = 0
-                ORDER BY u.username
-            '''
-            
-            self.users_form.cursor.execute(query)
-            users = self.users_form.cursor.fetchall()
-            
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Position', 'Created At', 'Last Updated'])
-                writer.writerows(users)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Export inactive users error: {e}")
-            return False
-    
-    def export_user_roles(self, filename):
-        """Export users grouped by roles"""
-        try:
-            query = '''
-                SELECT role, COUNT(*) as user_count,
-                       SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count,
-                       SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive_count
-                FROM users
-                GROUP BY role
-                ORDER BY role
-            '''
-            
-            self.users_form.cursor.execute(query)
-            role_stats = self.users_form.cursor.fetchall()
-            
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['Role', 'Total Users', 'Active Users', 'Inactive Users'])
-                writer.writerows(role_stats)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Export user roles error: {e}")
-            return False
-    
     def export_login_statistics(self, filename):
         """Export user login statistics"""
         try:
@@ -1358,37 +999,6 @@ class MainWindow(QMainWindow):
         self.dashboard_tabs.setCurrentIndex(3)  # Audit Trail is now tab 3
         self.audit_logs_form.load_audit_logs()
         self.statusBar().showMessage("Audit trail logs loaded")
-        
-    def log_audit_action(user_session, action, table_name, record_id=None, old_values=None, new_values=None, ip_address=None):
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-    
-            # Auto-generate description
-            full_name = user_session.get('full_name', user_session.get('username', 'Unknown'))
-            desc = f"{full_name} performed '{action}' on '{table_name}' (ID: {record_id})"
-    
-            query = """
-                INSERT INTO audit_log 
-                (user_id, action, description, table_name, record_id, old_values, new_values, ip_address)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(query, (
-                user_session.get('user_id'),
-                action,
-                desc,
-                table_name,
-                record_id,
-                old_values,
-                new_values,
-                ip_address or user_session.get('ip_address', '127.0.0.1')
-            ))
-            conn.commit()
-        except Exception as e:
-            print(f"Failed to log audit action: {e}")
-        finally:
-            cursor.close()
-            conn.close()
     
     def export_audit_reports(self):
         """Export audit reports"""
@@ -1558,7 +1168,7 @@ class MainWindow(QMainWindow):
             icon_path = f"static/icons/{icon}"
             if os.path.exists(icon_path):
                 btn.setIcon(QIcon(icon_path))
-                btn.setIconSize(QSize(20, 20))
+                btn.setIconSize(QSize(28, 28))
     
             btn.clicked.connect(func)
             layout.addWidget(btn)

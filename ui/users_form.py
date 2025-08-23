@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QMessageBox, QFileDialog, QScrollArea, QFrame, QSizePolicy,
     QGroupBox, QGridLayout, QSpacerItem, QComboBox, QFormLayout, QMenu,
-    QApplication
+    QApplication, QLineEdit
 )
 from PySide6.QtGui import QFont, QPalette, QIcon
 from PySide6.QtCore import Qt, Signal, QSize
@@ -23,13 +23,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.models import get_db_connection
 from utils.auth import hash_password
 from utils.permissions import has_permission
+from ui.audit_base_form import AuditBaseForm
 
 
-class UsersForm(QWidget):
-    user_selected = Signal(int)  # Signal emitted when a user is selected
-    
-    def __init__(self, parent=None, user_session: Optional[Dict[str, Any]] = None):
-        super().__init__(parent)
+# Change class definition
+class UsersForm(AuditBaseForm):
+    user_selected = Signal(int)
+
+    def __init__(self, parent=None, user_session=None):
+        super().__init__(parent, user_session)
         self.user_session = user_session
         self.current_user_id = None
         self.current_teacher_id = None
@@ -50,301 +52,6 @@ class UsersForm(QWidget):
         
         self.setup_ui()
         self.load_users()
-    
-    def setup_styling(self):
-        """Set up modern professional styling matching TeachersForm"""
-        # Define color palette with better contrast (same as TeachersForm)
-        self.colors = {
-            'primary': '#1e40af',        # Darker blue for better contrast
-            'primary_dark': '#1e3a8a',   # Even darker blue
-            'secondary': '#475569',      # Darker slate
-            'success': '#065f46',        # Darker emerald
-            'warning': '#b45309',        # Darker amber
-            'danger': '#b91c1c',         # Darker red
-            'info': '#0e7490',           # Darker cyan
-            'light': '#f1f5f9',          # Light gray
-            'dark': '#0f172a',           # Very dark blue
-            'border': '#cbd5e1',         # Medium border color
-            'text_primary': '#0f172a',   # Darker text for better contrast
-            'text_secondary': '#475569', # Darker secondary text
-            'background': '#ffffff',     # White
-            'surface': '#f8fafc',        # Very light surface
-            'input_background': '#ffffff', # Pure white for inputs
-            'input_border': '#94a3b8',   # Medium border for inputs
-            'input_focus': '#3b82f6',    # Blue for focus
-            'table_header': '#10b981',   # Teal for table headers (maintained as requested)
-            'table_header_dark': '#059669'  # Darker teal (maintained as requested)
-        }
-        
-        # Set up fonts
-        self.fonts = {
-            'label': QFont("Arial", 14, QFont.Weight.Bold),
-            'entry': QFont("Arial", 14),
-            'section': QFont("Arial", 18, QFont.Weight.Bold),
-            'button': QFont("Arial", 12, QFont.Weight.Bold),
-            'header': QFont("Arial", 18, QFont.Weight.Bold),
-            'table': QFont("Tahoma", 12),
-            'table_header': QFont("Tahoma", 13, QFont.Weight.Bold)
-        }
-        
-        # Set application style with better contrast
-        self.setStyleSheet(f"""
-            QWidget {{
-                font-family: 'Segoe UI', 'Arial', sans-serif;
-                font-size: 13px;
-                color: {self.colors['text_primary']};
-                background-color: {self.colors['background']};
-            }}
-            
-            /* Main container */
-            UsersForm {{
-                background-color: {self.colors['surface']};
-                border: none;
-            }}
-            
-            /* Frames */
-            QFrame {{
-                background-color: {self.colors['background']};
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-            }}
-            
-            /* Group boxes and frames - More visible borders */
-            QGroupBox {{
-                font-weight: 700;
-                font-size: 14px;
-                color: {self.colors['text_primary']};
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-                margin-top: 16px;
-                padding-top: 10px;
-                background-color: {self.colors['background']};
-            }}
-            
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px 0 8px;
-                color: {self.colors['primary']};
-                background-color: {self.colors['background']};
-                font-weight: 700;
-            }}
-            
-            /* Labels - Better contrast */
-            QLabel {{
-                color: {self.colors['text_primary']};
-                font-weight: 600;
-            }}
-            
-            /* Input fields with better contrast and visibility */
-            QLineEdit, QComboBox {{
-                border: 2px solid {self.colors['input_border']};
-                border-radius: 6px;
-                padding: 12px 16px;
-                font-size: 13px;
-                background-color: {self.colors['input_background']};
-                selection-background-color: {self.colors['primary']};
-                min-height: 20px;
-                line-height: 1.4;
-                color: {self.colors['text_primary']};
-            }}
-            
-            QLineEdit:focus, QComboBox:focus {{
-                border-color: {self.colors['input_focus']};
-                background-color: {self.colors['input_background']};
-                border-width: 2px;
-            }}
-            
-            QLineEdit:disabled, QComboBox:disabled {{
-                background-color: #f1f5f9;
-                color: #64748b;
-                border-color: #cbd5e1;
-            }}
-            
-            QLineEdit::placeholder {{
-                color: #94a3b8;
-                font-style: italic;
-            }}
-            
-            /* ComboBox dropdown styling */
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid {self.colors['text_secondary']};
-            }}
-            
-            /* Buttons - More visible */
-            QPushButton {{
-                border: none;
-                border-radius: 6px;
-                padding: 12px 24px;
-                font-weight: 600;
-                font-size: 13px;
-                min-height: 20px;
-            }}
-            
-            QPushButton:hover {{
-                border: 1px solid rgba(255, 255, 255, 0.3);
-            }}
-            
-            QPushButton:pressed {{
-                padding: 13px 23px 11px 25px;
-            }}
-            
-            /* Primary buttons */
-            .btn-primary {{
-                background-color: {self.colors['primary']};
-                color: white;
-                border: 1px solid {self.colors['primary']};
-            }}
-            
-            .btn-primary:hover {{
-                background-color: {self.colors['primary_dark']};
-                border: 1px solid {self.colors['primary_dark']};
-            }}
-            
-            /* Success buttons */
-            .btn-success {{
-                background-color: {self.colors['success']};
-                color: white;
-                border: 1px solid {self.colors['success']};
-            }}
-            
-            .btn-success:hover {{
-                background-color: #065f46;
-                border: 1px solid #065f46;
-            }}
-            
-            /* Warning buttons */
-            .btn-warning {{
-                background-color: {self.colors['warning']};
-                color: white;
-                border: 1px solid {self.colors['warning']};
-            }}
-            
-            .btn-warning:hover {{
-                background-color: #b45309;
-                border: 1px solid #b45309;
-            }}
-            
-            /* Danger buttons */
-            .btn-danger {{
-                background-color: {self.colors['danger']};
-                color: white;
-                border: 1px solid {self.colors['danger']};
-            }}
-            
-            .btn-danger:hover {{
-                background-color: #991b1b;
-                border: 1px solid #991b1b;
-            }}
-            
-            /* Info buttons */
-            .btn-info {{
-                background-color: {self.colors['info']};
-                color: white;
-                border: 1px solid {self.colors['info']};
-            }}
-            
-            .btn-info:hover {{
-                background-color: #0e7490;
-                border: 1px solid #0e7490;
-            }}
-            
-            /* Secondary buttons */
-            .btn-secondary {{
-                background-color: {self.colors['secondary']};
-                color: white;
-                border: 1px solid {self.colors['secondary']};
-            }}
-            
-            .btn-secondary:hover {{
-                background-color: #374151;
-                border: 1px solid #374151;
-            }}
-            
-            /* Enhanced Table styling with better contrast */
-            QTableWidget {{
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-                background-color: {self.colors['background']};
-                alternate-background-color: #f8fafc;
-                gridline-color: {self.colors['border']};
-                selection-background-color: rgba(13, 148, 136, 0.15);
-                selection-color: {self.colors['text_primary']};
-                font-size: 13px;
-            }}
-            
-            QTableWidget::item {{
-                padding: 12px 16px;
-                border-bottom: 1px solid {self.colors['border']};
-                color: {self.colors['text_primary']};
-            }}
-            
-            QTableWidget::item:selected {{
-                background-color: rgba(13, 148, 136, 0.2);
-                color: {self.colors['text_primary']};
-                border: 1px solid {self.colors['table_header']};
-                font-weight: 600;
-            }}
-            
-            QTableWidget::item:hover {{
-                background-color: rgba(13, 148, 136, 0.1);
-            }}
-            
-            /* Beautiful header styling with green headers */
-            QHeaderView::section {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
-                color: white;
-                padding: 16px;
-                border: none;
-                font-weight: 700;
-                font-size: 13px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }}
-            
-            QHeaderView::section:first {{
-                border-top-left-radius: 6px;
-            }}
-            
-            QHeaderView::section:last {{
-                border-top-right-radius: 6px;
-            }}
-            
-            QHeaderView::section:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0f766e, stop:1 #115e59);
-            }}
-            
-            /* Enhanced Scrollbars */
-            QScrollBar:vertical {{
-                background: {self.colors['light']};
-                width: 16px;
-                border-radius: 8px;
-                margin: 0px;
-            }}
-            
-            QScrollBar::handle:vertical {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
-                border-radius: 8px;
-                min-height: 30px;
-                margin: 2px;
-            }}
-            
-            QScrollBar::handle:vertical:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #0f766e, stop:1 {self.colors['table_header']});
-            }}
-        """)
 
     def setup_ui(self):
         """Setup the main UI with side-by-side layout"""
@@ -1569,26 +1276,7 @@ class UsersForm(QWidget):
             self.status_label.setText("Refresh Failed")
             self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
 
-    def log_audit_action(self, action, table_name, record_id, description):
-        """Log user action to audit log"""
-        try:
-            query = """
-                INSERT INTO audit_log (user_id, action, table_name, record_id, description, ip_address)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            ip_address = self.user_session.get('ip_address', '127.0.0.1') if self.user_session else '127.0.0.1'
-            self.cursor.execute(query, (
-                self.user_session.get('user_id'),
-                action,
-                table_name,
-                record_id,
-                description,
-                ip_address
-            ))
-            self.db_connection.commit()
-        except Error as e:
-            print(f"Failed to log audit action: {e}")
-
+    
     def get_user_stats(self):
         """Get user statistics for display"""
         try:
@@ -1619,55 +1307,57 @@ class UsersForm(QWidget):
             print(f"Error getting user stats: {e}")
             return {'total': 0, 'active': 0, 'inactive': 0, 'locked': 0, 'roles': {}}
 
-    def export_users(self):
-        """Export users to CSV file"""
+    def export_users(self, checked=False):
+        """
+        Export users to Excel with green header
+        :param checked: Ignored. Supplied by Qt when used as direct slot
+        """
         try:
-            # Ask user for save location
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                "Export Users to CSV",
-                "users_export.csv",
-                "CSV files (*.csv);;All files (*.*)"
+            query = '''
+                SELECT 
+                    u.id,
+                    u.username,
+                    u.full_name,
+                    u.role,
+                    CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END AS status,
+                    COALESCE(t.position, 'N/A') AS position,
+                    CASE 
+                        WHEN u.account_locked_until IS NULL THEN 'Unlocked'
+                        WHEN u.account_locked_until > NOW() THEN 'Locked'
+                        ELSE 'Unlocked'
+                    END AS lock_status
+                FROM users u
+                LEFT JOIN teachers t ON TRIM(UPPER(t.full_name)) = TRIM(UPPER(u.full_name))
+                ORDER BY u.role, u.full_name
+            '''
+            self.cursor.execute(query)
+            users = self.cursor.fetchall()
+    
+            if not users:
+                QMessageBox.information(self, "No Data", "No users found to export.")
+                return
+    
+            school_info = self.get_school_info()
+            title = f"{school_info['name']} - Users Export"
+    
+            self.export_with_green_header(
+                data=users,
+                headers=["ID", "Username", "Full Name", "Role", "Status", "Position", "Lock Status"],
+                filename_prefix="users",
+                title=title
             )
-            
-            if filename:
-                query = '''
-                    SELECT u.id, u.username, u.full_name, u.role, 
-                           CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END as status,
-                           COALESCE(t.position, 'N/A') as position,
-                           u.failed_login_attempts,
-                           CASE WHEN u.account_locked_until > NOW() THEN 'Locked' ELSE 'Not Locked' END as lock_status,
-                           u.created_at
-                    FROM users u
-                    LEFT JOIN teachers t ON t.full_name = u.full_name
-                    ORDER BY u.username
-                '''
-                self.cursor.execute(query)
-                users = self.cursor.fetchall()
-                
-                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    # Write header
-                    writer.writerow(['ID', 'Username', 'Full Name', 'Role', 'Status', 'Position', 
-                                   'Failed Attempts', 'Lock Status', 'Created At'])
-                    # Write data
-                    writer.writerows(users)
-                
-                QMessageBox.information(self, "Success", f"Users exported successfully to {filename}")
-                
-        except Error as e:
-            QMessageBox.critical(self, "Error", f"Failed to export users: {e}")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to export users: {e}")
-
+            QMessageBox.critical(self, "Export Error", f"Failed to export users: {str(e)}")
+        
     def refresh_data(self):
         """Refresh all data"""
         try:
             self.load_users()
             self.load_teachers()
             QMessageBox.information(self, "Success", "Data refreshed successfully!")
-        except Error as e:
+        except Exception as e:  # or mysql.connector.Error if using MySQL
             QMessageBox.critical(self, "Error", f"Failed to refresh data: {e}")
+
 
     def closeEvent(self, event):
         """Handle close event to clean up database connection"""

@@ -304,6 +304,22 @@ class LoginForm(QWidget):
             cursor.execute(query, (username,))
             user = cursor.fetchone()
 
+            # Add: Get the teacher's photo_path
+            if user:
+                # Get teacher photo if this user is a teacher
+                teacher_query = """
+                    SELECT position, photo_path 
+                    FROM teachers 
+                    WHERE full_name = %s OR email = %s
+                """
+                cursor.execute(teacher_query, (user.get('full_name'), user.get('username')))
+                teacher = cursor.fetchone()
+                
+                photo_path = None
+                if teacher and teacher['photo_path']:
+                    # Convert to relative path (e.g., "uploads/teachers/1.jpg")
+                    photo_path = teacher['photo_path']
+
             if not user:
                 try:
                     self.log_login_attempt(username, "failed", "User not found")
@@ -362,7 +378,9 @@ class LoginForm(QWidget):
                 'school_name': str(user.get('school_name', 'No School Assigned')),
                 'permissions': self.get_user_permissions(user.get('role', 'user')),
                 'login_time': datetime.now().isoformat(),
-                'ip_address': str(self.get_client_ip())
+                'ip_address': str(self.get_client_ip()),
+                'position': teacher['position'] if teacher and teacher['position'] else 'N/A',
+                'profile_image': photo_path  # Add this!
             }
 
             print(f"✅ Login successful for user: {user_session['username']}")
