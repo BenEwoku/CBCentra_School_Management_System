@@ -21,12 +21,13 @@ from utils.permissions import has_permission
 # Add parent directory to path to import models
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.models import get_db_connection
+from ui.audit_base_form import AuditBaseForm
 
 
-class LoginLogsForm(QWidget):
-    def __init__(self, parent=None, user_session: Optional[Dict[str, Any]] = None):
-        super().__init__(parent)
-        self.user_session = user_session
+
+class LoginLogsForm(AuditBaseForm):
+    def __init__(self, parent=None, user_session=None):
+        super().__init__(parent, user_session)
 
         # Set up styling
         self.setup_styling()
@@ -41,100 +42,6 @@ class LoginLogsForm(QWidget):
 
         self.setup_ui()
         self.load_login_logs()
-
-    def setup_styling(self):
-        """Set up modern professional styling"""
-        self.colors = {
-            'primary': '#1e40af',
-            'primary_dark': '#1e3a8a',
-            'secondary': '#475569',
-            'success': '#065f46',
-            'warning': '#b45309',
-            'danger': '#b91c1c',
-            'info': '#0e7490',
-            'light': '#f1f5f9',
-            'dark': '#0f172a',
-            'border': '#cbd5e1',
-            'text_primary': '#0f172a',
-            'text_secondary': '#475569',
-            'background': '#ffffff',
-            'surface': '#f8fafc',
-            'input_background': '#ffffff',
-            'input_border': '#94a3b8',
-            'input_focus': '#3b82f6',
-            'table_header': '#10b981',
-            'table_header_dark': '#059669'
-        }
-
-        self.fonts = {
-            'label': QFont("Arial", 14, QFont.Weight.Bold),
-            'entry': QFont("Arial", 14),
-            'section': QFont("Arial", 18, QFont.Weight.Bold),
-            'button': QFont("Arial", 12, QFont.Weight.Bold),
-            'header': QFont("Arial", 18, QFont.Weight.Bold),
-            'table': QFont("Tahoma", 11),
-            'table_header': QFont("Tahoma", 12, QFont.Weight.Bold)
-        }
-
-        self.setStyleSheet(f"""
-            QWidget {{
-                font-family: 'Segoe UI', 'Arial', sans-serif;
-                font-size: 13px;
-                color: {self.colors['text_primary']};
-                background-color: {self.colors['background']};
-            }}
-            
-            QTableWidget {{
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-                background-color: {self.colors['background']};
-                alternate-background-color: #f8fafc;
-                gridline-color: {self.colors['border']};
-                selection-background-color: rgba(13, 148, 136, 0.15);
-                selection-color: {self.colors['text_primary']};
-                font-size: 13px;
-            }}
-            
-            QHeaderView::section {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
-                color: white;
-                padding: 16px;
-                border: none;
-                font-weight: 700;
-                font-size: 13px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }}
-            
-            QTabWidget::pane {{
-                border: 1px solid {self.colors['border']};
-                border-radius: 8px;
-                background: {self.colors['background']};
-            }}
-            
-            QTabBar::tab {{
-                background: {self.colors['light']};
-                color: {self.colors['text_secondary']};
-                padding: 12px 20px;
-                border: 1px solid {self.colors['border']};
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                margin-right: 2px;
-                font-weight: 500;
-            }}
-            
-            QTabBar::tab:selected {{
-                background: {self.colors['background']};
-                color: {self.colors['primary']};
-                border-bottom: 2px solid {self.colors['primary']};
-                font-weight: 600;
-            }}
-            
-            QTabBar::tab:hover {{
-                background: #e2e8f0;
-            }}
-        """)
 
     def setup_ui(self):
         """Setup the main UI with two tabs"""

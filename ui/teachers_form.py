@@ -21,6 +21,8 @@ from mysql.connector import Error
 from PIL import Image, ImageQt
 from utils.permissions import has_permission
 from ui.audit_base_form import AuditBaseForm
+from ui.departments_form import DepartmentsForm
+from utils.pdf_utils import view_pdf
 
 # Add parent directory to path to import models
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,6 +58,7 @@ class TeachersForm(AuditBaseForm):
         self.setup_ui()
         self.load_teachers()
         self.load_schools()
+        self.load_departments_combo()
         self.apply_button_permissions()
     
     def setup_ui(self):
@@ -76,6 +79,7 @@ class TeachersForm(AuditBaseForm):
         # Add tabs to widget
         self.tab_widget.addTab(self.teacher_form_tab, "Staff Form")
         self.tab_widget.addTab(self.teacher_data_tab, "Staff Data")
+        self.departments_tab = DepartmentsForm(self.tab_widget, user_session=self.user_session)
         self.tab_widget.addTab(self.departments_tab, "Departments")
         
         # Setup each tab
@@ -250,6 +254,14 @@ class TeachersForm(AuditBaseForm):
         employment_layout.addWidget(QLabel("Subject Specialty:"), row, 3)
         self.subject_specialty_entry = QLineEdit()
         employment_layout.addWidget(self.subject_specialty_entry, row, 4)
+        
+        # Row 2 continuation: Add Department
+        # Inside create_employment_info_section(), after subject_specialty
+        row += 1
+        employment_layout.addWidget(QLabel("Department:"), row, 0)
+        self.department_combo = QComboBox()
+        self.department_combo.setMinimumWidth(250)
+        employment_layout.addWidget(self.department_combo, row, 1, 1, 2)
         
         # Row 2: Qualification, Date Joined, Staff Type
         row += 1
@@ -710,8 +722,8 @@ class TeachersForm(AuditBaseForm):
                     email, gender, phone_contact_1, day_phone, current_address, home_district,
                     subject_specialty, qualification, date_joined, emergency_contact_1,
                     emergency_contact_2, national_id_number, birth_date, bank_account_number,
-                    next_of_kin, employment_status, is_active, staff_type, position, monthly_salary
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    next_of_kin, employment_status, is_active, staff_type, position, monthly_salary, department_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             '''
             
             values = (
@@ -740,7 +752,8 @@ class TeachersForm(AuditBaseForm):
                 self.is_active_checkbox.isChecked(),
                 self.staff_type_combo.currentText(),
                 self.position_combo.currentText().strip().title(),
-                monthly_salary
+                monthly_salary,
+                self.get_department_id_from_selection()
             )
             
             self.cursor.execute(query, values)
@@ -771,6 +784,9 @@ class TeachersForm(AuditBaseForm):
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Error adding teacher: {str(e)}")
             print(f"Full error: {traceback.format_exc()}")
+
+    def get_department_id_from_selection(self):
+        return self.department_combo.currentData()
 
     def update_teacher(self):
         """Update existing teacher"""
@@ -817,7 +833,7 @@ class TeachersForm(AuditBaseForm):
                     qualification = %s, date_joined = %s, emergency_contact_1 = %s,
                     emergency_contact_2 = %s, national_id_number = %s, birth_date = %s,
                     bank_account_number = %s, next_of_kin = %s, employment_status = %s,
-                    is_active = %s, staff_type = %s, position = %s, monthly_salary = %s,
+                    is_active = %s, staff_type = %s, position = %s, monthly_salary = %s, department_id = %s
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             '''
@@ -849,6 +865,7 @@ class TeachersForm(AuditBaseForm):
                 self.staff_type_combo.currentText(),
                 self.position_combo.currentText().strip().title(),
                 monthly_salary,
+                self.get_department_id_from_selection(),
                 self.current_teacher_id
             )
             
@@ -937,6 +954,23 @@ class TeachersForm(AuditBaseForm):
             except Exception as e:
                 self.db_connection.rollback()
                 QMessageBox.critical(self, "Error", f"Error deleting teacher: {str(e)}")
+
+    def load_departments_combo(self):
+        """Load departments into department combo box"""
+        try:
+            self.cursor.execute("""
+                SELECT id, department_name 
+                FROM departments 
+                WHERE is_active = 1 
+                ORDER BY department_name
+            """)
+            departments = self.cursor.fetchall()
+            self.department_combo.clear()
+            self.department_combo.addItem("", None)  # No department
+            for dept in departments:
+                self.department_combo.addItem(dept[1], dept[0])
+        except Exception as e:
+            print(f"Error loading departments: {e}")
         
     def clear_fields(self):
         """Clear all form fields and selection"""
@@ -969,6 +1003,7 @@ class TeachersForm(AuditBaseForm):
         self.employment_status_combo.setCurrentText("Full-time")
         self.staff_type_combo.setCurrentText("Teaching")
         self.position_combo.setCurrentText("")
+        self.department_combo.setCurrentIndex(0)
         
         # Reset dates
         self.birth_date_edit.setDate(QDate.currentDate())
@@ -1207,6 +1242,15 @@ class TeachersForm(AuditBaseForm):
             if not teacher:
                 QMessageBox.warning(self, "Error", "Teacher data not found")
                 return
+
+            # After loading teacher data
+            dept_id = teacher['department_id']  # from SELECT *
+            if dept_id:
+                idx = self.department_combo.findData(dept_id)
+                if idx >= 0:
+                    self.department_combo.setCurrentIndex(idx)
+            else:
+                self.department_combo.setCurrentIndex(0)
                 
             # Clear all fields first
             self.clear_fields()
@@ -1450,23 +1494,30 @@ class TeachersForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Error generating report: {str(e)}")
 
 
-    # Updated method for TeachersForm to generate PDF bytes correctly
+    # Updated method for TeachersForm to generate PDF bytes correctly from teachers form
     def generate_teacher_profile_pdf(self, teacher_id=None):
         """Generate teacher profile PDF and return proper PDF bytes"""
         try:
+            # Ensure DB connection first
+            self._ensure_connection()
+            
             import os
+            import io  # Add this import that was missing
             from fpdf import FPDF
             from datetime import datetime
             import tempfile
     
+            # Validate cursor
+            if not hasattr(self, 'cursor') or not self.cursor:
+                raise Exception("Database cursor not available")
+    
             # Use provided teacher_id or current selection
             target_teacher_id = teacher_id or getattr(self, 'current_teacher_id', None)
-            
             if not target_teacher_id:
                 raise ValueError("No teacher selected")
     
-            # Fetch teacher data by ID including staff_type
-            self.cursor.execute('''
+            # Fetch teacher data
+            query = '''
                 SELECT 
                     t.teacher_id_code, t.salutation, t.first_name, t.surname, t.email, 
                     t.gender, t.phone_contact_1, t.day_phone, t.current_address, 
@@ -1476,49 +1527,57 @@ class TeachersForm(AuditBaseForm):
                     t.is_active, t.staff_type, t.position, t.school_id
                 FROM teachers t
                 WHERE t.id = %s
-            ''', (target_teacher_id,))
-    
+            '''
+            self.cursor.execute(query, (target_teacher_id,))
             teacher = self.cursor.fetchone()
-    
             if not teacher:
                 raise ValueError("Teacher data not found")
     
-            # Fetch school info for this teacher
-            school_id = teacher[-1]  # school_id is last in the tuple
-            self.cursor.execute('''
-                SELECT school_name, address, phone, email, logo_path
-                FROM schools
-                WHERE id = %s
-            ''', (school_id,))
-            school = self.cursor.fetchone()
+            # Fetch school info - CORRECT QUERY for your table structure
+            school_id = teacher[-1]  # Last field is school_id
+            school = None
+            
+            if school_id:
+                try:
+                    school_query = '''
+                        SELECT 
+                            school_name, address, phone, email, logo_path
+                        FROM schools 
+                        WHERE id = %s
+                    '''
+                    self.cursor.execute(school_query, (school_id,))
+                    school = self.cursor.fetchone()
+                except Exception as school_error:
+                    print(f"School query failed: {school_error}")
+                    school = None
     
-            school_name = school[0] if school else "Winspire Learning Hub"
-            school_address = school[1] if school else "P.O.Box 12345"
+            # Extract school data with defaults
+            school_name = school[0] if school else "CBCentra School"
+            school_address = school[1] if school else "P.O. Box 12345"
             school_phone = school[2] if school else "Tel: +254 700 000000"
-            school_email = school[3] if school else "info@winspire.com"
-            school_logo = school[4] if school and school[4] else os.path.join(
+            school_email = school[3] if school else "info@cbcentra.edu"
+            default_logo = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "static", "images", "logo.png")
+                "static", "images", "logo.png"
+            )
+            school_logo = school[4] if school and school[4] else default_logo
     
-            # Create PDF with custom class for better formatting
             class TeacherPDF(FPDF):
                 def __init__(self):
                     super().__init__()
                     self.set_auto_page_break(auto=True, margin=15)
-                    
+    
                 def header(self):
-                    # Header with logo and school info
                     if os.path.exists(school_logo):
                         try:
-                            self.image(school_logo, 10, 10, 25)  # Logo: x=10, y=10, width=25mm
-                        except:
-                            pass  # Skip logo if there's an error loading it
-                    
-                    # School information
-                    self.set_xy(40, 10)  # Position next to logo
+                            self.image(school_logo, 10, 10, 25)
+                        except Exception as img_e:
+                            print(f"Logo load error: {img_e}")
+    
+                    self.set_xy(40, 10)
                     self.set_font('Arial', 'B', 14)
                     self.cell(0, 6, school_name.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-                    
+    
                     self.set_x(40)
                     self.set_font('Arial', '', 10)
                     self.cell(0, 4, school_address.encode('latin-1', 'replace').decode('latin-1'), ln=True)
@@ -1526,95 +1585,82 @@ class TeachersForm(AuditBaseForm):
                     self.cell(0, 4, school_phone.encode('latin-1', 'replace').decode('latin-1'), ln=True)
                     self.set_x(40)
                     self.cell(0, 4, school_email.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-                    
-                    # Title
+    
                     self.ln(10)
                     self.set_font('Arial', 'B', 16)
-                    self.set_text_color(68, 114, 196)  # Blue color
+                    self.set_text_color(68, 114, 196)
                     self.cell(0, 8, 'TEACHER PROFILE FORM', 0, 1, 'C')
-                    
-                    # Subtitle
+    
                     self.set_font('Arial', 'I', 10)
-                    self.set_text_color(0, 0, 0)  # Reset to black
+                    self.set_text_color(0, 0, 0)
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     self.cell(0, 6, f'Generated on: {timestamp}', 0, 1, 'C')
                     self.ln(5)
-                
+    
                 def footer(self):
                     self.set_y(-15)
                     self.set_font('Arial', 'I', 8)
                     self.set_text_color(128, 128, 128)
                     self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-                
+    
                 def section_header(self, title):
-                    """Add a green section header"""
                     self.ln(3)
-                    self.set_fill_color(34, 139, 34)  # Forest green
-                    self.set_text_color(255, 255, 255)  # White text
+                    self.set_fill_color(34, 139, 34)
+                    self.set_text_color(255, 255, 255)
                     self.set_font('Arial', 'B', 12)
                     self.cell(0, 8, title.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'L', True)
-                    self.set_text_color(0, 0, 0)  # Reset to black
+                    self.set_text_color(0, 0, 0)
                     self.ln(2)
-                
+    
                 def add_field(self, label, value, col1_width=60):
-                    """Add a labeled field"""
                     self.set_font('Arial', 'B', 10)
-                    # Encode label to handle special characters
                     safe_label = label.encode('latin-1', 'replace').decode('latin-1')
                     self.cell(col1_width, 6, safe_label + ':', 0, 0, 'L')
-                    
+    
                     self.set_font('Arial', '', 10)
-                    # Handle None values and encode text
                     safe_value = str(value) if value else 'N/A'
                     safe_value = safe_value.encode('latin-1', 'replace').decode('latin-1')
                     self.cell(0, 6, safe_value, 0, 1, 'L')
-                
+    
                 def add_signature_line(self, label, width=80):
-                    """Add a signature line"""
                     self.set_font('Arial', '', 10)
                     safe_label = label.encode('latin-1', 'replace').decode('latin-1')
                     self.cell(len(safe_label) * 2, 6, safe_label + ': ', 0, 0, 'L')
-                    
-                    # Draw line
-                    current_x = self.get_x()
-                    current_y = self.get_y()
-                    self.line(current_x, current_y + 5, current_x + width, current_y + 5)
+                    x, y = self.get_x(), self.get_y()
+                    self.line(x, y + 5, x + width, y + 5)
                     self.ln(10)
     
-            # Create PDF instance
+            # Generate PDF to temporary file first, then read bytes
             pdf = TeacherPDF()
             pdf.add_page()
     
-            # Personal Information Section
+            # === Add all sections ===
             pdf.section_header("Personal Information")
             pdf.add_field("Teacher ID", teacher[0])
-            full_name = f"{teacher[1] or ''} {teacher[2] or ''} {teacher[3] or ''}".strip()
+            full_name = f"{teacher[1]} {teacher[2]} {teacher[3]}".strip()
             pdf.add_field("Full Name", full_name)
             pdf.add_field("Gender", teacher[5])
-            pdf.add_field("Birth Date", str(teacher[16]) if teacher[16] else None)
+            pdf.add_field("Birth Date", teacher[16] or "N/A")
             pdf.add_field("National ID Number", teacher[15])
             pdf.add_field("Email", teacher[4])
             pdf.add_field("Phone 1", teacher[6])
             pdf.add_field("Day Phone", teacher[7])
     
-            # Professional Information Section
             pdf.section_header("Professional Information")
             pdf.add_field("Subject Specialty", teacher[10])
             pdf.add_field("Qualification", teacher[11])
-            pdf.add_field("Date Joined", str(teacher[12]) if teacher[12] else None)
+            pdf.add_field("Date Joined", teacher[12] or "N/A")
             pdf.add_field("Staff Type", teacher[21])
             pdf.add_field("Position", teacher[22])
             pdf.add_field("Bank Account Number", teacher[17])
             pdf.add_field("Employment Status", teacher[19])
     
-            # School Information Section
             pdf.section_header("School Information")
             pdf.add_field("School Name", school_name)
             pdf.add_field("School Address", school_address)
             pdf.add_field("School Phone", school_phone)
             pdf.add_field("School Email", school_email)
     
-            # Address & Emergency Section
             pdf.section_header("Address & Emergency Contact")
             pdf.add_field("Current Address", teacher[8])
             pdf.add_field("Home District", teacher[9])
@@ -1622,91 +1668,75 @@ class TeachersForm(AuditBaseForm):
             pdf.add_field("Emergency Contact 1", teacher[13])
             pdf.add_field("Emergency Contact 2", teacher[14])
     
-            # Declaration Section
             pdf.section_header("Declaration")
             pdf.ln(2)
             pdf.set_font('Arial', '', 10)
-            
-            declaration_text = ("I, __________________________________________________, "
-                              "hereby declare that the above information is true and that any "
-                              "attached documents are authentic.")
-            
-            # Split long text for better formatting
-            words = declaration_text.split()
-            line = ""
-            for word in words:
-                test_line = line + word + " "
-                if pdf.get_string_width(test_line) < 180:
-                    line = test_line
-                else:
-                    if line:
-                        pdf.cell(0, 5, line.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'L')
-                    line = word + " "
-            if line:
+            declaration = ("I, __________________________________________________, "
+                          "hereby declare that the above information is true and that any "
+                          "attached documents are authentic.")
+            for line in [declaration[i:i+90] for i in range(0, len(declaration), 90)]:
                 pdf.cell(0, 5, line.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'L')
-            
             pdf.ln(10)
             pdf.add_signature_line("Signature", 60)
             pdf.add_signature_line("Date", 60)
     
-            # Official Use Section
             pdf.section_header("For Official Use Only")
             pdf.ln(2)
             pdf.add_signature_line("Recommended for appointment on (Date)", 80)
             pdf.ln(5)
             pdf.add_signature_line("Administrator Signature", 80)
     
-            # Generate PDF bytes properly
-            # First, create a temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-                temp_filename = temp_file.name
-                
-            # Output PDF to temporary file
-            pdf.output(temp_filename)
+            # Use temporary file approach to get PDF bytes
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+                temp_path = temp_file.name
             
-            # Read the PDF file as bytes
-            with open(temp_filename, 'rb') as f:
-                pdf_bytes = f.read()
-                
-            # Clean up temporary file
             try:
-                os.remove(temp_filename)
-            except:
-                pass
-            
-            # Store for printing functionality
+                # Output to temporary file
+                pdf.output(temp_path)
+                
+                # Read the file back as bytes
+                with open(temp_path, 'rb') as f:
+                    pdf_bytes = f.read()
+                
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+    
+            # Cache for reuse
             self.current_pdf_bytes = pdf_bytes
             self.current_file_type = "pdf"
-            
+    
             return pdf_bytes
     
         except Exception as e:
             raise Exception(f"Error generating teacher profile PDF: {str(e)}")
     
-    # Update the original export method to use the new method
     def export_teacher_to_pdf_form(self):
         """Export selected teacher to PDF and show viewer"""
         try:
-            if not hasattr(self, 'current_teacher_id') or not self.current_teacher_id:
+            if not self.current_teacher_id:
                 QMessageBox.warning(self, "No Selection", "Please select a teacher first")
                 return
-                
+    
+            # Ensure connection is alive
+            self._ensure_connection()
+    
             # Generate PDF
             pdf_bytes = self.generate_teacher_profile_pdf(self.current_teacher_id)
-            
-            # Show PDF viewer using main window's method
-            if hasattr(self.parent(), 'show_pdf_preview_dialog'):
-                self.parent().show_pdf_preview_dialog(pdf_bytes)
-            else:
-                # Fallback
-                try:
-                    from utils.pdf_utils import view_pdf
-                    view_pdf(pdf_bytes, parent=self)
-                except ImportError:
-                    QMessageBox.critical(self, "Error", "PDF viewer not available")
-                
+    
+            # Use standard viewer
+            try:
+                from utils.pdf_utils import view_pdf
+                view_pdf(pdf_bytes, parent=self)
+            except ImportError:
+                # Fallback if utils module not available
+                QMessageBox.information(self, "PDF Generated", "PDF generated successfully but viewer not available")
+    
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export PDF:\n{str(e)}")
+            import traceback
+            print(f"Full error: {traceback.format_exc()}")
+            QMessageBox.critical(self, "Export Error", f"Failed to generate or view PDF:\n{str(e)}")
 
     def import_teachers_data(self):
         """Import teachers data from CSV or Excel file"""

@@ -22,6 +22,28 @@ class AuditBaseForm(QWidget):
         self.fonts = {}
         self.setup_styling()
 
+    def _ensure_connection(self):
+        """Ensure database connection is active and reconnected if needed."""
+        try:
+            # If no connection exists
+            if not hasattr(self, 'db_connection') or self.db_connection is None:
+                self.db_connection = get_db_connection()
+                self.cursor = self.db_connection.cursor(buffered=True)
+                return
+    
+            # If connection exists but is closed, reconnect
+            if self.db_connection.is_closed():
+                self.db_connection = get_db_connection()
+                self.cursor = self.db_connection.cursor(buffered=True)
+                return
+    
+            # If cursor is missing or closed
+            if not hasattr(self, 'cursor') or self.cursor is None or getattr(self.cursor, 'closed', False):
+                self.cursor = self.db_connection.cursor(buffered=True)
+    
+        except Exception as e:
+            raise Exception(f"Failed to ensure database connection: {e}")
+
     def setup_styling(self):
         """Set up shared colors, fonts, and QSS styling"""
         # === Color Palette ===
@@ -42,8 +64,8 @@ class AuditBaseForm(QWidget):
             'input_border': '#ced4da',
             'input_focus': '#80bdff',
             'input_background': '#ffffff',
-            'table_header': '#10b981',     # Teal
-            'table_header_dark': '#059669', # Darker teal
+            'table_header': '#0f766e',     # Teal #e6edf3
+            'table_header_dark': '#cbd5e1', # Darker teal
             'light': '#f1f5f9',             # Light background (for scrollbars)
             'main_tab_gradient_start': '#0066cc',  # Main tab gradient start
             'main_tab_gradient_end': '#004499',    # Main tab gradient end
@@ -91,20 +113,20 @@ class AuditBaseForm(QWidget):
                 border: none;
                 border-bottom: 2px solid {self.colors['main_tab_border']};
                 border-top: none;
-                min-height: 50px;
-                max-height: 60px;
+                min-height: 40px;
+                max-height: 40px;
             }}
             
             /* Menu Toggle Button (Left Side) */
             QPushButton#menuToggle {{
                 background: rgba(255, 255, 255, 0.1);
                 color: white;
-                padding: 10px 15px;
+                padding: 8px 12px;
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 8px;
                 min-width: 40px;
                 max-width: 50px;
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: bold;
                 margin: 2px;
             }}
@@ -126,18 +148,16 @@ class AuditBaseForm(QWidget):
                 color: white;
                 padding: 12px 20px;
                 border: none;
-                border-radius: 10px;
+                border-radius: 8px;
                 min-width: 80px;
                 font-size: 13px;
                 font-weight: 500;
                 margin: 2px 3px;
-                transition: all 0.3s ease;
             }}
             
             QPushButton#tabButton:hover {{
                 background: {self.colors['tab_hover']};
                 border: 1px solid rgba(255, 255, 255, 0.3);
-                transform: translateY(-1px);
             }}
             
             QPushButton#tabButton:checked {{
@@ -149,7 +169,6 @@ class AuditBaseForm(QWidget):
             
             QPushButton#tabButton:pressed {{
                 background: rgba(255, 255, 255, 0.3);
-                transform: translateY(1px);
             }}
 
             /* Profile Section Styling (Right Side) */
@@ -197,8 +216,7 @@ class AuditBaseForm(QWidget):
 
             /* === RIBBON CONTAINER === */
             #ribbonContainer {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #ffffff, stop: 1 #f8f9fa);
+                background: #f1f5f9;
                 border-bottom: 1px solid {self.colors['border']};
                 border-top: none;
                 padding: 8px;
@@ -252,7 +270,6 @@ class AuditBaseForm(QWidget):
             QLineEdit:focus, QComboBox:focus, QDateEdit:focus {{
                 border-color: {self.colors['input_focus']};
                 background-color: #f8f9fa;
-                box-shadow: 0 0 5px rgba(128, 189, 255, 0.3);
             }}
             
             QLineEdit:disabled, QComboBox:disabled {{
@@ -286,16 +303,100 @@ class AuditBaseForm(QWidget):
                 background-color: {self.colors['secondary']};
                 color: white;
             }}
+
+            /* === MESSAGE BOX BUTTONS – COMPACT & BALANCED === */
+            QMessageBox,
+            QDialogButtonBox {{
+                spacing: 12px;
+                margin: 10px;
+            }}
+            
+            QMessageBox QLabel {{
+                padding: 8px 12px;
+                color: {self.colors['text_primary']};
+            }}
+            
+            QDialogButtonBox QPushButton {{
+                min-height: 24px;
+                max-height: 24px;
+                min-width: 65px;
+                max-width: 95px;
+                padding: 6px 10px;
+                font-size: 12px;
+                font-weight: 600;
+                border-radius: 6px;
+                background-color: {self.colors['secondary']};
+                color: white;
+            }}
+            
+            QDialogButtonBox QPushButton:hover {{
+                background-color: {self.colors['secondary_hover']};
+            }}
+            
+            QDialogButtonBox QPushButton[class="primary"] {{
+                background-color: {self.colors['primary']};
+            }}
+            QDialogButtonBox QPushButton[class="primary"]:hover {{
+                background-color: {self.colors['primary_dark']};
+            }}
+            
+            QDialogButtonBox QPushButton[class="danger"] {{
+                background-color: {self.colors['danger']};
+            }}
+            QDialogButtonBox QPushButton[class="danger"]:hover {{
+                background-color: #c0392b;
+            }}
+            
+            /* Slight spacing fix */
+            QMessageBox QLabel {{
+                padding: 8px 12px;
+            }}
             
             QPushButton:hover {{
                 border: 1px solid rgba(255, 255, 255, 0.3);
-                transform: translateY(-1px);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             }}
             
             QPushButton:pressed {{
                 padding: 9px 15px 7px 17px;
-                transform: translateY(1px);
+            }}
+
+            /* === MESSAGE BOX BUTTONS - SPECIFIC STYLING === */
+            QMessageBox QPushButton {{
+                background-color: {self.colors['secondary']};
+                color: white;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+                min-width: 80px;
+            }}
+            
+            QMessageBox QPushButton:hover {{
+                background-color: {self.colors['secondary_hover']};
+            }}
+            
+            /* Specific button types */
+            QMessageBox QPushButton[text="OK"],
+            QMessageBox QPushButton[text="Yes"],
+            QMessageBox QPushButton[text="Save"] {{
+                background-color: {self.colors['primary']};
+            }}
+            
+            QMessageBox QPushButton[text="OK"]:hover,
+            QMessageBox QPushButton[text="Yes"]:hover,
+            QMessageBox QPushButton[text="Save"]:hover {{
+                background-color: {self.colors['primary_dark']};
+            }}
+            
+            QMessageBox QPushButton[text="Cancel"],
+            QMessageBox QPushButton[text="No"],
+            QMessageBox QPushButton[text="Discard"] {{
+                background-color: {self.colors['danger']};
+            }}
+            
+            QMessageBox QPushButton[text="Cancel"]:hover,
+            QMessageBox QPushButton[text="No"]:hover,
+            QMessageBox QPushButton[text="Discard"]:hover {{
+                background-color: #c0392b;
             }}
 
             /* === BUTTON VARIANTS === */
@@ -384,14 +485,19 @@ class AuditBaseForm(QWidget):
                     stop:0 {self.colors['table_header']}, 
                     stop:1 {self.colors['table_header_dark']});
                 color: white;
-                padding: 10px 12px;
+                padding: 6px 8px;
                 border: none;
                 font-weight: bold;
-                font-size: 13px;
+                font-size: 12px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
-                min-height: 20px;
-                max-height: 26px;
+                min-height: 16px;
+                max-height: 18px;
+            }}
+
+            /* Add a blue bottom border to tie to brand */
+            QHeaderView::section {{
+                border-bottom: 3px solid {self.colors['primary']};
             }}
 
             QHeaderView::section:first {{
@@ -507,6 +613,26 @@ class AuditBaseForm(QWidget):
             QMenuBar::item:selected {{
                 background: rgba(0, 102, 204, 0.1);
                 color: {self.colors['primary']};
+            }}
+            
+            /* === MENU POPUP === */
+            QMenu {{
+                background-color: white;
+                border: 1px solid #e2e8f0;  /* Light border matching your palette */
+                border-radius: 8px;
+                padding: 6px;
+            }}
+            
+            QMenu::item {{
+                padding: 8px 24px 8px 12px;
+                border-radius: 6px;
+                background-color: transparent;
+            }}
+            
+            QMenu::item:selected {{
+                background-color: #f1f5f9;  /* Same as your ribbon - perfect match! */
+                color: {self.colors['primary_dark']};  /* Your dark blue for text */
+                font-weight: 500;
             }}
 
             /* === TAB WIDGET (For Content Tabs) === */

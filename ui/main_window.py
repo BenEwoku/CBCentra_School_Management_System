@@ -128,10 +128,6 @@ class MainWindow(QMainWindow):
         user_info = f"Ready - CBCentra School Management System | User: {self.user_session.get('full_name', 'Unknown')}"
         self.statusBar().showMessage(user_info)
     
-        self.print_btn = QPushButton("Print Document", self)
-        self.print_btn.clicked.connect(self.print_loaded_pdf)
-        self.statusBar().addPermanentWidget(self.print_btn)
-    
         self.sidebar_animation = QPropertyAnimation(self.sidebar_frame, b"geometry")
         self.sidebar_animation.setDuration(300)
         self.sidebar_animation.setEasingCurve(QEasingCurve.OutCubic)
@@ -276,21 +272,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", "PDF viewer utilities not available")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to show PDF: {str(e)}")
-    
-    def print_loaded_pdf(self):
-        """Print the currently loaded PDF"""
-        if not self.current_pdf_bytes:
-            QMessageBox.warning(self, "No Document", "No PDF document loaded")
-            return
-            
-        try:
-            from utils.pdf_utils import print_pdf
-            print_pdf(self.current_pdf_bytes, parent=self)
-        except ImportError:
-            # Fallback if utils module is not available
-            QMessageBox.critical(self, "Error", "PDF printing utilities not available")
-        except Exception as e:
-            QMessageBox.critical(self, "Print Error", f"Failed to print: {str(e)}")
     
     def preview_pdf_bytes(self, pdf_bytes):
         """Preview PDF bytes - alias for show_pdf_preview_dialog"""
@@ -783,12 +764,12 @@ class MainWindow(QMainWindow):
                 {"title": "Staff Records", "actions": [
                     {"name": "Teachers", "icon": "teacher.jpg", "handler": self.show_teachers_form},
                     {"name": "Add Teacher", "icon": "addstaff.jpg", "handler": self.add_new_teacher},
-                    {"name": "View Teacher Summary", "icon": "view.jpg", "handler": self.generate_teacher_summary}
+                    {"name": "View Teacher Summaries", "icon": "view.jpg", "handler": self.generate_teacher_summary}
                 ]},
                 {"title": "Actions", "actions": [
                     {"name": "Refresh", "icon": "refresh.jpg", "handler": self.refresh_teachers_data},
-                    {"name": "Print Teacher", "icon": "print.jpg", "handler": self.print_teacher_pdf},
-                    {"name": "Generate Teacher Profile", "icon": "report.jpg", "handler": self.generate_teacher_profile}
+                    {"name": "Generate Teacher Form", "icon": "report.jpg", "handler": self.generate_teacher_profile},
+                    {"name": "Print", "icon": "print.jpg"}
                 ]},
                 {"title": "Import & Export", "actions": [
                     {"name": "Import Teacher Data (CSV)", "icon": "import.jpg", "handler": self.import_teachers_data},
@@ -965,17 +946,24 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate PDF:\n{str(e)}")
 
-    
-    def print_teacher_pdf(self):
-        """Print teacher PDF directly"""
-        if hasattr(self, 'staff_form') and hasattr(self.staff_form, 'current_teacher_id'):
+    def print_loaded_pdf(self):
+        """Print the currently loaded PDF bytes"""
+        try:
+            if not hasattr(self, 'current_pdf_bytes') or not self.current_pdf_bytes:
+                QMessageBox.warning(self, "No PDF", "No PDF is currently loaded for printing")
+                return
+                
+            # Use the PDF utilities to print
             try:
-                pdf_bytes = self.staff_form.generate_teacher_profile_pdf(self.staff_form.current_teacher_id)
-                self.print_loaded_pdf()
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to generate PDF:\n{str(e)}")
-        else:
-            QMessageBox.warning(self, "No Selection", "Please select a teacher first")
+                from utils.pdf_utils import print_pdf
+                print_pdf(self.current_pdf_bytes, parent=self)
+            except ImportError:
+                # Fallback if utils module not available
+                QMessageBox.information(self, "Print", "PDF print utilities not available")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Print Error", f"Failed to print PDF:\n{str(e)}")
+
 
     #for login logs
     def show_login_logs(self):
