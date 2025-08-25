@@ -241,12 +241,12 @@ class EnhancedPDFViewerDialog(QDialog):
         self.add_separator(toolbar_layout)
 
         # Action buttons moved to toolbar
-        self.print_btn = QPushButton("🖨 Print")
+        self.print_btn = QPushButton("Print")
         self.print_btn.setStyleSheet(self.get_action_button_style())
         self.print_btn.clicked.connect(self.print_document)
         toolbar_layout.addWidget(self.print_btn)
 
-        self.save_btn = QPushButton("💾 Save")
+        self.save_btn = QPushButton("Save PDF")
         self.save_btn.setStyleSheet(self.get_action_button_style())
         self.save_btn.clicked.connect(self.save_pdf)
         toolbar_layout.addWidget(self.save_btn)

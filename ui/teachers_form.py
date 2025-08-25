@@ -169,7 +169,7 @@ class TeachersForm(AuditBaseForm):
         
         personal_layout.addWidget(QLabel("Gender:"), row, 4)
         self.gender_combo = QComboBox()
-        self.gender_combo.addItems(["Male", "Female", "Other"])
+        self.gender_combo.addItems(["Male", "Female"])
         personal_layout.addWidget(self.gender_combo, row, 5)
         
         # Row 3: Birth Date, National ID, Next of Kin
@@ -453,7 +453,7 @@ class TeachersForm(AuditBaseForm):
         self.teachers_table_headers = [
             "ID", "Teacher ID", "Full Name", "Email", "Phone", 
             "Subject", "Staff Type", "Emp. Status", "Active", "Position",
-            "Date Joined", "Qualification", "Gender", "Current Address"
+            "Date Joined", "Qualification", "Gender", "Curr. Address"
         ]
         self.teachers_table.setColumnCount(len(self.teachers_table_headers))
         self.teachers_table.setHorizontalHeaderLabels(self.teachers_table_headers)
@@ -824,7 +824,7 @@ class TeachersForm(AuditBaseForm):
             if self.photo_path:
                 photo_path = self.save_photo(self.current_teacher_id)
                 
-            # Update teacher record
+            # Update teacher record - FIXED SQL with proper comma
             query = '''
                 UPDATE teachers SET
                     school_id = %s, teacher_id_code = %s, salutation = %s, first_name = %s,
@@ -833,7 +833,7 @@ class TeachersForm(AuditBaseForm):
                     qualification = %s, date_joined = %s, emergency_contact_1 = %s,
                     emergency_contact_2 = %s, national_id_number = %s, birth_date = %s,
                     bank_account_number = %s, next_of_kin = %s, employment_status = %s,
-                    is_active = %s, staff_type = %s, position = %s, monthly_salary = %s, department_id = %s
+                    is_active = %s, staff_type = %s, position = %s, monthly_salary = %s, department_id = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             '''
@@ -1231,7 +1231,14 @@ class TeachersForm(AuditBaseForm):
         try:
             # Get teacher data with school info
             query = '''
-                SELECT t.*, s.school_name
+                SELECT 
+                    t.id, t.school_id, t.teacher_id_code, t.salutation, t.first_name, 
+                    t.surname, t.full_name, t.email, t.gender, t.phone_contact_1, 
+                    t.day_phone, t.current_address, t.home_district, t.subject_specialty, 
+                    t.qualification, t.date_joined, t.emergency_contact_1, t.emergency_contact_2, 
+                    t.national_id_number, t.birth_date, t.bank_account_number, t.next_of_kin, 
+                    t.photo_path, t.employment_status, t.is_active, t.staff_type, t.position, 
+                    t.monthly_salary, t.department_id, s.school_name
                 FROM teachers t
                 LEFT JOIN schools s ON t.school_id = s.id
                 WHERE t.id = %s
@@ -1242,23 +1249,14 @@ class TeachersForm(AuditBaseForm):
             if not teacher:
                 QMessageBox.warning(self, "Error", "Teacher data not found")
                 return
-
-            # After loading teacher data
-            dept_id = teacher['department_id']  # from SELECT *
-            if dept_id:
-                idx = self.department_combo.findData(dept_id)
-                if idx >= 0:
-                    self.department_combo.setCurrentIndex(idx)
-            else:
-                self.department_combo.setCurrentIndex(0)
-                
+    
             # Clear all fields first
             self.clear_fields()
             
             # Set current teacher ID
             self.current_teacher_id = teacher_id
             
-            # Populate form fields
+            # Populate form fields using tuple indices
             self.teacher_id_entry.setText(teacher[2] or "")        # teacher_id_code
             self.salutation_combo.setCurrentText(teacher[3] or "Mr.")  # salutation
             self.first_name_entry.setText(teacher[4] or "")       # first_name
@@ -1300,7 +1298,7 @@ class TeachersForm(AuditBaseForm):
             self.next_of_kin_entry.setText(teacher[21] or "")      # next_of_kin
             
             # Handle photo
-            photo_path = teacher[22]
+            photo_path = teacher[22]  # photo_path
             if photo_path and os.path.exists(photo_path):
                 self.load_photo(photo_path)
             else:
@@ -1311,6 +1309,17 @@ class TeachersForm(AuditBaseForm):
             self.staff_type_combo.setCurrentText(teacher[25] or "Teaching")  # staff_type
             self.position_combo.setCurrentText(teacher[26] or "")   # position
             self.monthly_salary_entry.setText(str(teacher[27] or 0))  # monthly_salary
+            
+            # Handle department selection
+            dept_id = teacher[28]  # department_id
+            if dept_id:
+                # Find the department in combo box by data
+                for i in range(self.department_combo.count()):
+                    if self.department_combo.itemData(i) == dept_id:
+                        self.department_combo.setCurrentIndex(i)
+                        break
+            else:
+                self.department_combo.setCurrentIndex(0)  # Select empty option
             
             # Handle school selection
             if teacher[1]:  # school_id exists
@@ -1324,6 +1333,8 @@ class TeachersForm(AuditBaseForm):
         except Exception as e:
             print(f"Error loading teacher data: {e}")
             QMessageBox.critical(self, "Error", f"Error loading teacher data: {str(e)}")
+            import traceback
+            print(f"Full traceback: {traceback.format_exc()}")
 
     def edit_selected_teacher(self):
         """Edit selected teacher from table"""
@@ -1338,6 +1349,8 @@ class TeachersForm(AuditBaseForm):
     def refresh_data(self):
         """Refresh all data in the form with progress indication"""
         try:
+            #force
+            self.db_connection.commit()
             self.status_label.setText("Refreshing...")
             self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
             QApplication.processEvents()
@@ -1345,6 +1358,7 @@ class TeachersForm(AuditBaseForm):
             self.current_teacher_id = None
             self.load_teachers()
             self.load_schools()
+            self.load_departments_combo()
             self.clear_fields()
     
             # Reapply button permissions after refresh

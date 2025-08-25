@@ -316,85 +316,93 @@ class MainWindow(QMainWindow):
     # --- your existing UI, ribbon, sidebar, main tabs, and other methods follow here -
 
     def create_profile_section(self):
-        """Create a modern profile section with user name and toggle button"""
-        size = 36
-        
-        # Create container for profile elements
+        """Create a modern profile section with user name, profile pic, and ribbon toggle."""
+        size = 36  # profile pic size
+    
+        # --- Container for profile elements ---
         profile_container = QWidget()
+        profile_container.setObjectName("profileContainer")
         profile_layout = QHBoxLayout(profile_container)
         profile_layout.setContentsMargins(0, 0, 0, 0)
-        profile_layout.setSpacing(10)
-        
-        # User name label - use actual user session data
+        profile_layout.setSpacing(6)
+        profile_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    
+        # --- User name label ---
         self.user_name_label = QLabel(self.user_session.get('full_name', 'User'))
+        self.user_name_label.setObjectName("userName")
+        self.user_name_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.user_name_label.setStyleSheet("""
-            QLabel {
+            QLabel#userName {
                 color: white;
                 font-size: 13px;
                 font-weight: 500;
-                padding-right: 5px;
+                background: transparent;
             }
         """)
         profile_layout.addWidget(self.user_name_label)
-        
-        # Profile picture
+    
+        # --- Profile picture ---
         self.profile_pic = QLabel()
         self.profile_pic.setObjectName("profilePic")
         self.profile_pic.setFixedSize(size, size)
         self.profile_pic.setScaledContents(True)
-        
-        # Try to load profile image, create placeholder if not found
-        # Try to load profile image, create placeholder if not found
+        self.profile_pic.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    
+        # Load profile image or fallback
         profile_pixmap = None
         profile_image_path = self.user_session.get('profile_image')
-        
         if profile_image_path:
             full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
             if os.path.exists(full_path):
                 profile_pixmap = QPixmap(full_path)
-        
+    
         if not profile_pixmap or profile_pixmap.isNull():
             fallback_path = "static/icons/profile.jpg"
             if os.path.exists(fallback_path):
                 profile_pixmap = QPixmap(fallback_path)
-        
+    
         if profile_pixmap and not profile_pixmap.isNull():
             circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
         else:
             circular_pixmap = self.create_profile_placeholder(size)
-        
-        # ✅ Set tooltip with user info
+    
+        # --- Tooltip ---
         full_name = self.user_session.get('full_name', 'User')
         position = self.user_session.get('position', 'N/A')
         login_time = self.user_session.get('login_time', 'Unknown')
-        
         try:
             login_dt = datetime.fromisoformat(login_time)
             login_str = login_dt.strftime('%Y-%m-%d %H:%M')
         except:
             login_str = 'Just now'
-        
+    
         tooltip_text = f"""
         <b>Full Name:</b> {full_name}<br>
         <b>Position:</b> {position}<br>
         <b>Status:</b> <span style="color: #00aa00;">Signed In</span><br>
         <b>Since:</b> {login_str}
         """.strip()
-        
+    
         self.profile_pic.setToolTip(tooltip_text)
         self.profile_pic.setPixmap(circular_pixmap)
-        
         profile_layout.addWidget(self.profile_pic)
-        
-        # Ribbon toggle button
+    
+        # --- Ribbon toggle button ---
         self.ribbon_toggle_btn = QPushButton("▴")
         self.ribbon_toggle_btn.setObjectName("ribbonToggle")
         self.ribbon_toggle_btn.setToolTip("Toggle Ribbon Visibility")
+        self.ribbon_toggle_btn.setFixedHeight(size)
         self.ribbon_toggle_btn.clicked.connect(self.toggle_ribbon)
         profile_layout.addWidget(self.ribbon_toggle_btn)
+            
+        # Spacer to push profile section to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.main_tabbar.addWidget(spacer)
         
-        # Add the complete profile container to the toolbar
+        # Add the profile container
         self.main_tabbar.addWidget(profile_container)
+
 
     def update_profile_tooltip(self):
         """Update the profile picture tooltip when session changes"""
@@ -620,44 +628,47 @@ class MainWindow(QMainWindow):
         return pixmap
 
     def create_ribbon_panel(self):
-        """Create the modern ribbon-style panel"""
+        """Create the modern ribbon-style panel (cleaned, no scroll context menu)"""
         self.ribbon_container = QWidget()
         self.ribbon_container.setObjectName("ribbonContainer")
         self.ribbon_container.setFixedHeight(90)
-
+    
         ribbon_layout = QVBoxLayout(self.ribbon_container)
         ribbon_layout.setContentsMargins(0, 0, 0, 0)
         ribbon_layout.setSpacing(0)
-
-        # Modern ribbon title
-        #self.ribbon_title = QLabel("Dashboard")
-        #self.ribbon_title.setObjectName("ribbonTitle")
-        #self.ribbon_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        #ribbon_layout.addWidget(self.ribbon_title)
-
+    
         # Scrollable ribbon area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setFrameShape(QFrame.NoFrame)
-
+    
+        # 🔹 Disable default scroll context menu
+        scroll_area.setContextMenuPolicy(Qt.NoContextMenu)
+        scroll_area.horizontalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
+        scroll_area.verticalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
+    
+        # Ribbon panel content
         self.ribbon_panel = QWidget()
         self.ribbon_panel.setObjectName("ribbonPanel")
         self.ribbon_panel_layout = QHBoxLayout(self.ribbon_panel)
         self.ribbon_panel_layout.setContentsMargins(10, 3, 10, 5)
         self.ribbon_panel_layout.setSpacing(8)
-
+    
         scroll_area.setWidget(self.ribbon_panel)
         ribbon_layout.addWidget(scroll_area)
-
+    
+        # Add ribbon to toolbar
         self.addToolBarBreak(Qt.TopToolBarArea)
         self.ribbon_toolbar = QToolBar("Ribbon")
         self.ribbon_toolbar.setMovable(False)
         self.ribbon_toolbar.addWidget(self.ribbon_container)
         self.addToolBar(Qt.TopToolBarArea, self.ribbon_toolbar)
-
+    
+        # Initialize ribbon content (Dashboard as default)
         self.update_ribbon_panel("Dashboard")
+
 
     def create_ribbon_group(self, title, actions):
         """Create a modern ribbon group with enhanced styling"""
@@ -714,16 +725,14 @@ class MainWindow(QMainWindow):
         return group
 
     def update_ribbon_panel(self, main_tab):
-        """Update ribbon panel with modern styling"""
-        # Keep this — but just set clean title
-        #self.ribbon_title.setText(main_tab)
-    
+        """Update ribbon panel with modern styling without overlapping main navigation"""
         # Clear existing content
         while self.ribbon_panel_layout.count():
             item = self.ribbon_panel_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
     
+        # Define ribbon groups per tab
         #  Keep your existing ribbon_groups logic
         ribbon_groups = {
             "Dashboard": [
@@ -788,11 +797,17 @@ class MainWindow(QMainWindow):
             ]}
         ])
     
+        # Add each group to ribbon panel
         for group in ribbon_groups:
-            ribbon_group = self.create_ribbon_group(group["title"], group["actions"])
-            self.ribbon_panel_layout.addWidget(ribbon_group)
+            ribbon_group_widget = self.create_ribbon_group(group["title"], group["actions"])
+            self.ribbon_panel_layout.addWidget(ribbon_group_widget)
     
-        self.ribbon_panel_layout.addStretch()
+        self.ribbon_panel_layout.addStretch()  # ensures no overlap
+    
+        # Ensure ribbon container height is correct
+        self.ribbon_container.setFixedHeight(90)
+        self.ribbon_toolbar.setFixedHeight(90)
+
     
     # Ribbon button handlers
     #for users

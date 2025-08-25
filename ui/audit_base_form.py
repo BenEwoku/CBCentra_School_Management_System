@@ -122,7 +122,7 @@ class AuditBaseForm(QWidget):
                 background: rgba(255, 255, 255, 0.1);
                 color: white;
                 padding: 8px 12px;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+                border: none;
                 border-radius: 8px;
                 min-width: 40px;
                 max-width: 50px;
@@ -146,10 +146,10 @@ class AuditBaseForm(QWidget):
             QPushButton#tabButton {{
                 background: transparent;
                 color: white;
-                padding: 12px 20px;
+                padding: 8px 12px;
                 border: none;
-                border-radius: 8px;
-                min-width: 80px;
+                border-radius: 4px;
+                min-width: 60px;
                 font-size: 13px;
                 font-weight: 500;
                 margin: 2px 3px;
@@ -173,7 +173,7 @@ class AuditBaseForm(QWidget):
 
             /* Profile Section Styling (Right Side) */
             QWidget#profileContainer {{
-                background: rgba(255, 255, 255, 0.1);
+                background: transparent;
                 border-radius: 25px;
                 padding: 5px 15px;
                 margin: 5px;
@@ -188,13 +188,13 @@ class AuditBaseForm(QWidget):
             }}
             
             QLabel#profilePic {{
-                border: 2px solid rgba(255, 255, 255, 0.3);
+                border: 2px solid rgba(255, 255, 255, 0.2);
                 border-radius: 18px;
                 background: transparent;
             }}
             
             QLabel#profilePic:hover {{
-                border: 2px solid rgba(255, 255, 255, 0.6);
+                border: 2px solid rgba(255, 255, 255, 0.4);
             }}
             
             QPushButton#ribbonToggle {{
@@ -202,11 +202,11 @@ class AuditBaseForm(QWidget):
                 color: white;
                 padding: 8px 12px;
                 border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 6px;
+                border-radius: 4px;
                 font-size: 12px;
                 font-weight: bold;
-                min-width: 30px;
-                margin-left: 10px;
+                min-width: 20px;
+                margin-left: 6px;
             }}
             
             QPushButton#ribbonToggle:hover {{
