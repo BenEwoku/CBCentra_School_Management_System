@@ -233,7 +233,7 @@ def initialize_tables(conn, force=False):
 
         # === 6. Students ===
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS students (
+            CREATE TABLE students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 school_id INT,
                 first_name VARCHAR(50),
@@ -248,7 +248,6 @@ def initialize_tables(conn, force=False):
                 grade_applied_for VARCHAR(50),
                 class_year VARCHAR(20),
                 enrollment_date DATE,
-                parent_id INT,
                 regNo VARCHAR(50) UNIQUE,
                 is_active BOOLEAN DEFAULT TRUE,
                 photo_path TEXT,
@@ -259,9 +258,25 @@ def initialize_tables(conn, force=False):
                 INDEX idx_regNo (regNo),
                 INDEX idx_full_name (full_name),
                 INDEX idx_is_active (is_active),
-                FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
-                FOREIGN KEY (parent_id) REFERENCES parents(id) ON DELETE SET NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+
+        # === 5. student_Parent ===
+        cursor.execute('''
+            CREATE TABLE student_parent (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT NOT NULL,
+                parent_id INT NOT NULL,
+                relation_type VARCHAR(50),
+                is_primary_contact BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id) REFERENCES parents(id) ON DELETE CASCADE,
+                INDEX idx_student (student_id),
+                INDEX idx_parent (parent_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
 
         # === 7. Teachers ===

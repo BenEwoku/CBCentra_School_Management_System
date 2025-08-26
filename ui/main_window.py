@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QButtonGroup
 )
 from datetime import datetime
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction, QFont
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintPreviewWidget, QPrintDialog
@@ -203,7 +203,7 @@ class MainWindow(QMainWindow):
                 profile_pixmap = QPixmap(full_path)
     
         if not profile_pixmap or profile_pixmap.isNull():
-            fallback_path = "static/icons/profile.jpg"
+            fallback_path = "static/icons/profile.png"
             if os.path.exists(fallback_path):
                 profile_pixmap = QPixmap(fallback_path)
     
@@ -322,9 +322,17 @@ class MainWindow(QMainWindow):
         # --- Container for profile elements ---
         profile_container = QWidget()
         profile_container.setObjectName("profileContainer")
+        profile_container.setStyleSheet("""
+            QWidget#profileContainer {
+                background: transparent;
+                border: none;
+                margin: 0px;
+                padding: 0px;
+            }
+        """)
         profile_layout = QHBoxLayout(profile_container)
         profile_layout.setContentsMargins(0, 0, 0, 0)
-        profile_layout.setSpacing(6)
+        profile_layout.setSpacing(8)
         profile_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     
         # --- User name label ---
@@ -337,54 +345,48 @@ class MainWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: 500;
                 background: transparent;
+                border: none;
+                margin: 0px;
+                padding: 0px 4px;
             }
         """)
         profile_layout.addWidget(self.user_name_label)
     
-        # --- Profile picture ---
+        # --- Profile picture with enhanced styling ---
         self.profile_pic = QLabel()
         self.profile_pic.setObjectName("profilePic")
         self.profile_pic.setFixedSize(size, size)
         self.profile_pic.setScaledContents(True)
-        self.profile_pic.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.profile_pic.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Enhanced profile picture styling
+        self.profile_pic.setStyleSheet(f"""
+            QLabel#profilePic {{
+                border: 2px solid rgba(255, 255, 255, 0.8);
+                border-radius: {size//2}px;
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #3498db, stop: 1 #2980b9);
+                margin: 0px;
+                padding: 0px;
+            }}
+            QLabel#profilePic:hover {{
+                border: 2px solid rgba(255, 255, 255, 1.0);
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #5dade2, stop: 1 #3498db);
+            }}
+        """)
     
-        # Load profile image or fallback
-        profile_pixmap = None
-        profile_image_path = self.user_session.get('profile_image')
-        if profile_image_path:
-            full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
-            if os.path.exists(full_path):
-                profile_pixmap = QPixmap(full_path)
-    
-        if not profile_pixmap or profile_pixmap.isNull():
-            fallback_path = "static/icons/profile.jpg"
-            if os.path.exists(fallback_path):
-                profile_pixmap = QPixmap(fallback_path)
-    
-        if profile_pixmap and not profile_pixmap.isNull():
-            circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
-        else:
-            circular_pixmap = self.create_profile_placeholder(size)
-    
-        # --- Tooltip ---
-        full_name = self.user_session.get('full_name', 'User')
-        position = self.user_session.get('position', 'N/A')
-        login_time = self.user_session.get('login_time', 'Unknown')
-        try:
-            login_dt = datetime.fromisoformat(login_time)
-            login_str = login_dt.strftime('%Y-%m-%d %H:%M')
-        except:
-            login_str = 'Just now'
-    
-        tooltip_text = f"""
-        <b>Full Name:</b> {full_name}<br>
-        <b>Position:</b> {position}<br>
-        <b>Status:</b> <span style="color: #00aa00;">Signed In</span><br>
-        <b>Since:</b> {login_str}
-        """.strip()
-    
-        self.profile_pic.setToolTip(tooltip_text)
-        self.profile_pic.setPixmap(circular_pixmap)
+        # Load profile image or create enhanced placeholder
+        profile_pixmap = self.load_profile_image(size)
+        self.profile_pic.setPixmap(profile_pixmap)
+        
+        # Make profile picture clickable with cursor change
+        self.profile_pic.setCursor(Qt.PointingHandCursor)
+        self.profile_pic.mousePressEvent = self.on_profile_clicked
+        
+        # Enhanced tooltip
+        self.update_profile_tooltip()
+        
         profile_layout.addWidget(self.profile_pic)
     
         # --- Ribbon toggle button ---
@@ -395,14 +397,131 @@ class MainWindow(QMainWindow):
         self.ribbon_toggle_btn.clicked.connect(self.toggle_ribbon)
         profile_layout.addWidget(self.ribbon_toggle_btn)
             
-        # Spacer to push profile section to the right
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.main_tabbar.addWidget(spacer)
-        
-        # Add the profile container
+        # Add the profile container to toolbar
         self.main_tabbar.addWidget(profile_container)
 
+    def load_profile_image(self, size):
+        """Load and process profile image with fallback to enhanced placeholder"""
+        profile_pixmap = None
+        profile_image_path = self.user_session.get('profile_image')
+        
+        if profile_image_path:
+            full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
+            if os.path.exists(full_path):
+                original_pixmap = QPixmap(full_path)
+                if not original_pixmap.isNull():
+                    profile_pixmap = self.create_circular_pixmap(original_pixmap, size)
+    
+        # Try fallback image
+        if not profile_pixmap or profile_pixmap.isNull():
+            fallback_path = "static/icons/profile.png"
+            if os.path.exists(fallback_path):
+                fallback_pixmap = QPixmap(fallback_path)
+                if not fallback_pixmap.isNull():
+                    profile_pixmap = self.create_circular_pixmap(fallback_pixmap, size)
+    
+        # If still no image, create enhanced placeholder
+        if not profile_pixmap or profile_pixmap.isNull():
+            profile_pixmap = self.create_enhanced_profile_placeholder(size)
+    
+        return profile_pixmap
+
+    def create_enhanced_profile_placeholder(self, size):
+        """Create a more professional and recognizable profile placeholder"""
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Create professional gradient background
+        gradient = QLinearGradient(0, 0, size, size)
+        gradient.setColorAt(0, QColor("#ffffff"))  # Professional blue
+        gradient.setColorAt(0.5, QColor("#357abd"))
+        gradient.setColorAt(1, QColor("#2e6ba8"))
+        
+        painter.setBrush(QBrush(gradient))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(0, 0, size, size)
+        
+        # Draw user icon with better proportions
+        painter.setBrush(QBrush(QColor("white")))
+        painter.setPen(Qt.NoPen)
+        
+        # Head (circle)
+        head_size = size // 4
+        head_x = (size - head_size) // 2
+        head_y = size // 4
+        painter.drawEllipse(head_x, head_y, head_size, head_size)
+        
+        # Body (rounded rectangle/ellipse)
+        body_width = size // 2
+        body_height = size // 3
+        body_x = (size - body_width) // 2
+        body_y = size // 2 + 2
+        painter.drawEllipse(body_x, body_y, body_width, body_height)
+        
+        # Add initials if available
+        full_name = self.user_session.get('full_name', 'User')
+        if full_name and full_name != 'User':
+            initials = ''.join([word[0].upper() for word in full_name.split()[:2]])
+            painter.setPen(QColor("white"))
+            painter.setFont(QFont("Arial", size//4, QFont.Weight.Bold))
+            
+            # Clear the center and draw initials
+            painter.setBrush(QBrush(gradient))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(2, 2, size-4, size-4)
+            
+            painter.setPen(QColor("white"))
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, initials)
+        
+        painter.end()
+        return pixmap
+
+    def on_profile_clicked(self, event):
+        """Handle profile picture click - show user menu or profile options"""
+        from PySide6.QtWidgets import QMenu
+        
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #f0f0f0;
+            }
+        """)
+        
+        # Add menu actions
+        profile_action = menu.addAction("View Profile")
+        profile_action.triggered.connect(self.show_user_profile)
+        
+        settings_action = menu.addAction("Account Settings")
+        settings_action.triggered.connect(self.show_account_settings)
+        
+        menu.addSeparator()
+        
+        logout_action = menu.addAction("Logout")
+        logout_action.triggered.connect(self.on_logout)
+        
+        # Show menu at profile picture position
+        menu.exec(self.profile_pic.mapToGlobal(self.profile_pic.rect().bottomLeft()))
+    
+    def show_user_profile(self):
+        """Show user profile dialog"""
+        QMessageBox.information(self, "Profile", f"User Profile for: {self.user_session.get('full_name', 'User')}")
+    
+    def show_account_settings(self):
+        """Show account settings dialog"""
+        QMessageBox.information(self, "Settings", "Account settings will be available in the next update.")
 
     def update_profile_tooltip(self):
         """Update the profile picture tooltip when session changes"""
@@ -461,6 +580,7 @@ class MainWindow(QMainWindow):
     
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        spacer.setStyleSheet("background: transparent;")
         self.main_tabbar.addWidget(spacer)
     
         # Create profile section (now includes the toggle button)
@@ -600,32 +720,6 @@ class MainWindow(QMainWindow):
         
         return circular_pixmap
 
-    def create_profile_placeholder(self, size):
-        """Create a modern placeholder for profile picture"""
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-        
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Create gradient background
-        gradient = QLinearGradient(0, 0, size, size)
-        gradient.setColorAt(0, QColor("#3498db"))
-        gradient.setColorAt(1, QColor("#2980b9"))
-        
-        painter.setBrush(QBrush(gradient))
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(0, 0, size, size)
-        
-        # Draw user icon (simplified)
-        painter.setBrush(QBrush(QColor("white")))
-        # Head
-        painter.drawEllipse(size//3, size//4, size//3, size//3)
-        # Body
-        painter.drawEllipse(size//4, size//2, size//2, size//2)
-        
-        painter.end()
-        return pixmap
 
     def create_ribbon_panel(self):
         """Create the modern ribbon-style panel (cleaned, no scroll context menu)"""
@@ -739,13 +833,13 @@ class MainWindow(QMainWindow):
                 {"title": "View", "actions": [
                     {"name": "Overview", "icon": "overview.jpg", "handler": lambda: self.dashboard_tabs.setCurrentIndex(0)},
                     {"name": "Statistics", "icon": "statistics.jpg"},
-                    {"name": "Print", "icon": "print.jpg", "handler": lambda: self.dashboard_tabs.setCurrentIndex(2)}
+                    {"name": "Print", "icon": "print.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(2)}
                 ]},
                 {"title": "User Management", "actions": [
                     {"name": "Manage Users", "icon": "users.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(1)},
                     {"name": "Add User", "icon": "adduser.jpg", "handler": self.add_new_user},
-                    {"name": "Export User Data", "icon": "export.jpg", "handler": self.execute_user_export_dialog},
-                    {"name": "Refresh", "icon": "refresh.jpg", "handler": self.refresh_user_data}
+                    {"name": "Export User Data", "icon": "export.png", "handler": self.execute_user_export_dialog},
+                    {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_user_data}
                 ]},
                 {"title": "Security & Reports", "actions": [
                     {"name": "Login Logs", "icon": "security.jpg", "handler": self.show_login_logs},
@@ -753,20 +847,20 @@ class MainWindow(QMainWindow):
                     {"name": "Security Report", "icon": "report_security.jpg", "handler": self.generate_security_report}
                 ]},
                 {"title": "Tools", "actions": [
-                    {"name": "Settings", "icon": "settings.jpg", "handler": self.settings_action},
-                    {"name": "Global Refresh", "icon": "refresh_all.jpg", "handler": self.refresh_all_data}
+                    {"name": "Settings", "icon": "settings.png", "handler": self.settings_action},
+                    {"name": "Global Refresh", "icon": "refresh.png", "handler": self.refresh_all_data}
                 ]}
             ],
             "Schools": [
                 {"title": "Manage", "actions": [
                     {"name": "List Schools", "icon": "info.jpg"},
                     {"name": "Add New", "icon": "new.jpg"},
-                    {"name": "Import", "icon": "import.jpg"}
+                    {"name": "Import", "icon": "import.png"}
                 ]},
                 {"title": "Configuration", "actions": [
-                    {"name": "Settings", "icon": "settings.jpg"},
+                    {"name": "Settings", "icon": "settings.png"},
                     {"name": "Options", "icon": "options.jpg"},
-                    {"name": "Export", "icon": "export.jpg"}
+                    {"name": "Export", "icon": "export.png"}
                 ]}
             ],
             "Staff": [
@@ -776,23 +870,23 @@ class MainWindow(QMainWindow):
                     {"name": "View Teacher Summaries", "icon": "view.jpg", "handler": self.generate_teacher_summary}
                 ]},
                 {"title": "Actions", "actions": [
-                    {"name": "Refresh", "icon": "refresh.jpg", "handler": self.refresh_teachers_data},
+                    {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_teachers_data},
                     {"name": "Generate Teacher Form", "icon": "report.jpg", "handler": self.generate_teacher_profile},
-                    {"name": "Print", "icon": "print.jpg"}
+                    {"name": "Print", "icon": "print.png"}
                 ]},
                 {"title": "Import & Export", "actions": [
-                    {"name": "Import Teacher Data (CSV)", "icon": "import.jpg", "handler": self.import_teachers_data},
-                    {"name": "Export Teacher Data (Excel)", "icon": "export.jpg", "handler": self.export_teachers_data}
+                    {"name": "Import Teacher Data (CSV)", "icon": "import.png", "handler": self.import_teachers_data},
+                    {"name": "Export Teacher Data (Excel)", "icon": "export.png", "handler": self.export_teachers_data}
                 ]}
             ]
         }.get(main_tab, [
             {"title": "Common", "actions": [
                 {"name": "New", "icon": "new.jpg", "handler": self.new_action},
                 {"name": "Open", "icon": "open.jpg", "handler": self.open_action},
-                {"name": "Print", "icon": "print.jpg", "handler": self.print_action}
+                {"name": "Print", "icon": "print.png", "handler": self.print_action}
             ]},
             {"title": "Actions", "actions": [
-                {"name": "Settings", "icon": "settings.jpg", "handler": self.settings_action},
+                {"name": "Settings", "icon": "settings.png", "handler": self.settings_action},
                 {"name": "Options", "icon": "options.jpg"}
             ]}
         ])
@@ -1065,7 +1159,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Print", "Print action triggered from ribbon.")
 
     def create_sidebar(self):
-        """Create modern floating sidebar with animations"""
+        """Create modern floating sidebar with darker gradient background, full height, and animations"""
         # Create overlay background
         self.sidebar_overlay = QFrame(self)
         self.sidebar_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 0.3);")
@@ -1077,8 +1171,10 @@ class MainWindow(QMainWindow):
         self.sidebar_frame = QFrame(self)
         self.sidebar_frame.setObjectName("sideMenu")
         self.sidebar_frame.setFixedWidth(300)
-        self.sidebar_frame.setFixedHeight(self.height() - 140)  # Adjust for toolbar height
-        self.sidebar_frame.move(-300, 80)
+    
+        # 🔥 Set full height: starts at y=80 (mainTabs + ribbon), goes to bottom
+        self.sidebar_frame.setFixedHeight(self.height() - 80)
+        self.sidebar_frame.move(-300, 80)  # Aligns with bottom of ribbon
     
         self.sidebar_frame.setWindowFlags(Qt.Widget | Qt.FramelessWindowHint)
         self.sidebar_frame.setAttribute(Qt.WA_TranslucentBackground, False)
@@ -1089,77 +1185,53 @@ class MainWindow(QMainWindow):
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(25)
         shadow.setColor(QColor(0, 0, 0, 120))
-        shadow.setOffset(8, 8)
+        shadow.setOffset(6, 6)
         self.sidebar_frame.setGraphicsEffect(shadow)
+    
+        # 🔥 Apply DARKER gradient background (deeper than main tabs)
+        self.sidebar_frame.setStyleSheet("""
+            QFrame#sideMenu {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #002B5B,
+                    stop:1 #001F44
+                );
+                border: 1px solid #001428;
+                border-radius: 12px;
+            }
+        """)
     
         # Main sidebar layout
         layout = QVBoxLayout(self.sidebar_frame)
-        layout.setContentsMargins(15, 30, 15, 15)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(6)
     
         # --- Menu Header ---
-        menu_header = QLabel("MENU")
-        menu_header.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
-                font-size: 18px;
+        menu_header = QLabel(" MENU ")
+        menu_header.setObjectName("menuHeader")
+        menu_header.setStyleSheet(f"""
+            QLabel#menuHeader {{
+                background-color: {self.colors['main_tab_gradient_start']};  /* Blue background */
+                color: white;
+                font-size: 14px;
                 font-weight: bold;
-                letter-spacing: 2px;
-            }
+                letter-spacing: 1px;
+                padding: 6px 8px;
+                border-radius: 6px;
+                border: 1px solid {self.colors['main_tab_border']};
+            }}
         """)
         menu_header.setAlignment(Qt.AlignLeft)
         layout.addWidget(menu_header)
-    
-        # --- Title Container ---
-        title_container = QWidget()
-        title_container.setStyleSheet("""
-            QWidget {
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 8px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                margin-bottom: 10px;
-            }
-        """)
-        title_layout = QVBoxLayout(title_container)
-        title_layout.setContentsMargins(15, 15, 15, 15)
-    
-        title = QLabel("CBCentra SMS")
-        title.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
-                font-size: 22px;
-                font-weight: bold;
-                background: transparent;
-            }
-        """)
-        title.setAlignment(Qt.AlignCenter)
-    
-        subtitle = QLabel("School Management System")
-        subtitle.setStyleSheet("""
-            QLabel {
-                color: #e0e0e0;
-                font-size: 12px;
-                font-weight: normal;
-                background: transparent;
-            }
-        """)
-        subtitle.setAlignment(Qt.AlignCenter)
-    
-        title_layout.addWidget(title)
-        title_layout.addWidget(subtitle)
-        layout.addWidget(title_container)
     
         # --- Action Buttons ---
         actions = [
             ("Home", self.home_action, "home.jpg"),
             ("Dashboard", self.dashboard_action, "dashboard.jpg"),
-            ("New", self.new_action, "new.jpg"),
-            ("Open", self.open_action, "open.jpg"),
             ("Info", self.info_action, "info.jpg"),
-            ("Print", self.print_action, "print.jpg"),
-            ("Import", self.import_action, "import.jpg"),
-            ("Export", self.export_action, "export.jpg"),
-            ("Settings", self.settings_action, "settings.jpg"),
+            ("Print", self.print_action, "print.png"),
+            ("Import", self.import_action, "import.png"),
+            ("Export", self.export_action, "export.png"),
+            ("Settings", self.settings_action, "settings.png"),
             ("Options", self.options_action, "options.jpg"),
             ("Quit", self.close, "quit.jpg")
         ]
@@ -1167,13 +1239,38 @@ class MainWindow(QMainWindow):
         for name, func, icon in actions:
             btn = QPushButton(f"  {name}")
             btn.setObjectName("menuAction")
-    
+            btn.setProperty("menuActionName", name.lower())  # For tracking
+        
             icon_path = f"static/icons/{icon}"
             if os.path.exists(icon_path):
                 btn.setIcon(QIcon(icon_path))
-                btn.setIconSize(QSize(28, 28))
-    
-            btn.clicked.connect(func)
+                btn.setIconSize(QSize(20, 20))
+        
+            btn.setStyleSheet(f"""
+                QPushButton#menuAction {{
+                    background-color: {self.colors['background']};
+                    color: {self.colors['text_primary']};
+                    border: 1px solid {self.colors['border']};
+                    border-radius: 8px;
+                    padding: 10px 14px;
+                    font-size: 13px;
+                    font-weight: 500;
+                    text-align: left;
+                    min-height: 40px;
+                    max-height: 40px;
+                }}
+                QPushButton#menuAction:hover {{
+                    background-color: {self.colors['surface']};
+                }}
+                QPushButton#menuAction:checked {{
+                    background-color: #d0e0f0;
+                    border-color: {self.colors['primary']};
+                    font-weight: bold;
+                }}
+            """)
+        
+            btn.setCheckable(True)  # Allow checked state
+            btn.clicked.connect(lambda checked, f=func: self.on_sidebar_button_clicked(f, btn))
             layout.addWidget(btn)
     
         layout.addStretch()
@@ -1186,7 +1283,7 @@ class MainWindow(QMainWindow):
         # Overlay fade animation
         self.overlay_animation = QPropertyAnimation(self.sidebar_overlay, b"windowOpacity")
         self.overlay_animation.setDuration(300)
-
+    
     def toggle_sidebar(self):
         """Animate sidebar in and out with proper z-order management and overlay"""
         if self.sidebar_visible:
@@ -1263,6 +1360,15 @@ class MainWindow(QMainWindow):
         self.sidebar_animation.start()
         self.overlay_animation.start()
 
+    def on_sidebar_button_clicked(self, func, button):
+        """Handle sidebar button click with visual feedback"""
+        # Uncheck all other buttons
+        for child in self.sidebar_frame.findChildren(QPushButton, "menuAction"):
+            if child is not button:
+                child.setChecked(False)
+        # Execute action
+        func()
+
     def on_tab_clicked(self, tab_name):
         """Handle tab clicks"""
         # Update tab visual state
@@ -1311,18 +1417,16 @@ class MainWindow(QMainWindow):
                 self.toggle_sidebar()
                 self.tab_buttons[0].setChecked(False)
         super().mousePressEvent(event)
-
+    
     def resizeEvent(self, event):
-        """Handle window resize to adjust sidebar height"""
         super().resizeEvent(event)
         if hasattr(self, 'sidebar_frame'):
-            new_height = self.height() - 140
+            new_height = self.height() - 80  # Starts below ribbon
             self.sidebar_frame.setFixedHeight(new_height)
-            # Ensure sidebar stays on top after resize
             if self.sidebar_visible:
-                self.sidebar_frame.raise_()
-        
-        # Resize overlay to match window
+                self.sidebar_frame.move(0, 80)
+            else:
+                self.sidebar_frame.move(-300, 80)
         if hasattr(self, 'sidebar_overlay'):
             self.sidebar_overlay.setGeometry(0, 0, self.width(), self.height())
     

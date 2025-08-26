@@ -54,8 +54,8 @@ class AuditBaseForm(QWidget):
             'danger': '#dc3545',           # Red
             'warning': '#ffc107',          # Amber
             'info': '#17a2b8',             # Cyan
-            'secondary': '#475569',        # Slate
-            'secondary_hover': '#374151',  # Darker on hover
+            'secondary': '#6c757d',        # Gray (changed from dark slate)
+            'secondary_hover': '#5a6268',  # Darker gray on hover
             'text_primary': '#212529',     # Dark text
             'text_secondary': '#6c757d',
             'background': '#ffffff',       # White
@@ -72,7 +72,8 @@ class AuditBaseForm(QWidget):
             'main_tab_border': '#003366',          # Main tab border
             'tab_active': '#ffffff',               # Active tab background
             'tab_hover': 'rgba(255,255,255,0.15)', # Tab hover effect
-            'tab_checked': 'rgba(255,255,255,0.2)' # Checked tab background
+            'tab_checked': 'rgba(255,255,255,0.2)', # Checked tab background
+            'ribbon_background': '#ffffff'         # White ribbon background
         }
     
         # === Fonts ===
@@ -92,7 +93,7 @@ class AuditBaseForm(QWidget):
         self.setStyleSheet(self.get_global_stylesheet())
 
     def get_global_stylesheet(self):
-        """Get the complete global stylesheet that can be applied to any widget"""
+        """Get the complete global stylesheet with only ribbon/sidebar buttons changed to white/gray"""
         return f"""
             /* === GLOBAL BASE STYLES === */
             QWidget {{
@@ -101,7 +102,7 @@ class AuditBaseForm(QWidget):
                 font-family: 'Segoe UI', Arial, sans-serif;
                 font-size: 13px;
             }}
-
+    
             /* === MAIN NAVIGATION TABS (ENHANCED WITH ROUNDED CORNERS) === */
             QToolBar#mainTabs {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
@@ -141,6 +142,35 @@ class AuditBaseForm(QWidget):
                 border: 1px solid rgba(255, 255, 255, 0.5);
                 font-weight: bold;
             }}
+
+            QPushButton#menuToggle:checked {{
+                background: {self.colors['tab_checked']};
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                font-weight: bold;
+            }}
+            
+            /* Menu Action Buttons (Sidebar) */
+            QPushButton#menuAction {{
+                background-color: {self.colors['background']};
+                color: {self.colors['text_primary']};
+                border: 1px solid {self.colors['border']};
+                border-radius: 8px;
+                padding: 10px 14px;
+                font-size: 13px;
+                font-weight: 500;
+                text-align: left;
+                min-height: 40px;
+                max-height: 40px;
+            }}
+            QPushButton#menuAction:hover {{
+                background-color: {self.colors['surface']};
+                border-color: #b0b0b0;
+            }}
+            QPushButton#menuAction:pressed {{
+                background-color: #e9ecef;
+                font-weight: bold;
+            }}
+
             
             /* Main Tab Buttons (Center) */
             QPushButton#tabButton {{
@@ -170,7 +200,7 @@ class AuditBaseForm(QWidget):
             QPushButton#tabButton:pressed {{
                 background: rgba(255, 255, 255, 0.3);
             }}
-
+    
             /* Profile Section Styling (Right Side) */
             QWidget#profileContainer {{
                 background: transparent;
@@ -213,10 +243,10 @@ class AuditBaseForm(QWidget):
                 background: rgba(255, 255, 255, 0.25);
                 border: 1px solid rgba(255, 255, 255, 0.4);
             }}
-
+    
             /* === RIBBON CONTAINER === */
             #ribbonContainer {{
-                background: #f1f5f9;
+                background: {self.colors['ribbon_background']};
                 border-bottom: 1px solid {self.colors['border']};
                 border-top: none;
                 padding: 8px;
@@ -226,7 +256,7 @@ class AuditBaseForm(QWidget):
                 background-color: transparent;
                 border: none;
             }}
-
+    
             /* === GROUP BOXES === */
             QGroupBox {{
                 font-weight: bold;
@@ -247,7 +277,7 @@ class AuditBaseForm(QWidget):
                 color: {self.colors['primary']};
                 font-weight: bold;
             }}
-
+    
             /* === LABELS === */
             QLabel {{
                 font-size: 14px;
@@ -255,7 +285,7 @@ class AuditBaseForm(QWidget):
                 color: {self.colors['text_primary']};
                 padding: 2px;
             }}
-
+    
             /* === INPUT FIELDS === */
             QLineEdit, QComboBox, QDateEdit {{
                 padding: 10px 14px;
@@ -277,7 +307,7 @@ class AuditBaseForm(QWidget):
                 color: #64748b;
                 border-color: #cbd5e1;
             }}
-
+    
             /* === COMBO BOX DROPDOWN === */
             QComboBox::drop-down {{
                 border: none;
@@ -290,7 +320,7 @@ class AuditBaseForm(QWidget):
                 border-right: 5px solid transparent;
                 border-top: 5px solid {self.colors['text_secondary']};
             }}
-
+    
             /* === BUTTONS === */
             QPushButton {{
                 border: none;
@@ -300,10 +330,20 @@ class AuditBaseForm(QWidget):
                 font-size: 12px;
                 min-height: 28px;
                 max-height: 32px;
-                background-color: {self.colors['secondary']};
+                background-color: {self.colors['primary']};
                 color: white;
             }}
-
+    
+            QPushButton:hover {{
+                background-color: {self.colors['primary_dark']};
+                border: 1px solid rgba(255, 255, 255, 0.3);
+            }}
+            
+            QPushButton:pressed {{
+                padding: 9px 15px 7px 17px;
+                background-color: {self.colors['primary_dark']};
+            }}
+    
             /* === MESSAGE BOX BUTTONS – COMPACT & BALANCED === */
             QMessageBox,
             QDialogButtonBox {{
@@ -351,15 +391,7 @@ class AuditBaseForm(QWidget):
             QMessageBox QLabel {{
                 padding: 8px 12px;
             }}
-            
-            QPushButton:hover {{
-                border: 1px solid rgba(255, 255, 255, 0.3);
-            }}
-            
-            QPushButton:pressed {{
-                padding: 9px 15px 7px 17px;
-            }}
-
+    
             /* === MESSAGE BOX BUTTONS - SPECIFIC STYLING === */
             QMessageBox QPushButton {{
                 background-color: {self.colors['secondary']};
@@ -398,7 +430,7 @@ class AuditBaseForm(QWidget):
             QMessageBox QPushButton[text="Discard"]:hover {{
                 background-color: #c0392b;
             }}
-
+    
             /* === BUTTON VARIANTS === */
             QPushButton[class="success"] {{
                 background-color: {self.colors['success']};
@@ -407,7 +439,7 @@ class AuditBaseForm(QWidget):
             QPushButton[class="success"]:hover {{
                 background-color: #229954;
             }}
-
+    
             QPushButton[class="danger"] {{
                 background-color: {self.colors['danger']};
                 color: white;
@@ -415,15 +447,16 @@ class AuditBaseForm(QWidget):
             QPushButton[class="danger"]:hover {{
                 background-color: #c0392b;
             }}
-
+    
             QPushButton[class="warning"] {{
                 background-color: {self.colors['warning']};
-                color: white;
+                color: #212529;
             }}
             QPushButton[class="warning"]:hover {{
                 background-color: #e67e22;
+                color: white;
             }}
-
+    
             QPushButton[class="info"] {{
                 background-color: {self.colors['info']};
                 color: white;
@@ -431,7 +464,7 @@ class AuditBaseForm(QWidget):
             QPushButton[class="info"]:hover {{
                 background-color: #7d3c98;
             }}
-
+    
             QPushButton[class="primary"] {{
                 background-color: {self.colors['primary']};
                 color: white;
@@ -439,7 +472,7 @@ class AuditBaseForm(QWidget):
             QPushButton[class="primary"]:hover {{
                 background-color: {self.colors['primary_dark']};
             }}
-
+    
             QPushButton[class="secondary"] {{
                 background-color: {self.colors['secondary']};
                 color: white;
@@ -447,7 +480,7 @@ class AuditBaseForm(QWidget):
             QPushButton[class="secondary"]:hover {{
                 background-color: {self.colors['secondary_hover']};
             }}
-
+    
             /* === TABLE STYLING === */
             QTableWidget {{
                 border: 2px solid {self.colors['border']};
@@ -478,7 +511,7 @@ class AuditBaseForm(QWidget):
             QTableWidget::item:hover {{
                 background-color: rgba(13, 148, 136, 0.1);
             }}
-
+    
             /* === TABLE HEADER === */
             QHeaderView::section {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -494,12 +527,12 @@ class AuditBaseForm(QWidget):
                 min-height: 16px;
                 max-height: 18px;
             }}
-
+    
             /* Add a blue bottom border to tie to brand */
             QHeaderView::section {{
                 border-bottom: 3px solid {self.colors['primary']};
             }}
-
+    
             QHeaderView::section:first {{
                 border-top-left-radius: 10px;
             }}
@@ -512,7 +545,7 @@ class AuditBaseForm(QWidget):
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #0f766e, stop:1 #115e59);
             }}
-
+    
             /* === VERTICAL HEADER (ROW NUMBERS) === */
             QTableWidget::verticalHeader {{
                 background-color: #f1f5f9;
@@ -541,7 +574,7 @@ class AuditBaseForm(QWidget):
             QTableWidget::verticalHeader::section:hover {{
                 background-color: #e2e8f0;
             }}
-
+    
             /* === SCROLLBARS === */
             QScrollBar:vertical {{
                 background: {self.colors['light']};
@@ -563,7 +596,7 @@ class AuditBaseForm(QWidget):
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                     stop:0 #0f766e, stop:1 {self.colors['table_header']});
             }}
-
+    
             QScrollBar:horizontal {{
                 background: {self.colors['light']};
                 height: 14px;
@@ -579,7 +612,7 @@ class AuditBaseForm(QWidget):
                 min-width: 25px;
                 margin: 2px;
             }}
-
+    
             /* === PHOTO LABEL === */
             QLabel[class="photo"] {{
                 border: 2px dashed {self.colors['border']};
@@ -594,7 +627,7 @@ class AuditBaseForm(QWidget):
                 max-width: 180px;
                 max-height: 180px;
             }}
-
+    
             /* === MENU BAR === */
             QMenuBar {{
                 background: transparent;
@@ -618,7 +651,7 @@ class AuditBaseForm(QWidget):
             /* === MENU POPUP === */
             QMenu {{
                 background-color: white;
-                border: 1px solid #e2e8f0;  /* Light border matching your palette */
+                border: 1px solid #e2e8f0;
                 border-radius: 8px;
                 padding: 6px;
             }}
@@ -630,11 +663,11 @@ class AuditBaseForm(QWidget):
             }}
             
             QMenu::item:selected {{
-                background-color: #f1f5f9;  /* Same as your ribbon - perfect match! */
-                color: {self.colors['primary_dark']};  /* Your dark blue for text */
+                background-color: #f1f5f9;
+                color: {self.colors['primary_dark']};
                 font-weight: 500;
             }}
-
+    
             /* === TAB WIDGET (For Content Tabs) === */
             QTabWidget::pane {{
                 border: 2px solid {self.colors['border']};
@@ -642,7 +675,7 @@ class AuditBaseForm(QWidget):
                 background-color: {self.colors['background']};
                 margin-top: -1px;
             }}
-
+    
             QTabBar::tab {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                     stop: 0 #e9ecef, stop: 1 #dee2e6);
@@ -653,17 +686,41 @@ class AuditBaseForm(QWidget):
                 border-top-right-radius: 8px;
                 font-weight: 500;
             }}
-
+    
             QTabBar::tab:selected {{
                 background: {self.colors['background']};
                 border-bottom: 2px solid {self.colors['primary']};
                 color: {self.colors['primary']};
                 font-weight: bold;
             }}
-
+    
             QTabBar::tab:hover:!selected {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                     stop: 0 #f1f3f4, stop: 1 #e9ecef);
+            }}
+            
+            /* === OVERRIDE: RIBBON BUTTONS - SMALL, FLAT, NO BORDER === */
+            QPushButton#ribbonButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                min-width: 50px;
+                max-width: 50px;
+                min-height: 30px;
+                max-height: 30px;
+                padding: 4px;
+                icon-size: 24px;
+                font-size: 9px;
+                color: #495057;
+            }}
+            QPushButton#ribbonButton:hover {{
+                background-color: #f0f0f0;
+            }}
+            QPushButton#ribbonButton:pressed {{
+                background-color: #e8e8e8;
+            }}
+            QPushButton#ribbonButton:focus {{
+                outline: none;
             }}
         """
         
@@ -777,7 +834,7 @@ class AuditBaseForm(QWidget):
                     cell.font = data_font
                     cell.alignment = data_alignment
                     cell.border = thin_border
-    
+                    
             # === FREEZE HEADER ROW ===
             ws.freeze_panes = 'A5'
     
@@ -858,7 +915,7 @@ class AuditBaseForm(QWidget):
             if school_id:
                 cursor.execute("SELECT school_name, address, phone, email FROM schools WHERE id = %s", (school_id,))
             else:
-                cursor.execute("SELECT school_name, address, phone, email FROM schools ORDER BY id LIMIT 1")
+                cursor.execute("SELECT school_name, address, phone, email FROM schools ORDER by id LIMIT 1")
     
             result = cursor.fetchone()
             conn.close()
@@ -885,5 +942,3 @@ class AuditBaseForm(QWidget):
                 'phone': 'N/A',
                 'email': 'info@cbcentra.edu'
             }
-
-            
