@@ -19,6 +19,8 @@ from ui.teachers_form import TeachersForm
 from ui.login_logs_form import LoginLogsForm
 from ui.audit_logs_form import AuditLogsForm
 from ui.audit_base_form import AuditBaseForm
+from ui.students_form import StudentsForm
+from ui.parents_form import ParentsForm
 from utils.permissions import has_permission
 from fpdf import FPDF
 from docx import Document
@@ -564,7 +566,7 @@ class MainWindow(QMainWindow):
         
         self.tab_buttons = [menu_btn]
         tabs = [
-            "Dashboard", "Schools", "Staff", "Students",
+            "Dashboard", "Schools", "Staff", "Parents", "Students",
             "Exams", "Activities", "Finance", "Others"
         ]
         
@@ -602,9 +604,18 @@ class MainWindow(QMainWindow):
         # Staff Page (TeachersForm)
         self.staff_form = TeachersForm(parent=self, user_session=self.user_session)
         self.stacked_widget.addWidget(self.staff_form)
+
+        # Parents Page (ParentsForm)
+        self.parents_form = ParentsForm(parent=self, user_session=self.user_session)
+        self.stacked_widget.addWidget(self.parents_form)
+
+        # Students Page (StudentsForm)
+        self.students_form = StudentsForm(parent=self, user_session=self.user_session)
+        self.stacked_widget.addWidget(self.students_form)
+
     
-        # Other pages (Students to Others)
-        for i in range(3, 8):  # Students (3) to Others (7)
+        # Other pages (exams to Others)
+        for i in range(5, 8):  # exams (3) to Others (7)
             page = QWidget()
             layout = QVBoxLayout(page)
             layout.setContentsMargins(20, 20, 20, 20)
@@ -623,7 +634,7 @@ class MainWindow(QMainWindow):
         """Create dashboard page with flat tabs: Overview, User Management, Permissions, Login Activity, Audit Trail"""
         dashboard_page = QWidget()
         dashboard_layout = QVBoxLayout(dashboard_page)
-        dashboard_layout.setContentsMargins(0, 0, 0, 0)
+        dashboard_layout.setContentsMargins(0, 10, 0, 0)
     
         # ✅ Create tab widget FIRST
         self.dashboard_tabs = QTabWidget()
@@ -831,8 +842,8 @@ class MainWindow(QMainWindow):
         ribbon_groups = {
             "Dashboard": [
                 {"title": "View", "actions": [
-                    {"name": "Overview", "icon": "overview.jpg", "handler": lambda: self.dashboard_tabs.setCurrentIndex(0)},
-                    {"name": "Statistics", "icon": "statistics.jpg"},
+                    {"name": "Overview", "icon": "overview.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(0)},
+                    {"name": "Statistics", "icon": "statistics.png"},
                     {"name": "Print", "icon": "print.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(2)}
                 ]},
                 {"title": "User Management", "actions": [
@@ -853,13 +864,13 @@ class MainWindow(QMainWindow):
             ],
             "Schools": [
                 {"title": "Manage", "actions": [
-                    {"name": "List Schools", "icon": "info.jpg"},
+                    {"name": "List Schools", "icon": "info.png"},
                     {"name": "Add New", "icon": "new.jpg"},
                     {"name": "Import", "icon": "import.png"}
                 ]},
                 {"title": "Configuration", "actions": [
                     {"name": "Settings", "icon": "settings.png"},
-                    {"name": "Options", "icon": "options.jpg"},
+                    {"name": "Options", "icon": "options.png"},
                     {"name": "Export", "icon": "export.png"}
                 ]}
             ],
@@ -867,18 +878,40 @@ class MainWindow(QMainWindow):
                 {"title": "Staff Records", "actions": [
                     {"name": "Teachers", "icon": "teacher.jpg", "handler": self.show_teachers_form},
                     {"name": "Add Teacher", "icon": "addstaff.jpg", "handler": self.add_new_teacher},
-                    {"name": "View Teacher Summaries", "icon": "view.jpg", "handler": self.generate_teacher_summary}
+                    {"name": "View Teacher Summaries", "icon": "view.png", "handler": self.generate_teacher_summary}
                 ]},
                 {"title": "Actions", "actions": [
                     {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_teachers_data},
-                    {"name": "Generate Teacher Form", "icon": "report.jpg", "handler": self.generate_teacher_profile},
+                    {"name": "Generate Teacher Form", "icon": "report.png", "handler": self.generate_teacher_profile},
                     {"name": "Print", "icon": "print.png"}
                 ]},
                 {"title": "Import & Export", "actions": [
                     {"name": "Import Teacher Data (CSV)", "icon": "import.png", "handler": self.import_teachers_data},
                     {"name": "Export Teacher Data (Excel)", "icon": "export.png", "handler": self.export_teachers_data}
                 ]}
-            ]
+            ],
+            "Parents": [
+                {"title": "Parent Records", "actions": [
+                    {"name": "Parents", "icon": "parents.jpg", "handler": self.show_parents_form},
+                    {"name": "Add Parent", "icon": "addparent.jpg", "handler": self.add_new_parent},
+                    {"name": "View Parent Summaries", "icon": "view.png", "handler": self.generate_parent_summary}
+                ]},
+                {"title": "Actions", "actions": [
+                    {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_parents_data},
+                    {"name": "Generate Parent Profile", "icon": "report.png", "handler": self.generate_parent_profile},
+                    {"name": "Search Parents", "icon": "search.png", "handler": self.search_parents}
+                ]},
+                {"title": "Import & Export", "actions": [
+                    {"name": "Import Parent Data", "icon": "import.png", "handler": self.import_parents_data},
+                    {"name": "Export Parent Data", "icon": "export.png", "handler": self.export_parents_data},
+                    {"name": "Backup Data", "icon": "backup.png", "handler": self.backup_parent_data}
+                ]},
+                {"title": "Tools", "actions": [
+                    {"name": "View Children", "icon": "children.png", "handler": self.view_parent_children},
+                    {"name": "Manage Contacts", "icon": "contacts.png", "handler": self.manage_parent_contacts},
+                    {"name": "Validate Data", "icon": "validate.png", "handler": self.validate_parent_data}
+                ]}
+            ],
         }.get(main_tab, [
             {"title": "Common", "actions": [
                 {"name": "New", "icon": "new.jpg", "handler": self.new_action},
@@ -887,7 +920,7 @@ class MainWindow(QMainWindow):
             ]},
             {"title": "Actions", "actions": [
                 {"name": "Settings", "icon": "settings.png", "handler": self.settings_action},
-                {"name": "Options", "icon": "options.jpg"}
+                {"name": "Options", "icon": "options.png"}
             ]}
         ])
     
@@ -1073,6 +1106,194 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Print Error", f"Failed to print PDF:\n{str(e)}")
 
+    def show_parents_form(self):
+        """Switch to parents form and ensure it's visible"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            self.parents_form.load_parents()
+    
+    def add_new_parent(self):
+        """Prepare the form for adding a new parent"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            self.parents_form.clear_fields()
+            if hasattr(self.parents_form, 'tab_widget'):
+                self.parents_form.tab_widget.setCurrentIndex(0)
+    
+    def refresh_parents_data(self):
+        """Refresh parents data"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            self.parents_form.load_parents()
+            if hasattr(self.parents_form, 'load_schools'):
+                self.parents_form.load_schools()
+            QMessageBox.information(self, "Refreshed", "Parent data has been refreshed")
+
+    def export_parents_data(self):
+        """Export parents data to Excel"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                self.parents_form.export_parents_data()
+                self.statusBar().showMessage("Parent data exported successfully")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", f"Failed to export parent data: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
+    
+    def import_parents_data(self):
+        """Import parents data from CSV"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                self.parents_form.import_parents_data()
+                self.statusBar().showMessage("Parent data import initiated")
+            except Exception as e:
+                QMessageBox.critical(self, "Import Error", f"Failed to import parent data: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
+    
+    def generate_parent_summary(self):
+        """Generate parent summary report"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                self.parents_form.generate_parent_report()
+                self.statusBar().showMessage("Parent summary report generated")
+            except Exception as e:
+                QMessageBox.critical(self, "Report Error", f"Failed to generate parent summary: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
+    
+    def generate_parent_profile(self):
+        """Generate individual parent profile PDF"""
+        if not hasattr(self, 'parents_form'):
+            QMessageBox.warning(self, "Error", "Parents form not loaded")
+            return
+        
+        parent_id = getattr(self.parents_form, 'current_parent_id', None)
+        if not parent_id:
+            QMessageBox.warning(self, "Warning", "Please select a parent")
+            return
+        
+        try:
+            pdf_bytes = self.parents_form.generate_parent_profile_pdf(parent_id)
+            self.current_pdf_bytes = pdf_bytes  # Store for printing
+            self.show_pdf_preview_dialog(pdf_bytes)
+            self.statusBar().showMessage("Parent profile PDF generated")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to generate parent profile PDF: {str(e)}")
+    
+    def print_parents_list(self):
+        """Print parents list"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                # Generate printable parents list
+                pdf_bytes = self.parents_form.generate_parents_list_pdf()
+                self.current_pdf_bytes = pdf_bytes
+                self.show_pdf_preview_dialog(pdf_bytes)
+                self.statusBar().showMessage("Parents list ready for printing")
+            except Exception as e:
+                QMessageBox.critical(self, "Print Error", f"Failed to prepare parents list: {str(e)}")
+        else:
+            QMessageBox.information(self, "Print", "Parents list print functionality will be implemented")
+    
+    def search_parents(self):
+        """Open parent search dialog"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                # If parents form has a search method, call it
+                if hasattr(self.parents_form, 'show_search_dialog'):
+                    self.parents_form.show_search_dialog()
+                else:
+                    # Basic search implementation
+                    search_term, ok = QInputDialog.getText(self, "Search Parents", "Enter parent name or ID:")
+                    if ok and search_term:
+                        self.parents_form.search_parents(search_term)
+            except Exception as e:
+                QMessageBox.critical(self, "Search Error", f"Failed to search parents: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
+    
+    def manage_parent_contacts(self):
+        """Manage parent contact information"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                # If parents form has contact management, use it
+                if hasattr(self.parents_form, 'manage_contacts'):
+                    self.parents_form.manage_contacts()
+                else:
+                    QMessageBox.information(self, "Contacts", "Contact management feature coming soon")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open contact management: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
+    
+    def view_parent_children(self):
+        """View children linked to selected parent"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            parent_id = getattr(self.parents_form, 'current_parent_id', None)
+            if not parent_id:
+                QMessageBox.warning(self, "Warning", "Please select a parent first")
+                return
+            
+            try:
+                if hasattr(self.parents_form, 'view_children'):
+                    self.parents_form.view_children(parent_id)
+                else:
+                    QMessageBox.information(self, "Children", "Child viewing feature coming soon")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to view parent's children: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
+    
+    def backup_parent_data(self):
+        """Create backup of parent data"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                "Backup Parent Data",
+                f"parents_backup_{timestamp}.sql",
+                "SQL Files (*.sql);;All Files (*)"
+            )
+            
+            if filename:
+                if hasattr(self, 'parents_form') and hasattr(self.parents_form, 'backup_data'):
+                    success = self.parents_form.backup_data(filename)
+                    if success:
+                        QMessageBox.information(self, "Backup Complete", f"Parent data backed up to: {filename}")
+                        self.statusBar().showMessage("Parent data backup completed successfully")
+                    else:
+                        QMessageBox.critical(self, "Backup Failed", "Failed to create backup")
+                else:
+                    QMessageBox.information(self, "Backup", "Backup functionality will be implemented")
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Backup Error", f"Failed to backup parent data: {str(e)}")
+    
+    def validate_parent_data(self):
+        """Validate parent data integrity"""
+        self.on_tab_clicked("Parents")
+        if hasattr(self, 'parents_form'):
+            try:
+                if hasattr(self.parents_form, 'validate_data'):
+                    issues = self.parents_form.validate_data()
+                    if issues:
+                        QMessageBox.warning(self, "Data Issues Found", f"Found {len(issues)} data integrity issues")
+                    else:
+                        QMessageBox.information(self, "Validation Complete", "All parent data is valid")
+                else:
+                    QMessageBox.information(self, "Validation", "Data validation feature coming soon")
+            except Exception as e:
+                QMessageBox.critical(self, "Validation Error", f"Failed to validate data: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", "Parents form not available")
 
     #for login logs
     def show_login_logs(self):
@@ -1225,14 +1446,14 @@ class MainWindow(QMainWindow):
     
         # --- Action Buttons ---
         actions = [
-            ("Home", self.home_action, "home.jpg"),
-            ("Dashboard", self.dashboard_action, "dashboard.jpg"),
-            ("Info", self.info_action, "info.jpg"),
+            ("Home", self.home_action, "home.png"),
+            ("Dashboard", self.dashboard_action, "dashboard.png"),
+            ("Info", self.info_action, "info.png"),
             ("Print", self.print_action, "print.png"),
             ("Import", self.import_action, "import.png"),
             ("Export", self.export_action, "export.png"),
             ("Settings", self.settings_action, "settings.png"),
-            ("Options", self.options_action, "options.jpg"),
+            ("Options", self.options_action, "options.png"),
             ("Quit", self.close, "quit.jpg")
         ]
     
@@ -1384,11 +1605,12 @@ class MainWindow(QMainWindow):
             "Dashboard": 0,
             "Schools": 1,
             "Staff": 2,  # This matches the index where we added TeachersForm
-            "Students": 3,
-            "Exams": 4,
-            "Activities": 5,
-            "Finance": 6,
-            "Others": 7
+            "Parents": 3,
+            "Students": 4,
+            "Exams": 5,
+            "Activities": 6,
+            "Finance": 7,
+            "Others": 8
         }
         
         page_index = tab_mapping.get(tab_name, 0)
@@ -1401,6 +1623,12 @@ class MainWindow(QMainWindow):
         if tab_name == "Staff" and hasattr(self, 'staff_form'):
             self.staff_form.load_teachers()
             self.staff_form.load_schools()
+
+        # In on_tab_clicked method, add:
+        if tab_name == "Parents" and hasattr(self, 'parents_form'):
+            self.parents_form.load_parents()
+            if hasattr(self.parents_form, 'load_schools'):
+                self.parents_form.load_schools()
 
     def mousePressEvent(self, event):
         """Handle clicks outside sidebar to close it"""
