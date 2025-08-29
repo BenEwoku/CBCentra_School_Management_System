@@ -393,6 +393,8 @@ class AuditLogsForm(AuditBaseForm):
                 QMessageBox.critical(self, "Error", f"Failed to delete old logs: {e}")
 
     def refresh_data(self):
+        #force
+        self.db_connection.commit()
         self.load_audit_logs()
         self.logs_table.viewport().update()  # ✅ Fixed
         QMessageBox.information(self, "Success", "Audit data refreshed successfully!")

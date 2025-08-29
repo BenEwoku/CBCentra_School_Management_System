@@ -64,8 +64,8 @@ class AuditBaseForm(QWidget):
             'input_border': '#ced4da',
             'input_focus': '#80bdff',
             'input_background': '#ffffff',
-            'table_header': '#0f766e',     # Teal #e6edf3
-            'table_header_dark': '#cbd5e1', # Darker teal
+            'table_header': '#455A64',     # gray #e6edf3 
+            'table_header_dark': '#263238', # Darker
             'light': '#f1f5f9',             # Light background (for scrollbars)
             'main_tab_gradient_start': '#0066cc',  # Main tab gradient start
             'main_tab_gradient_end': '#004499',    # Main tab gradient end
@@ -543,7 +543,7 @@ class AuditBaseForm(QWidget):
             
             QHeaderView::section:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0f766e, stop:1 #115e59);
+                    stop:0 #2563eb, stop:1 #1e40af );
             }}
     
             /* === VERTICAL HEADER (ROW NUMBERS) === */

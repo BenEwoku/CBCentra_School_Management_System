@@ -13,10 +13,12 @@ from PySide6.QtWidgets import (
     QFormLayout, QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication
 )
 from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QPixmap, QIcon, QFont
+from PySide6.QtGui import QPixmap, QIcon, QFont, QAction 
+from PySide6.QtWidgets import QProgressDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel
 
 # Import from your existing structure
 from ui.audit_base_form import AuditBaseForm
+from utils.permissions import has_permission
 from models.models import get_db_connection  # Centralized DB connection
 from fpdf import FPDF
 from openpyxl import Workbook
@@ -24,105 +26,151 @@ from openpyxl.styles import Font, PatternFill, Alignment
 import platform
 import subprocess
 import random
+import pandas as pd
+from datetime import datetime
+# Define required permissions
+STUDENT_PERMISSIONS = {
+    'create': 'create_student',
+    'edit': 'edit_student',
+    'delete': 'delete_student',
+    'view': 'view_student',
+    'import': 'import_students',
+    'manage_parents': 'manage_student_parents'
+}
+    
 
 class StudentDetailsPopup(QDialog):
-    """Popup window to view detailed student information"""
-
+    """Popup window to view detailed student information with parent management"""
     def __init__(self, parent, student_id, user_session=None):
         super().__init__(parent)
         self.student_id = student_id
         self.user_session = user_session
         self.db_connection = None
         self.cursor = None
-
         self.setWindowTitle("Student Details")
-        self.resize(900, 700)
+        self.resize(1000, 700)
         self.setModal(True)
-
-        # Apply styling
-        self.setStyleSheet("""
-            QDialog { background-color: #f5f5f5; }
-            QLabel { font-weight: bold; color: #333; }
-            QTextEdit { background-color: white; border: 1px solid #ddd; }
-        """)
-
         self.setup_ui()
         self.load_student_details()
 
     def setup_ui(self):
-        """Setup the UI components"""
+        """Setup the UI components with three-column layout and centered photo"""
         layout = QVBoxLayout()
         self.setLayout(layout)
-
+    
         # Title
         title = QLabel("Student Details")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1f538d; padding: 10px;")
         layout.addWidget(title)
-
+    
         # Scroll area for content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        content = QWidget()
-        form_layout = QFormLayout()
-        content.setLayout(form_layout)
-
-        # Create labels for student information
-        self.full_name_lbl = QLabel()
-        self.reg_no_lbl = QLabel()
-        self.sex_lbl = QLabel()
-        self.dob_lbl = QLabel()
-        self.email_lbl = QLabel()
-        self.grade_lbl = QLabel()
-        self.class_year_lbl = QLabel()
-        self.enrollment_lbl = QLabel()
-        self.religion_lbl = QLabel()
-        self.citizenship_lbl = QLabel()
-        self.last_school_lbl = QLabel()
-        self.status_lbl = QLabel()
-
-        self.medical_lbl = QTextEdit()
-        self.medical_lbl.setReadOnly(True)
-        self.medical_lbl.setMaximumHeight(100)
-
-        self.allergies_lbl = QTextEdit()
-        self.allergies_lbl.setReadOnly(True)
-        self.allergies_lbl.setMaximumHeight(100)
-
-        # Add form rows
-        form_layout.addRow("Full Name:", self.full_name_lbl)
-        form_layout.addRow("Registration No:", self.reg_no_lbl)
-        form_layout.addRow("Sex:", self.sex_lbl)
-        form_layout.addRow("Date of Birth:", self.dob_lbl)
-        form_layout.addRow("Email:", self.email_lbl)
-        form_layout.addRow("Grade Applied For:", self.grade_lbl)
-        form_layout.addRow("Class Year:", self.class_year_lbl)
-        form_layout.addRow("Enrollment Date:", self.enrollment_lbl)
-        form_layout.addRow("Religion:", self.religion_lbl)
-        form_layout.addRow("Citizenship:", self.citizenship_lbl)
-        form_layout.addRow("Last School:", self.last_school_lbl)
-        form_layout.addRow("Status:", self.status_lbl)
-        form_layout.addRow("Medical Conditions:", self.medical_lbl)
-        form_layout.addRow("Allergies:", self.allergies_lbl)
-
-        # Parents section
-        parents_label = QLabel("Parents / Guardians")
-        parents_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #1f538d; padding: 10px 0;")
-        form_layout.addRow(parents_label)
-
-        self.parents_table = QTableWidget()
-        self.parents_table.setColumnCount(6)
-        self.parents_table.setHorizontalHeaderLabels([
-            "Name", "Relation", "Phone", "Email", "Fee Payer", "Emergency Contact"
-        ])
-        self.parents_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.parents_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.parents_table.setMaximumHeight(200)
-        form_layout.addRow(self.parents_table)
-
-        scroll.setWidget(content)
+        scroll.setFrameShape(QFrame.NoFrame)
         layout.addWidget(scroll)
-
+    
+        # Content widget
+        content = QWidget()
+        form_layout = QVBoxLayout(content)
+        form_layout.setSpacing(15)
+        form_layout.setContentsMargins(15, 15, 15, 15)
+        scroll.setWidget(content)
+    
+        # === TOP: Three-Column Layout (Left | Photo | Right) ===
+        top_layout = QHBoxLayout()
+        form_layout.addLayout(top_layout)
+    
+        # --- LEFT COLUMN: Personal & Academic Info ---
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(10)
+        left_layout.addWidget(QLabel("<b>Personal & Academic Information</b>"), 0, Qt.AlignTop)
+        left_layout.addSpacing(10)
+    
+        # Grid for student info
+        info_grid = QGridLayout()
+        info_grid.setSpacing(8)
+        info_grid.addWidget(QLabel("Full Name:"), 0, 0)
+        info_grid.addWidget(self.full_name_lbl, 0, 1)
+        info_grid.addWidget(QLabel("Reg No:"), 1, 0)
+        info_grid.addWidget(self.reg_no_lbl, 1, 1)
+        info_grid.addWidget(QLabel("Sex:"), 2, 0)
+        info_grid.addWidget(self.sex_lbl, 2, 1)
+        info_grid.addWidget(QLabel("Date of Birth:"), 3, 0)
+        info_grid.addWidget(self.dob_lbl, 3, 1)
+        info_grid.addWidget(QLabel("Email:"), 4, 0)
+        info_grid.addWidget(self.email_lbl, 4, 1)
+        info_grid.addWidget(QLabel("Grade Applied For:"), 5, 0)
+        info_grid.addWidget(self.grade_lbl, 5, 1)
+        info_grid.addWidget(QLabel("Class Year:"), 6, 0)
+        info_grid.addWidget(self.class_year_lbl, 6, 1)
+        info_grid.addWidget(QLabel("Enrollment Date:"), 7, 0)
+        info_grid.addWidget(self.enrollment_lbl, 7, 1)
+        info_grid.addWidget(QLabel("Religion:"), 8, 0)
+        info_grid.addWidget(self.religion_lbl, 8, 1)
+        info_grid.addWidget(QLabel("Citizenship:"), 9, 0)
+        info_grid.addWidget(self.citizenship_lbl, 9, 1)
+        info_grid.addWidget(QLabel("Last School:"), 10, 0)
+        info_grid.addWidget(self.last_school_lbl, 10, 1)
+        info_grid.addWidget(QLabel("Status:"), 11, 0)
+        info_grid.addWidget(self.status_lbl, 11, 1)
+    
+        left_layout.addLayout(info_grid)
+        left_layout.addStretch()
+        top_layout.addLayout(left_layout, 4)
+    
+        # --- MIDDLE COLUMN: Centered Photo ---
+        photo_layout = QVBoxLayout()
+        photo_layout.setAlignment(Qt.AlignCenter)
+        photo_layout.setSpacing(10)
+    
+        photo_group = QGroupBox("Photo")
+        photo_group.setAlignment(Qt.AlignCenter)
+        photo_inner_layout = QVBoxLayout()
+        self.photo_label = QLabel("No Photo")
+        self.photo_label.setAlignment(Qt.AlignCenter)
+        self.photo_label.setFixedSize(140, 170)
+        self.photo_label.setStyleSheet("border: 1px solid #ccc; background: #f9f9f9;")
+        photo_inner_layout.addWidget(self.photo_label, alignment=Qt.AlignCenter)
+        photo_group.setLayout(photo_inner_layout)
+        photo_layout.addWidget(photo_group)
+    
+        top_layout.addLayout(photo_layout, 2)
+    
+        # --- RIGHT COLUMN: Medical & Allergies ---
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(10)
+        right_layout.addWidget(QLabel("<b>Medical Information</b>"), 0, Qt.AlignTop)
+        right_layout.addSpacing(10)
+    
+        # Medical Conditions
+        medical_group = QGroupBox("Medical Conditions")
+        medical_group_layout = QVBoxLayout()
+        medical_group_layout.addWidget(self.medical_lbl)
+        medical_group.setLayout(medical_group_layout)
+        right_layout.addWidget(medical_group)
+    
+        # Allergies
+        allergies_group = QGroupBox("Allergies")
+        allergies_group_layout = QVBoxLayout()
+        allergies_group_layout.addWidget(self.allergies_lbl)
+        allergies_group.setLayout(allergies_group_layout)
+        right_layout.addWidget(allergies_group)
+    
+        right_layout.addStretch()
+        top_layout.addLayout(right_layout, 4)
+    
+        # === BOTTOM: Parents Table (Full Width) ===
+        parents_group = QGroupBox("Parents / Guardians")
+        parents_layout = QVBoxLayout()
+        parents_group.setLayout(parents_layout)
+    
+        # Make table larger
+        self.parents_table.setMinimumHeight(180)
+        parents_layout.addWidget(self.parents_table)
+    
+        form_layout.addWidget(parents_group)
+    
         # Close button
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
@@ -139,6 +187,46 @@ class StudentDetailsPopup(QDialog):
         """)
         layout.addWidget(close_btn, alignment=Qt.AlignCenter)
 
+    def __init__(self, parent, student_id, user_session=None):
+        super().__init__(parent)
+        self.student_id = student_id
+        self.user_session = user_session
+        self.db_connection = None
+        self.cursor = None
+
+        # Initialize UI widgets
+        self.full_name_lbl = QLabel()
+        self.reg_no_lbl = QLabel()
+        self.sex_lbl = QLabel()
+        self.dob_lbl = QLabel()
+        self.email_lbl = QLabel()
+        self.grade_lbl = QLabel()
+        self.class_year_lbl = QLabel()
+        self.enrollment_lbl = QLabel()
+        self.religion_lbl = QLabel()
+        self.citizenship_lbl = QLabel()
+        self.last_school_lbl = QLabel()
+        self.status_lbl = QLabel()
+        self.medical_lbl = QTextEdit()
+        self.medical_lbl.setReadOnly(True)
+        self.medical_lbl.setMaximumHeight(100)
+        self.allergies_lbl = QTextEdit()
+        self.allergies_lbl.setReadOnly(True)
+        self.allergies_lbl.setMaximumHeight(100)
+        self.parents_table = QTableWidget()
+        self.parents_table.setColumnCount(6)
+        self.parents_table.setHorizontalHeaderLabels([
+            "Name", "Relation", "Phone", "Email", "Fee Payer", "Emergency Contact"
+        ])
+        self.parents_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.parents_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+
+        self.setWindowTitle("Student Details")
+        self.resize(1000, 700)
+        self.setModal(True)
+        self.setup_ui()
+        self.load_student_details()
+
     def load_student_details(self):
         """Load student details from database"""
         try:
@@ -152,7 +240,7 @@ class StudentDetailsPopup(QDialog):
                 SELECT s.first_name, s.surname, s.sex, s.date_of_birth, s.email,
                        s.grade_applied_for, s.class_year, s.enrollment_date, s.regNo,
                        s.religion, s.citizenship, s.last_school, s.medical_conditions, 
-                       s.allergies, s.is_active
+                       s.allergies, s.is_active, s.photo_path
                 FROM students s
                 WHERE s.id = %s
             '''
@@ -163,20 +251,37 @@ class StudentDetailsPopup(QDialog):
                 QMessageBox.warning(self, "Error", "Student not found.")
                 return
 
-            self.full_name_lbl.setText(f"{student[0] or ''} {student[1] or ''}".strip())
+            # Format full name
+            first_name = student[0] or ""
+            surname = student[1] or ""
+            full_name = f"{first_name} {surname}".strip()
+            self.full_name_lbl.setText(full_name or "Unnamed Student")
+
+            # Set other fields
             self.reg_no_lbl.setText(student[8] or "N/A")
             self.sex_lbl.setText(student[2] or "N/A")
-            self.dob_lbl.setText(str(student[3]) if student[3] else "N/A")
+            self.dob_lbl.setText(student[3].strftime("%Y-%m-%d") if student[3] else "N/A")
             self.email_lbl.setText(student[4] or "N/A")
             self.grade_lbl.setText(student[5] or "N/A")
             self.class_year_lbl.setText(student[6] or "N/A")
-            self.enrollment_lbl.setText(str(student[7]) if student[7] else "N/A")
+            self.enrollment_lbl.setText(student[7].strftime("%Y-%m-%d") if student[7] else "N/A")
             self.religion_lbl.setText(student[9] or "N/A")
             self.citizenship_lbl.setText(student[10] or "N/A")
             self.last_school_lbl.setText(student[11] or "N/A")
             self.status_lbl.setText("Active" if student[14] else "Inactive")
             self.medical_lbl.setPlainText(student[12] or "None")
             self.allergies_lbl.setPlainText(student[13] or "None")
+
+            # Load photo
+            if student[15] and os.path.exists(student[15]):
+                pixmap = QPixmap(student[15])
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(150, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    self.photo_label.setPixmap(scaled)
+                else:
+                    self.photo_label.setText("Invalid Image")
+            else:
+                self.photo_label.setText("No Photo")
 
             self.load_parents_info()
 
@@ -188,7 +293,7 @@ class StudentDetailsPopup(QDialog):
         """Load parent information for the student"""
         try:
             parent_query = '''
-                SELECT p.full_name, sp.relation_type, p.phone, p.email,
+                SELECT p.id, p.full_name, sp.relation_type, p.phone, p.email,
                        sp.is_fee_payer, sp.is_emergency_contact
                 FROM student_parent sp
                 JOIN parents p ON sp.parent_id = p.id
@@ -200,12 +305,76 @@ class StudentDetailsPopup(QDialog):
 
             self.parents_table.setRowCount(len(parents))
             for row_idx, parent in enumerate(parents):
-                for col_idx, data in enumerate(parent):
-                    text = "Yes" if data is True else ("No" if data is False else str(data or "N/A"))
-                    self.parents_table.setItem(row_idx, col_idx, QTableWidgetItem(text))
+                parent_id = parent[0]  # Hidden ID
+                for col_idx, data in enumerate(parent[1:]):  # Skip ID
+                    cell = QTableWidgetItem(str(data) if data is not None else "N/A")
+                    if isinstance(data, bool):
+                        cell.setText("Yes" if data else "No")
+                    self.parents_table.setItem(row_idx, col_idx, cell)
+                    # Store parent_id in first cell
+                    if col_idx == 0:
+                        self.parents_table.item(row_idx, col_idx).setData(Qt.UserRole, parent_id)
 
         except Exception as e:
             print(f"Error loading parents: {e}")
+            QMessageBox.warning(self, "Warning", "Could not load parent information.")
+
+    def show_parent_context_menu(self, position):
+        """Show context menu for parent table"""
+        row = self.parents_table.rowAt(position.y())
+        if row < 0:
+            return
+
+        menu = QMenu(self)
+        remove_action = QAction("Remove Parent", self)
+        remove_action.triggered.connect(lambda: self.remove_parent(row))
+        menu.addAction(remove_action)
+
+        menu.exec_(self.parents_table.mapToGlobal(position))
+
+    def remove_parent(self, row):
+        """Remove selected parent from student"""
+        try:
+            parent_item = self.parents_table.item(row, 0)
+            if not parent_item:
+                return
+            parent_id = parent_item.data(Qt.UserRole)
+            parent_name = parent_item.text()
+    
+            reply = QMessageBox.question(
+                self,
+                "Confirm Removal",
+                f"Are you sure you want to remove '{parent_name}' as a parent/guardian?\n"
+                "This cannot be undone.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return
+    
+            # Delete from junction table
+            delete_query = "DELETE FROM student_parent WHERE student_id = %s AND parent_id = %s"
+            self.cursor.execute(delete_query, (self.student_id, parent_id))
+            self.db_connection.commit()
+    
+            # Log audit
+            if self.user_session:
+                self.log_audit(
+                    action="REMOVE_PARENT_LINK",
+                    table_name="student_parent",
+                    record_id=self.student_id,
+                    old_value=f"Removed parent: {parent_name} (ID: {parent_id})",
+                    new_value=None,
+                    user_id=self.user_session.user_id,
+                    school_id=self.user_session.school_id
+                )
+    
+            self.load_parents_info()
+            QMessageBox.information(self, "Success", f"Parent '{parent_name}' removed successfully.")
+    
+        except Exception as e:
+            print(f"Error removing parent: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to remove parent: {str(e)}")
 
     def closeEvent(self, event):
         """Clean up database connection"""
@@ -239,6 +408,7 @@ class StudentsForm(AuditBaseForm):
 
         self.setup_ui()
         self.load_initial_data()
+        self.apply_button_permissions()
 
     def setup_ui(self):
         """Setup the user interface"""
@@ -366,22 +536,34 @@ class StudentsForm(AuditBaseForm):
         self.reg_no_entry = QLineEdit()
         self.religion_entry = QLineEdit()
         self.citizenship_entry = QLineEdit()
+        # === NEW: Add full_name_entry ===
+        self.full_name_entry = QLineEdit()
+        self.full_name_entry.setPlaceholderText("Full name will be auto-generated from First and Surname")
+        self.full_name_entry.setStyleSheet("font-style: italic; color: #666;")
+        self.full_name_entry.setReadOnly(True)  # Recommended: auto-generated
+        # Connect first name and surname changes to update full name
+        self.first_name_entry.textChanged.connect(self.update_full_name)
+        self.surname_entry.textChanged.connect(self.update_full_name)
     
         personal_layout.addWidget(QLabel("First Name *"), 0, 0)
         personal_layout.addWidget(self.first_name_entry, 0, 1)
         personal_layout.addWidget(QLabel("Surname *"), 0, 2)
         personal_layout.addWidget(self.surname_entry, 0, 3)
+
+        # --- Full Name (Row 1) - Full width ---
+        personal_layout.addWidget(QLabel("Full Name *"), 1, 0)
+        personal_layout.addWidget(self.full_name_entry, 1, 1, 1, 3)  # Span columns 1-3
     
-        personal_layout.addWidget(QLabel("Sex"), 1, 0)
-        personal_layout.addWidget(self.sex_combo, 1, 1)
-        personal_layout.addWidget(QLabel("Date of Birth"), 1, 2)
-        personal_layout.addWidget(self.dob_edit, 1, 3)
+        personal_layout.addWidget(QLabel("Sex"), 2, 0)
+        personal_layout.addWidget(self.sex_combo, 2, 1)
+        personal_layout.addWidget(QLabel("Date of Birth"), 2, 2)
+        personal_layout.addWidget(self.dob_edit, 2, 3)
     
-        personal_layout.addWidget(QLabel("Email"), 2, 0)
-        personal_layout.addWidget(self.email_entry, 2, 1, 1, 3)
+        personal_layout.addWidget(QLabel("Email"), 3, 0)
+        personal_layout.addWidget(self.email_entry, 3, 1, 1, 3)
     
         # With this updated code:
-        personal_layout.addWidget(QLabel("Reg No *"), 3, 0)
+        personal_layout.addWidget(QLabel("Reg No *"), 4, 0)
         
         # Create a horizontal layout for reg no and generate button
         reg_no_layout = QHBoxLayout()
@@ -395,13 +577,13 @@ class StudentsForm(AuditBaseForm):
         reg_no_layout.addWidget(self.generate_reg_btn)
         
         # Add the layout to the grid
-        personal_layout.addLayout(reg_no_layout, 3, 1)
+        personal_layout.addLayout(reg_no_layout, 4, 1)
 
-        personal_layout.addWidget(QLabel("Religion"), 3, 2)
-        personal_layout.addWidget(self.religion_entry, 3, 3)
+        personal_layout.addWidget(QLabel("Religion"), 4, 2)
+        personal_layout.addWidget(self.religion_entry, 4, 3)
     
-        personal_layout.addWidget(QLabel("Citizenship"), 4, 0)
-        personal_layout.addWidget(self.citizenship_entry, 4, 1, 1, 3)
+        personal_layout.addWidget(QLabel("Citizenship"), 5, 0)
+        personal_layout.addWidget(self.citizenship_entry, 5, 1, 1, 3)
     
         # Add stretch to columns for better spacing
         personal_layout.setColumnStretch(1, 1)
@@ -504,20 +686,22 @@ class StudentsForm(AuditBaseForm):
         parent_scroll.setWidget(parent_table_container)
         parent_layout.addWidget(parent_scroll)
     
-        add_parent_btn = QPushButton("+ Add Parent")
-        add_parent_btn.setStyleSheet("font-weight: bold; color: green;")
-        add_parent_btn.clicked.connect(self.add_parent_to_student)
-        parent_layout.addWidget(add_parent_btn)
+        self.add_parent_btn = QPushButton("+ Add Parent")
+        self.add_parent_btn.setStyleSheet("font-weight: bold; color: green;")
+        self.add_parent_btn.clicked.connect(self.add_parent_to_student)
+        parent_layout.addWidget(self.add_parent_btn)
     
         right_layout.addWidget(parent_group)
     
-        # --- Active Status & Save Button ---
+        # --- Active Status & Action Buttons ---
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(15)
+        
         self.is_active_check = QCheckBox("Is Active")
         self.is_active_check.setChecked(True)
         bottom_row.addWidget(self.is_active_check)
-    
+        
+        # Save Button
         self.save_btn = QPushButton("Save Student")
         self.save_btn.setStyleSheet("""
             QPushButton {
@@ -532,9 +716,27 @@ class StudentsForm(AuditBaseForm):
             }
         """)
         self.save_btn.clicked.connect(self.save_student)
-        bottom_row.addStretch()
         bottom_row.addWidget(self.save_btn)
-    
+        
+        # Update Button (hidden by default)
+        self.update_btn = QPushButton("Update Student")
+        self.update_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        self.update_btn.clicked.connect(self.update_student)
+        self.update_btn.hide()  # Hidden initially
+        bottom_row.addWidget(self.update_btn)
+        
+        bottom_row.addStretch()
         form_layout.addLayout(bottom_row)
 
     def setup_list_tab(self):
@@ -568,7 +770,7 @@ class StudentsForm(AuditBaseForm):
         search_layout.addWidget(self.list_search_entry)
     
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.clicked.connect(self.load_students)
+        refresh_btn.clicked.connect(self.refresh_students)
         search_layout.addWidget(refresh_btn)
     
         clear_list_search_btn = QPushButton("Clear")
@@ -578,13 +780,15 @@ class StudentsForm(AuditBaseForm):
         container_layout.addLayout(search_layout)
     
         # Action buttons
+        # Action buttons
         action_layout = QHBoxLayout()
         action_layout.setSpacing(10)
-    
-        edit_btn = QPushButton("Edit Selected")
-        edit_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; }")
-        edit_btn.clicked.connect(self.edit_selected_student)
-        action_layout.addWidget(edit_btn)
+        
+        # Edit Selected Button
+        self.edit_selected_btn = QPushButton("Edit Selected")
+        self.edit_selected_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; }")
+        self.edit_selected_btn.clicked.connect(self.edit_selected_student)
+        action_layout.addWidget(self.edit_selected_btn)
     
         view_btn = QPushButton("View Details")
         view_btn.setStyleSheet("QPushButton { background-color: #17a2b8; color: white; }")
@@ -600,7 +804,19 @@ class StudentsForm(AuditBaseForm):
         export_pdf_btn.setStyleSheet("QPushButton { background-color: #dc3545; color: white; }")
         export_pdf_btn.clicked.connect(self.generate_pdf_report)
         action_layout.addWidget(export_pdf_btn)
-    
+        
+        self.import_btn = QPushButton("Import Students")
+        self.import_btn.setStyleSheet("QPushButton { background-color: #ffc107; color: black; font-weight: bold; }")
+        self.import_btn.clicked.connect(self.import_students)
+        action_layout.addWidget(self.import_btn)
+
+        # Add Delete button
+        # Delete button
+        self.delete_btn_list = QPushButton("Delete Selected")
+        self.delete_btn_list.setStyleSheet("QPushButton { background-color: #dc3545; color: white; }")
+        self.delete_btn_list.clicked.connect(self.delete_student)
+        action_layout.addWidget(self.delete_btn_list)
+
         action_layout.addStretch()
         container_layout.addLayout(action_layout)
     
@@ -661,6 +877,32 @@ class StudentsForm(AuditBaseForm):
         self.load_grades()
         self.load_students()
 
+    def apply_button_permissions(self):
+        """Enable/disable buttons based on user permissions"""
+        can_create = has_permission(self.user_session, STUDENT_PERMISSIONS['create'])
+        can_edit = has_permission(self.user_session, STUDENT_PERMISSIONS['edit'])
+        can_delete = has_permission(self.user_session, STUDENT_PERMISSIONS['delete'])
+        can_import = has_permission(self.user_session, STUDENT_PERMISSIONS['import'])
+        can_manage_parents = has_permission(self.user_session, STUDENT_PERMISSIONS['manage_parents'])
+    
+        # --- Form Tab Buttons ---
+        self.save_btn.setEnabled(can_create)
+        self.update_btn.setEnabled(can_edit)
+        self.add_parent_btn.setEnabled(can_manage_parents)
+    
+        # --- List Tab Buttons ---
+        self.import_btn.setEnabled(can_import)
+        self.delete_btn_list.setEnabled(can_delete)  # ✅ Correct name
+        self.edit_selected_btn.setEnabled(can_edit)
+    
+        # Tooltips
+        self.save_btn.setToolTip("Add new student" if can_create else "Requires: create_student")
+        self.update_btn.setToolTip("Edit student" if can_edit else "Requires: edit_student")
+        self.add_parent_btn.setToolTip("Link parent" if can_manage_parents else "Requires: manage_student_parents")
+        self.import_btn.setToolTip("Import students" if can_import else "Requires: import_students")
+        self.delete_btn_list.setToolTip("Delete student" if can_delete else "Requires: delete_student")
+        self.edit_selected_btn.setToolTip("Edit student" if can_edit else "Requires: edit_student")
+
     def load_grades(self):
         """Load grades for dropdown"""
         try:
@@ -681,27 +923,15 @@ class StudentsForm(AuditBaseForm):
             self.grade_combo.clear()
             self.grade_combo.addItems(default_grades)
 
-    def load_parents(self):
-        """Load parents for dropdown"""
-        try:
-            self.cursor.execute("""
-                SELECT id, full_name, relation_type, phone, email
-                FROM parents 
-                WHERE is_active = TRUE 
-                ORDER BY full_name
-            """)
-            parents = self.cursor.fetchall()
-            
-            self.parent_dropdown.clear()
-            self.parent_dropdown.addItem("Select Parent", None)
-            
-            for parent in parents:
-                parent_id, name, relation, phone, email = parent
-                display_text = f"{name} ({relation or 'Guardian'})"
-                self.parent_dropdown.addItem(display_text, parent_id)
-                
-        except Exception as e:
-            print(f"Error loading parents: {e}")
+    def toggle_save_update_buttons(self):
+        """Show Save or Update button based on whether we're editing"""
+        if self.current_student_id:
+            self.save_btn.hide()
+            self.update_btn.show()
+        else:
+            self.save_btn.show()
+            self.update_btn.hide()
+
 
     def load_students(self):
         """Load students into the table"""
@@ -807,101 +1037,87 @@ class StudentsForm(AuditBaseForm):
         self.photo_label.setText("No Photo")
         self.photo_path = None
 
-    def generate_reg_no(self):
-        """Generate registration number in format HIMHYYXXXX-ST"""
+    def get_school_prefix(self):
+        """Get school prefix from database based on school name"""
         try:
+            # Query your schools table - adjust column names as needed
+            query = """
+                SELECT school_name FROM schools 
+                WHERE id = %s AND is_active = TRUE
+                LIMIT 1
+            """
+            
+            # Get school_id from user session or use default
+            school_id = getattr(self.user_session, 'school_id', 1) if self.user_session else 1
+            
+            self.cursor.execute(query, (school_id,))
+            result = self.cursor.fetchone()
+            
+            if result and result[0]:
+                school_name = result[0].strip().upper()
+                
+                # Extract first letters of each word
+                words = school_name.split()
+                if len(words) >= 2:
+                    # Take first letter of each word (up to 4)
+                    prefix_chars = []
+                    for word in words:
+                        if word and len(prefix_chars) < 4:
+                            prefix_chars.append(word[0])
+                    
+                    # If we need more characters, take from first word
+                    if len(prefix_chars) < 4 and words:
+                        first_word = words[0]
+                        for i in range(len(prefix_chars), min(4, len(first_word))):
+                            prefix_chars.append(first_word[i])
+                    
+                    # Still need more? Repeat first letter
+                    while len(prefix_chars) < 4:
+                        prefix_chars.append(words[0][0])
+                    
+                    return ''.join(prefix_chars[:4])
+                else:
+                    # Single word - take first 4 characters
+                    first_word = words[0] if words else "SCHL"
+                    if len(first_word) >= 4:
+                        return first_word[:4]
+                    else:
+                        return (first_word + first_word[0] * 4)[:4]
+            
+            return "SCHL"  # Default fallback
+            
+        except Exception as e:
+            print(f"Error fetching school prefix: {e}")
+            return "SCHL"
+
+    def generate_reg_no(self):
+        """Generate registration number in format PPPPYYXXXX-ST where PPPP is school prefix"""
+        try:
+            # Get dynamic school prefix from database
+            school_prefix = self.get_school_prefix()
+            
+            # Get current year (last 2 digits)
             year_suffix = datetime.now().year % 100
             year_str = f"{year_suffix:02d}"
             
             # Generate random number between 1000 and 9999
             rand_num = random.randint(1000, 9999)
             
-            reg_no = f"HIMH{year_str}{rand_num}-ST"
+            # Format: SCHOOLPREFIX + YEAR + RANDOM + SUFFIX
+            reg_no = f"{school_prefix}{year_str}{rand_num}-ST"
             self.reg_no_entry.setText(reg_no)
             
         except Exception as e:
             print(f"Error generating registration number: {e}")
-            self.reg_no_entry.setText("HIMH250000-ST")
-
-    def search_parents(self):
-        """Search for parents"""
-        search_term = self.parent_search_entry.text().strip()
-        
-        if not search_term:
-            self.load_parents()
-            return
-        
-        try:
-            query = """
-                SELECT id, full_name, relation_type, phone, email, address1, address2,
-                       is_fee_payer, is_emergency_contact
-                FROM parents 
-                WHERE is_active = TRUE 
-                AND (full_name LIKE %s OR phone LIKE %s OR email LIKE %s)
-                ORDER BY full_name
-                LIMIT 20
-            """
-            like_term = f"%{search_term}%"
-            self.cursor.execute(query, (like_term, like_term, like_term))
-            parents = self.cursor.fetchall()
-            
-            self.parent_dropdown.clear()
-            self.parent_dropdown.addItem("Select Parent", None)
-            
-            for parent in parents:
-                parent_id, name, relation, phone, email = parent[:5]
-                display_text = f"{name} ({relation or 'Guardian'}) - {phone or 'No Phone'}"
-                self.parent_dropdown.addItem(display_text, parent_id)
-                
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to search parents: {str(e)}")
-
-    def on_parent_select(self):
-        """Handle parent selection"""
-        parent_id = self.parent_dropdown.currentData()
-        
-        if not parent_id:
-            self.parent_info_text.setText("No parent selected")
-            return
-        
-        try:
-            query = """
-                SELECT full_name, relation_type, phone, email, address1, address2,
-                       is_fee_payer, is_emergency_contact
-                FROM parents 
-                WHERE id = %s AND is_active = TRUE
-            """
-            self.cursor.execute(query, (parent_id,))
-            parent = self.cursor.fetchone()
-            
-            if parent:
-                name, relation, phone, email, addr1, addr2, is_payer, is_emergency = parent
-                
-                # Format address
-                address_parts = []
-                if addr1:
-                    address_parts.append(addr1)
-                if addr2:
-                    address_parts.append(addr2)
-                address = ", ".join(address_parts) if address_parts else "N/A"
-                
-                info_text = f"""Name: {name}
-Relation: {relation or 'N/A'}
-Phone: {phone or 'N/A'}
-Email: {email or 'N/A'}
-Address: {address}
-Fee Payer: {'Yes' if is_payer else 'No'}
-Emergency Contact: {'Yes' if is_emergency else 'No'}"""
-                
-                self.parent_info_text.setText(info_text)
-            else:
-                self.parent_info_text.setText("Parent information not found")
-                
-        except Exception as e:
-            print(f"Error loading parent info: {e}")
-            self.parent_info_text.setText("Error loading parent information")
+            # Fallback with current year
+            year_suffix = datetime.now().year % 100
+            fallback_reg_no = f"SCHL{year_suffix:02d}0000-ST"
+            self.reg_no_entry.setText(fallback_reg_no)
 
     def add_parent_to_student(self):
+        if not has_permission(self.user_session, STUDENT_PERMISSIONS['manage_parents']):
+            QMessageBox.warning(self, "Access Denied", "You don't have permission to link parents.")
+            return
         """Open dialog to add or select parent for the student"""
         if not self.current_student_id:
             QMessageBox.warning(self, "No Student", "Please save the student first before adding a parent.")
@@ -909,7 +1125,7 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
     
         dialog = QDialog(self)
         dialog.setWindowTitle("Link Parent / Guardian")
-        dialog.resize(600, 400)
+        dialog.resize(900, 550)
         dialog.setModal(True)
     
         layout = QVBoxLayout(dialog)
@@ -1094,6 +1310,12 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
         
         self.search_students_common(search_term)
 
+    def refresh_students(self):
+        """Refresh student list and show confirmation"""
+        self.load_students()
+        QMessageBox.information(self, "Refresh Complete", 
+                              "Student data has been loaded and refreshed successfully!")
+
     def search_students_common(self, search_term):
         """Common search functionality"""
         try:
@@ -1220,7 +1442,9 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
                 self.photo_path = student[15]
             
             # Load associated parent
-            self.load_student_parents(student_id)
+            self.load_student_parents()
+            # Toggle buttons
+            self.toggle_save_update_buttons()
             
         except Exception as e:
             print(f"Error loading student details: {e}")
@@ -1231,16 +1455,9 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
         if not self.current_student_id:
             self.parents_table.setRowCount(0)
             return
-    
         try:
             query = """
-                SELECT p.full_name, sp.relation_type, p.phone, p.email,
-                       CONCAT(
-                           IF(sp.is_primary_contact, 'Primary', ''),
-                           IF(sp.is_fee_payer AND sp.is_emergency_contact, ', Payer & Emergency', ''),
-                           IF(sp.is_fee_payer AND NOT sp.is_emergency_contact, ', Payer', ''),
-                           IF(sp.is_emergency_contact AND NOT sp.is_fee_payer, ', Emergency', '')
-                       ) AS roles
+                SELECT p.id, p.full_name, sp.relation_type, p.phone, p.email
                 FROM student_parent sp
                 JOIN parents p ON sp.parent_id = p.id
                 WHERE sp.student_id = %s AND p.is_active = TRUE
@@ -1251,19 +1468,91 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
     
             self.parents_table.setRowCount(len(parents))
             for row_idx, parent in enumerate(parents):
-                for col_idx, data in enumerate(parent):
-                    text = str(data).strip(" ,") if data else "N/A"
-                    self.parents_table.setItem(row_idx, col_idx, QTableWidgetItem(text))
+                parent_id = parent[0]  # Store parent_id
+                # Name, Relation, Phone, Email
+                for col_idx, data in enumerate(parent[1:]):
+                    self.parents_table.setItem(row_idx, col_idx, QTableWidgetItem(str(data) if data else "N/A"))
+    
+                # Action Button (Remove)
+                remove_btn = QPushButton("Remove")
+                remove_btn.setProperty("parent_id", parent_id)
+                remove_btn.setProperty("parent_name", parent[1])
+                remove_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #dc3545;
+                        color: white;
+                        border: none;
+                        padding: 3px 10px;
+                        border-radius: 3px;
+                        font-size: 11px;
+                    }
+                    QPushButton:hover {
+                        background-color: #c82333;
+                    }
+                """)
+                remove_btn.clicked.connect(lambda _, btn=remove_btn: self.remove_parent_link(btn))
+                self.parents_table.setCellWidget(row_idx, 4, remove_btn)  # Actions column
+    
         except Exception as e:
             print(f"Error loading student parents: {e}")
             QMessageBox.warning(self, "Warning", "Could not load parent list.")
 
+    def remove_parent_link(self, button):
+        """Remove the link between student and parent"""
+        parent_id = button.property("parent_id")
+        parent_name = button.property("parent_name")
+    
+        reply = QMessageBox.question(
+            self,
+            "Confirm Removal",
+            f"Are you sure you want to remove '{parent_name}' as a parent/guardian?\n"
+            "This will not delete the parent, only the link.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.No:
+            return
+    
+        # Prevent removing last parent
+        self.cursor.execute("SELECT COUNT(*) FROM student_parent WHERE student_id = %s", (self.current_student_id,))
+        count = self.cursor.fetchone()[0]
+        if count <= 1:
+            QMessageBox.warning(self, "Cannot Remove", "A student must have at least one parent linked.")
+            return
+    
+        try:
+            # Delete from junction table
+            query = "DELETE FROM student_parent WHERE student_id = %s AND parent_id = %s"
+            self.cursor.execute(query, (self.current_student_id, parent_id))
+            self.db_connection.commit()
+    
+            # ✅ Log audit using correct method
+            if self.user_session:
+                self.log_audit_action(
+                    action="REMOVE_PARENT_LINK",
+                    table_name="student_parent",
+                    record_id=self.current_student_id,
+                    description=f"Removed parent: {parent_name} (ID: {parent_id})"
+                )
+    
+            # Refresh the table
+            self.load_student_parents()
+    
+            QMessageBox.information(self, "Success", f"Parent '{parent_name}' removed successfully.")
+    
+        except Exception as e:
+            self.db_connection.rollback()
+            print(f"Error removing parent link: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to remove parent: {str(e)}")
+        
     def view_student_details(self):
         """Show student details popup"""
+        if not has_permission(self.user_session, STUDENT_PERMISSIONS['view']):
+            QMessageBox.warning(self, "Access Denied", "You don't have permission to view student details.")
+            return
         if not self.current_student_id:
             QMessageBox.warning(self, "No Selection", "Please select a student from the table first.")
             return
-        
         try:
             popup = StudentDetailsPopup(self, self.current_student_id, self.user_session)
             popup.exec_()
@@ -1272,24 +1561,30 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
 
     def save_student(self):
         """Save new student to database"""
+        # 🔒 Check permission first
+        if not has_permission(self.user_session, STUDENT_PERMISSIONS['create']):
+            QMessageBox.warning(self, "Access Denied", "You don't have permission to add students.")
+            return
+    
+        # ✅ Validate form
         if not self.validate_form():
             return
-        
+    
+        # ❌ Prevent saving again if editing
         if self.current_student_id:
             QMessageBox.information(self, "Info", "Student already exists. Use Update instead.")
             return
-        
+    
         try:
-            # Prepare data
+            # ✅ Prepare data
             first_name = self.first_name_entry.text().strip()
             surname = self.surname_entry.text().strip()
             full_name = f"{first_name} {surname}".strip()
-            
-            # Convert dates
+            reg_no = self.reg_no_entry.text().strip()
             dob = self.dob_edit.date().toPython()
             enrollment = self.enrollment_date.date().toPython()
-            
-            # Insert student
+    
+            # ✅ Insert student
             query = '''
                 INSERT INTO students (
                     school_id, first_name, surname, full_name, sex, date_of_birth,
@@ -1300,56 +1595,64 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
             '''
-            
             school_id = 1  # Default school ID - modify as needed
-            
             values = (
                 school_id, first_name, surname, full_name, self.sex_combo.currentText(),
                 dob, self.email_entry.text().strip(), self.grade_combo.currentText(),
-                self.class_year_entry.text().strip(), enrollment, self.reg_no_entry.text().strip(),
+                self.class_year_entry.text().strip(), enrollment, reg_no,
                 self.religion_entry.text().strip(), self.citizenship_entry.text().strip(),
                 self.last_school_entry.text().strip(), self.medical_text.toPlainText(),
                 self.allergies_text.toPlainText(), self.is_active_check.isChecked(),
                 self.photo_path
             )
-            
             self.cursor.execute(query, values)
-            student_id = self.cursor.lastrowid
-            
-            # Link to parent if selected
-            parent_id = self.parent_dropdown.currentData()
-            if parent_id:
-                self.link_student_parent(student_id, parent_id)
-            
+            student_id = self.cursor.lastrowid  # ✅ Now available
+            self.current_student_id = student_id
+    
+            # ✅ Commit first
             self.db_connection.commit()
-            
+    
+            # ✅ Log audit AFTER successful commit
+            if self.user_session:
+                self.log_audit_action(
+                    action="CREATE",
+                    table_name="students",
+                    record_id=student_id,
+                    description=f"Added student: {full_name} (RegNo: {reg_no})"
+                )
+    
+            # ✅ Success feedback
             QMessageBox.information(self, "Success", "Student saved successfully!")
             self.clear_form()
             self.load_students()
-            
+    
         except Exception as e:
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Failed to save student: {str(e)}")
-
+        
     def update_student(self):
         """Update existing student"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, STUDENT_PERMISSIONS['edit']):
+            QMessageBox.warning(self, "Access Denied", "You don't have permission to edit students.")
+            return
+    
         if not self.current_student_id:
             QMessageBox.warning(self, "Error", "No student selected for update")
             return
-        
+    
         if not self.validate_form():
             return
-        
+    
         try:
             # Prepare data
             first_name = self.first_name_entry.text().strip()
             surname = self.surname_entry.text().strip()
             full_name = f"{first_name} {surname}".strip()
-            
-            # Convert dates
+            reg_no = self.reg_no_entry.text().strip()
             dob = self.dob_edit.date().toPython()
             enrollment = self.enrollment_date.date().toPython()
-            
+    
             # Update student
             query = '''
                 UPDATE students SET
@@ -1361,66 +1664,91 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
                     photo_path = %s
                 WHERE id = %s
             '''
-            
             values = (
                 first_name, surname, full_name, self.sex_combo.currentText(),
                 dob, self.email_entry.text().strip(), self.grade_combo.currentText(),
-                self.class_year_entry.text().strip(), enrollment, self.reg_no_entry.text().strip(),
+                self.class_year_entry.text().strip(), enrollment, reg_no,
                 self.religion_entry.text().strip(), self.citizenship_entry.text().strip(),
                 self.last_school_entry.text().strip(), self.medical_text.toPlainText(),
                 self.allergies_text.toPlainText(), self.is_active_check.isChecked(),
                 self.photo_path, self.current_student_id
             )
-            
             self.cursor.execute(query, values)
-            
-            # Update parent link if changed
-            parent_id = self.parent_dropdown.currentData()
-            self.update_student_parent(self.current_student_id, parent_id)
-            
             self.db_connection.commit()
-            
+    
+            # ✅ Audit log
+            if self.user_session:
+                self.log_audit_action(
+                    action="UPDATE",
+                    table_name="students",
+                    record_id=self.current_student_id,
+                    description=f"Updated student: {full_name} (RegNo: {reg_no})"
+                )
+    
             QMessageBox.information(self, "Success", "Student updated successfully!")
             self.load_students()
-            
+            self.clear_form()
+    
         except Exception as e:
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Failed to update student: {str(e)}")
-
+        
     def delete_student(self):
         """Delete (soft delete) selected student"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, STUDENT_PERMISSIONS['delete']):
+            QMessageBox.warning(self, "Access Denied", "You don't have permission to delete students.")
+            return
+    
         if not self.current_student_id:
             QMessageBox.warning(self, "Error", "No student selected for deletion")
             return
-        
+    
+        # Get student name for confirmation
+        first_name = self.first_name_entry.text().strip()
+        surname = self.surname_entry.text().strip()
+        full_name = f"{first_name} {surname}".strip()
+        reg_no = self.reg_no_entry.text().strip()
+    
         # Confirmation dialog
         reply = QMessageBox.question(
             self, "Confirm Deletion",
-            "Are you sure you want to delete this student?\nThis action cannot be undone.",
+            f"Are you sure you want to delete '{full_name}' (RegNo: {reg_no})?\n"
+            "This will mark the student as inactive but preserve their records.\n"
+            "This action can be reversed later.\n\n"
+            "This cannot be undone.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
-        
+    
         if reply == QMessageBox.Yes:
             try:
-                # Soft delete by setting is_active to False
+                # Soft delete
                 query = "UPDATE students SET is_active = FALSE WHERE id = %s"
                 self.cursor.execute(query, (self.current_student_id,))
                 self.db_connection.commit()
-                
+    
+                # ✅ Audit log
+                if self.user_session:
+                    self.log_audit_action(
+                        action="DELETE",
+                        table_name="students",
+                        record_id=self.current_student_id,
+                        description=f"Deactivated student: {full_name} (RegNo: {reg_no})"
+                    )
+    
                 QMessageBox.information(self, "Success", "Student deleted successfully!")
                 self.clear_form()
                 self.load_students()
-                
+    
             except Exception as e:
                 self.db_connection.rollback()
                 QMessageBox.critical(self, "Error", f"Failed to delete student: {str(e)}")
 
-    def link_student_parent(self, student_id, parent_id, relation_type=None, is_primary=True):
-        """Link student to parent"""
+    def link_student_parent(self, student_id, parent_id, relation_type=None, is_primary=True, is_fee_payer=True, is_emergency_contact=True):
+        """Link student to parent with customizable roles"""
         try:
             if not relation_type:
-                # Get relation type from parent record or use default
                 self.cursor.execute("SELECT relation_type FROM parents WHERE id = %s", (parent_id,))
                 result = self.cursor.fetchone()
                 relation_type = result[0] if result and result[0] else "Guardian"
@@ -1428,29 +1756,21 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
             query = '''
                 INSERT INTO student_parent 
                 (student_id, parent_id, relation_type, is_primary_contact, is_fee_payer, is_emergency_contact)
-                VALUES (%s, %s, %s, %s, TRUE, TRUE)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                 relation_type = VALUES(relation_type),
-                is_primary_contact = VALUES(is_primary_contact)
+                is_primary_contact = VALUES(is_primary_contact),
+                is_fee_payer = VALUES(is_fee_payer),
+                is_emergency_contact = VALUES(is_emergency_contact)
             '''
             
-            self.cursor.execute(query, (student_id, parent_id, relation_type, is_primary))
+            self.cursor.execute(query, (
+                student_id, parent_id, relation_type,
+                is_primary, is_fee_payer, is_emergency_contact
+            ))
             
         except Exception as e:
             print(f"Error linking student to parent: {e}")
-
-    def update_student_parent(self, student_id, parent_id):
-        """Update student-parent relationship"""
-        try:
-            # Remove existing relationships
-            self.cursor.execute("DELETE FROM student_parent WHERE student_id = %s", (student_id,))
-            
-            # Add new relationship if parent selected
-            if parent_id:
-                self.link_student_parent(student_id, parent_id)
-                
-        except Exception as e:
-            print(f"Error updating student-parent relationship: {e}")
 
     def validate_form(self):
         """Validate form data"""
@@ -1492,6 +1812,7 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
         self.first_name_entry.clear()
         self.surname_entry.clear()
         self.full_name_entry.clear()
+        self.full_name_entry.clear()
         self.email_entry.clear()
         self.reg_no_entry.clear()
         self.religion_entry.clear()
@@ -1505,7 +1826,6 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
         # Reset dropdowns
         self.sex_combo.setCurrentIndex(0)
         self.grade_combo.setCurrentIndex(0)
-        self.parent_dropdown.setCurrentIndex(0)
         
         # Reset dates
         self.dob_edit.setDate(QDate.currentDate().addYears(-10))
@@ -1517,11 +1837,11 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
         # Reset checkboxes
         self.is_active_check.setChecked(True)
         
-        # Clear parent info
-        self.parent_info_text.setText("No parent selected")
-        
         # Reset current student ID
         self.current_student_id = None
+
+        # Toggle buttons
+        self.toggle_save_update_buttons()
 
     def export_to_excel(self):
         """Export student data to Excel"""
@@ -1740,6 +2060,646 @@ Emergency Contact: {'Yes' if is_emergency else 'No'}"""
                     
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate PDF: {str(e)}")
+    
+    
+    def import_students(self):
+        if not has_permission(self.user_session, STUDENT_PERMISSIONS['import']):
+            QMessageBox.warning(self, "Access Denied", "You don't have permission to import students.")
+        return
+        
+        """Import students from CSV or Excel file"""
+        try:
+            file_path, file_type = QFileDialog.getOpenFileName(
+                self, 
+                "Import Students File",
+                "",
+                "Excel Files (*.xlsx *.xls);;CSV Files (*.csv);;All Files (*)"
+            )
+            
+            if not file_path:
+                return
+            
+            # Show progress dialog
+            progress = QProgressDialog("Importing students...", "Cancel", 0, 100, self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
+            progress.setValue(10)
+            
+            # Read file based on extension
+            if file_path.lower().endswith('.csv'):
+                students_data = self.read_csv_file(file_path)
+            elif file_path.lower().endswith(('.xlsx', '.xls')):
+                students_data = self.read_excel_file(file_path)
+            else:
+                QMessageBox.warning(self, "Error", "Unsupported file format. Please use CSV or Excel files.")
+                return
+            
+            if not students_data:
+                QMessageBox.warning(self, "Error", "No valid data found in file.")
+                return
+            
+            progress.setValue(30)
+            
+            # Validate and process data
+            processed_data, errors = self.validate_import_data(students_data)
+            progress.setValue(60)
+            
+            if errors:
+                self.show_import_errors(errors, processed_data)
+                return
+            
+            # Show preview before import
+            if not self.show_import_preview(processed_data):
+                QMessageBox.information(self, "Import Canceled", "Import was canceled by user.")
+                return
+            
+            # Import to database
+            success_count, error_count, import_errors = self.import_to_database(processed_data, progress)
+            progress.setValue(100)
+            progress.close()
+            
+            # Show results
+            result_msg = f"Import completed!\n"
+            result_msg += f"Successfully imported: {success_count} students\n"
+            if error_count > 0:
+                result_msg += f"Failed to import: {error_count} students\n"
+                result_msg += f"Check the error log for details."
+            
+            QMessageBox.information(self, "Import Results", result_msg)
+            
+            if import_errors:
+                self.show_import_errors(import_errors, [])
+            
+            # Refresh the students table
+            self.load_students()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to import students: {str(e)}")
+    
+    def read_csv_file(self, file_path):
+        """Read CSV file and return student data"""
+        try:
+            students_data = []
+            
+            with open(file_path, 'r', encoding='utf-8') as file:
+                # Try to detect delimiter
+                sample = file.read(1024)
+                file.seek(0)
+                sniffer = csv.Sniffer()
+                delimiter = sniffer.sniff(sample).delimiter
+                
+                reader = csv.DictReader(file, delimiter=delimiter)
+                
+                for row_num, row in enumerate(reader, start=2):  # Start at 2 for header row
+                    if any(row.values()):  # Skip empty rows
+                        row['_row_number'] = row_num
+                        students_data.append(row)
+            
+            return students_data
+            
+        except Exception as e:
+            QMessageBox.critical(self, "CSV Error", f"Failed to read CSV file: {str(e)}")
+            return []
+    
+    def read_excel_file(self, file_path):
+        """Read Excel file and return student data"""
+        try:
+            students_data = []
+            
+            # Try to read with pandas first
+            df = pd.read_excel(file_path, engine='openpyxl')
+            
+            # Convert to list of dictionaries
+            for index, row in df.iterrows():
+                row_dict = row.to_dict()
+                row_dict['_row_number'] = index + 2  # +2 for header and 0-based index
+                
+                # Skip empty rows
+                if any(pd.notna(val) and str(val).strip() for val in row_dict.values() if not str(val).startswith('_')):
+                    students_data.append(row_dict)
+            
+            return students_data
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Excel Error", f"Failed to read Excel file: {str(e)}")
+            return []
+    
+    def validate_import_data(self, raw_data):
+        """Validate imported data and return processed data with errors"""
+        processed_data = []
+        errors = []
+        
+        # Expected columns mapping (file_column -> db_column)
+        column_mapping = {
+            # Basic info
+            'first_name': 'first_name',
+            'firstname': 'first_name',
+            'fname': 'first_name',
+            'surname': 'surname',
+            'lastname': 'surname',
+            'lname': 'surname',
+            'full_name': 'full_name',
+            'name': 'full_name',
+            
+            # Contact info
+            'email': 'email',
+            'email_address': 'email',
+            'sex': 'sex',
+            'gender': 'sex',
+            'date_of_birth': 'date_of_birth',
+            'dob': 'date_of_birth',
+            'birth_date': 'date_of_birth',
+            
+            # Academic info
+            'reg_no': 'regNo',
+            'registration_number': 'regNo',
+            'regno': 'regNo',
+            'student_id': 'regNo',
+            'grade': 'grade_applied_for',
+            'grade_applied_for': 'grade_applied_for',
+            'class': 'grade_applied_for',
+            'class_year': 'class_year',
+            'year': 'class_year',
+            'enrollment_date': 'enrollment_date',
+            'admission_date': 'enrollment_date',
+            
+            # Additional info
+            'religion': 'religion',
+            'citizenship': 'citizenship',
+            'nationality': 'citizenship',
+            'last_school': 'last_school',
+            'previous_school': 'last_school',
+            'medical_conditions': 'medical_conditions',
+            'medical': 'medical_conditions',
+            'allergies': 'allergies',
+            
+            # Parent info
+            'parent_name': 'parent_name',
+            'guardian_name': 'parent_name',
+            'parent_phone': 'parent_phone',
+            'guardian_phone': 'parent_phone',
+            'parent_email': 'parent_email',
+            'guardian_email': 'parent_email',
+        }
+        
+        for row_num, row_data in enumerate(raw_data):
+            try:
+                # Normalize column names (lowercase, remove spaces/underscores)
+                normalized_row = {}
+                for key, value in row_data.items():
+                    if not key.startswith('_'):
+                        clean_key = str(key).lower().replace(' ', '_').replace('-', '_')
+                        normalized_row[clean_key] = value
+                
+                # Map to database columns
+                student_data = {'_row_number': row_data.get('_row_number', row_num + 1)}
+                
+                for file_col, db_col in column_mapping.items():
+                    if file_col in normalized_row:
+                        value = normalized_row[file_col]
+                        if pd.notna(value) and str(value).strip():
+                            student_data[db_col] = str(value).strip()
+                
+                # Validate required fields
+                row_errors = []
+                
+                # Check for required fields
+                if not student_data.get('first_name') and not student_data.get('full_name'):
+                    row_errors.append("Missing first name or full name")
+                
+                if not student_data.get('surname') and not student_data.get('full_name'):
+                    row_errors.append("Missing surname or full name")
+                
+                # Generate full name if missing
+                if not student_data.get('full_name'):
+                    first_name = student_data.get('first_name', '').strip()
+                    surname = student_data.get('surname', '').strip()
+                    if first_name or surname:
+                        student_data['full_name'] = f"{first_name} {surname}".strip()
+                
+                # Split full name if individual names missing
+                if student_data.get('full_name') and not student_data.get('first_name'):
+                    name_parts = student_data['full_name'].strip().split()
+                    if len(name_parts) >= 2:
+                        student_data['first_name'] = name_parts[0]
+                        student_data['surname'] = ' '.join(name_parts[1:])
+                    elif len(name_parts) == 1:
+                        student_data['first_name'] = name_parts[0]
+                        student_data['surname'] = ""
+                
+                # Validate email format
+                if student_data.get('email'):
+                    email = student_data['email']
+                    if '@' not in email or '.' not in email.split('@')[-1]:
+                        row_errors.append(f"Invalid email format: {email}")
+                
+                # Validate sex/gender
+                if student_data.get('sex'):
+                    sex = student_data['sex'].lower()
+                    if sex in ['m', 'male', 'boy']:
+                        student_data['sex'] = 'Male'
+                    elif sex in ['f', 'female', 'girl']:
+                        student_data['sex'] = 'Female'
+                    else:
+                        student_data['sex'] = 'Male'  # Default
+                
+                # Parse date of birth
+                if student_data.get('date_of_birth'):
+                    parsed_date = self.parse_date(student_data['date_of_birth'])
+                    if parsed_date:
+                        student_data['date_of_birth'] = parsed_date
+                    else:
+                        row_errors.append(f"Invalid date format: {student_data['date_of_birth']}")
+                
+                # Parse enrollment date
+                if student_data.get('enrollment_date'):
+                    parsed_date = self.parse_date(student_data['enrollment_date'])
+                    if parsed_date:
+                        student_data['enrollment_date'] = parsed_date
+                    else:
+                        student_data['enrollment_date'] = datetime.now().date()
+                else:
+                    student_data['enrollment_date'] = datetime.now().date()
+                
+                # Generate registration number if missing
+                if not student_data.get('regNo'):
+                    student_data['regNo'] = self.generate_import_reg_no()
+                
+                # Set defaults
+                student_data['is_active'] = True
+                student_data['school_id'] = 1  # Default school
+                
+                if row_errors:
+                    errors.append({
+                        'row': student_data['_row_number'],
+                        'errors': row_errors,
+                        'data': student_data
+                    })
+                else:
+                    processed_data.append(student_data)
+                    
+            except Exception as e:
+                errors.append({
+                    'row': row_data.get('_row_number', row_num + 1),
+                    'errors': [f"Processing error: {str(e)}"],
+                    'data': row_data
+                })
+        
+        return processed_data, errors
+    
+    def generate_import_reg_no(self):
+        """Generate registration number for import"""
+        try:
+            school_prefix = self.get_school_prefix()
+            year_suffix = datetime.now().year % 100
+            rand_num = random.randint(1000, 9999)
+            return f"{school_prefix}{year_suffix:02d}{rand_num}-ST"
+        except:
+            return f"IMP{datetime.now().year % 100:02d}{random.randint(1000, 9999)}-ST"
+
+    def parse_date(self, date_input):
+        """
+        Parse various date formats and return a date object.
+        Supports: 'YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY', 'DD-MM-YYYY', etc.
+        Returns None if parsing fails.
+        """
+        if not date_input:
+            return None
+    
+        # Convert to string if it's a float/int (e.g., from Excel)
+        if isinstance(date_input, (float, int)):
+            # Excel serial dates are not handled here; assume pandas already converted
+            return None
+    
+        str_date = str(date_input).strip()
+    
+        # Handle pandas.Timestamp if passed
+        if 'Timestamp' in str(type(date_input)):
+            try:
+                return date_input.date()  # Convert to datetime.date
+            except:
+                return None
+    
+        # Common date formats to try
+        formats = [
+            '%Y-%m-%d',      # 2024-05-15
+            '%d/%m/%Y',      # 15/05/2024
+            '%m/%d/%Y',      # 05/15/2024
+            '%d-%m-%Y',      # 15-05-2024
+            '%m-%d-%Y',      # 05-15-2024
+            '%Y/%m/%d',      # 2024/05/15
+            '%d.%m.%Y',      # 15.05.2024
+            '%m.%d.%Y',      # 05.15.2024
+            '%B %d, %Y',     # May 15, 2024
+            '%b %d, %Y',     # May 15, 2024
+            '%Y-%m-%d %H:%M:%S',  # 2024-05-15 10:30:00
+            '%Y-%m-%d %H:%M',     # 2024-05-15 10:30
+        ]
+    
+        for fmt in formats:
+            try:
+                return datetime.strptime(str_date, fmt).date()
+            except ValueError:
+                continue
+    
+        # If none work, return None
+        return None
+    
+    def import_to_database(self, processed_data, progress_dialog):
+        """Import processed data to database"""
+        success_count = 0
+        error_count = 0
+        import_errors = []
+        total_records = len(processed_data)
+    
+        for idx, student_data in enumerate(processed_data):
+            try:
+                reg_no = student_data.get('regNo')
+                if not reg_no:
+                    error_count += 1
+                    import_errors.append({
+                        'row': student_data.get('_row_number', idx + 1),
+                        'error': "Missing registration number",
+                        'student': student_data.get('full_name', 'Unknown')
+                    })
+                    continue
+    
+                # 🔍 CHECK: Does an active student with this regNo already exist?
+                self.cursor.execute(
+                    "SELECT id FROM students WHERE regNo = %s AND is_active = TRUE",
+                    (reg_no,)
+                )
+                if self.cursor.fetchone():
+                    # 🟡 Skip duplicate
+                    import_errors.append({
+                        'row': student_data.get('_row_number', idx + 1),
+                        'error': f"Student with regNo '{reg_no}' already exists",
+                        'student': student_data.get('full_name', 'Unknown')
+                    })
+                    error_count += 1
+                    continue  # 🔴 Skip insertion
+
+                # Optional: Add this after regNo check
+                elif student_data.get('date_of_birth') and student_data.get('full_name'):
+                    self.cursor.execute("""
+                        SELECT id FROM students 
+                        WHERE full_name = %s AND date_of_birth = %s AND is_active = TRUE
+                    """, (student_data['full_name'], student_data['date_of_birth']))
+                    if self.cursor.fetchone():
+                        import_errors.append({
+                            'row': student_data.get('_row_number'),
+                            'error': "Student with same name and DOB already exists",
+                            'student': student_data['full_name']
+                        })
+                        error_count += 1
+                        continue
+    
+                # ✅ No duplicate — proceed with insert
+                current_time = datetime.now()
+                insert_query = '''
+                    INSERT INTO students (
+                        school_id, first_name, surname, full_name, sex, date_of_birth,
+                        religion, citizenship, email, last_school, grade_applied_for, 
+                        class_year, enrollment_date, regNo, is_active, medical_conditions, 
+                        allergies, created_at, updated_at
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                '''
+                values = (
+                    student_data.get('school_id', 1),
+                    student_data.get('first_name', ''),
+                    student_data.get('surname', ''),
+                    student_data.get('full_name', ''),
+                    student_data.get('sex', 'Male'),
+                    student_data.get('date_of_birth'),
+                    student_data.get('religion'),
+                    student_data.get('citizenship'),
+                    student_data.get('email'),
+                    student_data.get('last_school'),
+                    student_data.get('grade_applied_for'),
+                    student_data.get('class_year'),
+                    student_data.get('enrollment_date'),
+                    reg_no,
+                    student_data.get('is_active', True),
+                    student_data.get('medical_conditions'),
+                    student_data.get('allergies'),
+                    current_time,
+                    current_time
+                )
+                self.cursor.execute(insert_query, values)
+                student_id = self.cursor.lastrowid
+    
+                # Link parent if provided
+                if student_data.get('parent_name'):
+                    self.create_parent_from_import(student_id, student_data)
+    
+                success_count += 1
+    
+            except Exception as e:
+                error_count += 1
+                import_errors.append({
+                    'row': student_data.get('_row_number', idx + 1),
+                    'error': str(e),
+                    'student': student_data.get('full_name', 'Unknown')
+                })
+    
+            # Update progress
+            progress = int((idx + 1) / total_records * 40) + 60
+            if progress_dialog:
+                progress_dialog.setValue(progress)
+    
+        # Commit all changes
+        self.db_connection.commit()
+        return success_count, error_count, import_errors
+    
+    def create_parent_from_import(self, student_id, student_data):
+        """Create parent record from import data"""
+        try:
+            parent_name = student_data.get('parent_name', '').strip()
+            if not parent_name:
+                return
+            
+            # Check if parent already exists
+            self.cursor.execute(
+                "SELECT id FROM parents WHERE full_name = %s AND is_active = TRUE",
+                (parent_name,)
+            )
+            existing_parent = self.cursor.fetchone()
+            
+            if existing_parent:
+                parent_id = existing_parent[0]
+            else:
+                # Create new parent
+                parent_query = '''
+                    INSERT INTO parents (full_name, phone, email, relation, is_active)
+                    VALUES (%s, %s, %s, %s, %s)
+                '''
+                parent_values = (
+                    parent_name,
+                    student_data.get('parent_phone'),
+                    student_data.get('parent_email'),
+                    'Guardian',
+                    True
+                )
+                self.cursor.execute(parent_query, parent_values)
+                parent_id = self.cursor.lastrowid
+            
+            # Link student to parent
+            link_query = '''
+                INSERT INTO student_parent (student_id, parent_id, relation_type, is_primary_contact, is_fee_payer, is_emergency_contact)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE relation_type = VALUES(relation_type)
+            '''
+            self.cursor.execute(link_query, (student_id, parent_id, 'Guardian', True, True, True))
+            
+        except Exception as e:
+            print(f"Error creating parent from import: {e}")
+    
+    def show_import_errors(self, errors, processed_data):
+        """Show import errors and warnings dialog"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Import Results")
+        dialog.resize(800, 600)
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+    
+        # Summary
+        error_count = sum(1 for e in errors if e.get('type') != 'warning')
+        warning_count = sum(1 for e in errors if e.get('type') == 'warning')
+    
+        if error_count > 0:
+            summary = QLabel(f"<b style='color: red;'>{error_count} error(s) found</b>")
+        if warning_count > 0:
+            warning_label = QLabel(f"<b style='color: orange;'>{warning_count} duplicate(s) detected - new regNo generated</b>")
+            warning_label.setStyleSheet("padding: 5px;")
+            layout.addWidget(warning_label)
+    
+        # Error & Warning Details
+        error_text = QTextEdit()
+        error_text.setReadOnly(True)
+        error_content = []
+    
+        for error in errors:
+            row_num = error.get('row', 'Unknown')
+            msg = error.get('error', 'Unknown error')
+            student = error.get('student', 'Unknown')
+            error_type = error.get('type', 'error')
+    
+            prefix = "⚠️ Warning" if error_type == 'warning' else "❌ Error"
+            color = "orange" if error_type == 'warning' else "red"
+    
+            error_content.append(f'<span style="color: {color};"><b>{prefix} (Row {row_num}):</b></span>')
+            error_content.append(f"  • {msg}")
+            error_content.append(f"  • Student: {student}")
+            error_content.append("")
+    
+        error_text.setHtml('<br>'.join(error_content))
+        layout.addWidget(error_text)
+    
+        # Buttons
+        btn_layout = QHBoxLayout()
+        if processed_data:
+            import_btn = QPushButton(f"Import {len(processed_data)} Valid Records")
+            import_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+            import_btn.clicked.connect(lambda: dialog.accept())
+            btn_layout.addWidget(import_btn)
+    
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.reject)
+        btn_layout.addWidget(close_btn)
+    
+        layout.addLayout(btn_layout)
+        dialog.exec_()
+    
+    def import_valid_records(self, processed_data, dialog):
+        """Import only the valid records after showing errors"""
+        try:
+            progress = QProgressDialog("Importing valid records...", "Cancel", 0, 100, self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
+            
+            success_count, error_count, import_errors = self.import_to_database(processed_data, progress)
+            progress.close()
+            dialog.accept()
+            
+            result_msg = f"Import completed!\n"
+            result_msg += f"Successfully imported: {success_count} students\n"
+            if error_count > 0:
+                result_msg += f"Failed to import: {error_count} students"
+            
+            QMessageBox.information(self, "Import Results", result_msg)
+            self.load_students()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to import valid records: {str(e)}")
+
+    def show_import_preview(self, processed_data):
+        """Show a preview of the data to be imported"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Import Preview")
+        dialog.resize(1000, 500)
+        dialog.setModal(True)
+    
+        layout = QVBoxLayout(dialog)
+    
+        title = QLabel("Preview of Data to be Imported (First 20 Rows)")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; padding: 10px;")
+        layout.addWidget(title)
+    
+        # Table
+        table = QTableWidget()
+        table.setColumnCount(8)
+        table.setHorizontalHeaderLabels([
+            "Full Name", "Reg No", "Grade", "Class Year", "Email", "DOB", "Parent", "Phone"
+        ])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+    
+        # Take first 20 rows
+        preview_data = processed_data[:20]
+        table.setRowCount(len(preview_data))
+    
+        for row_idx, data in enumerate(preview_data):
+            full_name = data.get('full_name', '')
+            reg_no = data.get('regNo', '')
+            grade = data.get('grade_applied_for', '')
+            class_year = data.get('class_year', '')
+            email = data.get('email', '')
+            dob = data.get('date_of_birth', '')
+            parent = data.get('parent_name', '')
+            phone = data.get('parent_phone', '')
+    
+            table.setItem(row_idx, 0, QTableWidgetItem(full_name))
+            table.setItem(row_idx, 1, QTableWidgetItem(reg_no))
+            table.setItem(row_idx, 2, QTableWidgetItem(grade))
+            table.setItem(row_idx, 3, QTableWidgetItem(class_year))
+            table.setItem(row_idx, 4, QTableWidgetItem(email))
+            table.setItem(row_idx, 5, QTableWidgetItem(str(dob) if dob else ""))
+            table.setItem(row_idx, 6, QTableWidgetItem(parent))
+            table.setItem(row_idx, 7, QTableWidgetItem(phone))
+    
+        layout.addWidget(table)
+    
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+    
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+    
+        import_btn = QPushButton("Start Import")
+        import_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        import_btn.clicked.connect(lambda: dialog.accept())
+    
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(import_btn)
+        layout.addLayout(btn_layout)
+    
+        # Show dialog
+        if dialog.exec() == QDialog.Accepted:
+            return True  # User confirmed import
+        return False  # User canceled
 
 
 def main():

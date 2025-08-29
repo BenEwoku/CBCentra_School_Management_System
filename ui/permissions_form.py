@@ -1,3 +1,4 @@
+#SELECT DISTINCT permission FROM role_permissions ORDER BY permission;
 # ui/permissions_form.py
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
@@ -35,13 +36,13 @@ class PermissionsForm(AuditBaseForm):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
-
+    
         # Combined Title + Description (Single Label)
         header_label = QLabel()
         header_label.setTextFormat(Qt.TextFormat.RichText)
         header_label.setText(
             "<h2 style='color: #007BFF; margin: 0; display: inline;'>Role-Based Permissions Management</h2>"
-            "<span style='color: #6c757d; font-size: 13px; margin-left: 8px; vertical-align: top;'>"  
+            "<span style='color: #6c757d; font-size: 13px; margin-left: 8px; vertical-align: top;'>"
             "Manage what each role can do in the system. Changes are saved immediately. "
             "Only Admin, Headteacher, and Top Level staff (e.g., Directors) can access this."
             "</span>"
@@ -49,35 +50,51 @@ class PermissionsForm(AuditBaseForm):
         header_label.setWordWrap(True)
         header_label.setStyleSheet("padding: 4px 0;")
         layout.addWidget(header_label)
-
+    
         # Controls
         controls_layout = QHBoxLayout()
+    
+        # 🔍 Search Bar: Filter by Permission Name
+        self.permission_search = QLineEdit()
+        self.permission_search.setPlaceholderText("Search permission (e.g., student, teacher, create, delete)")
+        self.permission_search.textChanged.connect(self.filter_table)
+        controls_layout.addWidget(QLabel("Search:"))
+        controls_layout.addWidget(self.permission_search)
 
+        # Add this next to search
         self.role_filter = QComboBox()
         self.role_filter.addItem("All Roles")
-        self.role_filter.currentTextChanged.connect(self.filter_table)
-
+        for role_name in sorted(self.role_name_map.keys()):
+            self.role_filter.addItem(role_name.title())
+        self.role_filter.currentTextChanged.connect(self.filter_by_role)
+        controls_layout.insertWidget(1, self.role_filter)  # Insert after "Search:"
+    
+        # 🧹 Clear Button
+        clear_filter_btn = QPushButton("Clear")
+        clear_filter_btn.clicked.connect(lambda: self.permission_search.clear())
+        controls_layout.addWidget(clear_filter_btn)
+    
+        controls_layout.addStretch()
+    
+        # 💾 Action Buttons
         save_btn = QPushButton("Save Changes")
         save_btn.setProperty("class", "primary")
         save_btn.clicked.connect(self.save_permissions)
-
+    
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setProperty("class", "info")
         refresh_btn.clicked.connect(self.refresh_data)
-
+    
         clear_btn = QPushButton("Clear Changes")
         clear_btn.setProperty("class", "warning")
         clear_btn.clicked.connect(self.clear_changes)
-
-        controls_layout.addWidget(QLabel("Filter:"))
-        controls_layout.addWidget(self.role_filter)
-        controls_layout.addStretch()
+    
         controls_layout.addWidget(clear_btn)
         controls_layout.addWidget(refresh_btn)
         controls_layout.addWidget(save_btn)
-
+    
         layout.addLayout(controls_layout)
-
+    
         # Table Group
         table_group = QGroupBox("Permissions Matrix")
         table_layout = QVBoxLayout(table_group)
@@ -90,16 +107,15 @@ class PermissionsForm(AuditBaseForm):
         self.permissions_table.verticalHeader().setVisible(True)
         self.permissions_table.setSortingEnabled(False)
         
-        # 🔧 Make table expand vertically
+        # Make table expand vertically
         self.permissions_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.permissions_table.setMinimumHeight(300)  # Prevent from being too small
+        self.permissions_table.setMinimumHeight(300)
         
         table_layout.addWidget(self.permissions_table)
         
-        # Add to main layout
         layout.addWidget(table_group)
         
-        # ✅ Let this section take available space
+        # Let table take available space
         layout.setStretch(layout.indexOf(table_group), 1)
 
     def load_data(self):
@@ -141,45 +157,54 @@ class PermissionsForm(AuditBaseForm):
             QMessageBox.critical(self, "Database Error", f"Failed to load data: {e}")
 
     def build_table(self):
-        """Build the permissions matrix table"""
+        """Build the permissions matrix with permissions as rows and roles as columns"""
         self.permissions_table.clear()
-
+    
+        # Sort permissions for consistency
+        sorted_permissions = sorted(self.all_permissions)
+    
+        n_perms = len(sorted_permissions)
         n_roles = len(self.role_id_map)
-        n_perms = len(self.all_permissions)
-
-        self.permissions_table.setRowCount(n_roles)
-        self.permissions_table.setColumnCount(n_perms + 1)  # +1 for Role column
-
-        # Headers
-        header_labels = ["Role"] + [p.replace('_', ' ').title() for p in self.all_permissions]
+    
+        # Set: Rows = Permissions, Columns = Roles + 1 (for "Permission" header)
+        self.permissions_table.setRowCount(n_perms)
+        self.permissions_table.setColumnCount(n_roles + 1)
+    
+        # Headers: ["Permission", "Admin", "Teacher", "Headteacher", ...]
+        header_labels = ["Permission"] + [name.title() for name in self.role_id_map.values()]
         self.permissions_table.setHorizontalHeaderLabels(header_labels)
-
-        # Freeze role column
+    
+        # Freeze "Permission" column
         self.permissions_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-
-        # Fill rows
-        for row_idx, (role_id, role_name) in enumerate(self.role_id_map.items()):
-            # Role name
-            role_item = QTableWidgetItem(role_name.title())
-            role_item.setFlags(role_item.flags() ^ Qt.ItemIsEditable)
-            self.permissions_table.setItem(row_idx, 0, role_item)
-
-            for col_idx, permission in enumerate(self.all_permissions, start=1):
+    
+        # Fill table: one row per permission
+        for row_idx, permission in enumerate(sorted_permissions):
+            # Permission name (left column)
+            perm_item = QTableWidgetItem(permission.replace('_', ' ').title())
+            perm_item.setFlags(perm_item.flags() ^ Qt.ItemIsEditable)
+            self.permissions_table.setItem(row_idx, 0, perm_item)
+    
+            # One column per role
+            for col_idx, (role_id, role_name) in enumerate(self.role_id_map.items(), start=1):
+                # Create checkbox
                 checkbox = QCheckBox()
-                checkbox.setChecked((role_id, permission) in self.current_permissions)
+                is_allowed = (role_id, permission) in self.current_permissions
+                checkbox.setChecked(is_allowed)
                 checkbox.setProperty("role_id", role_id)
                 checkbox.setProperty("permission", permission)
                 checkbox.stateChanged.connect(self.on_permission_toggled)
-
+    
+                # Wrap in a centered widget
                 cell_widget = QFrame()
                 cell_layout = QHBoxLayout(cell_widget)
                 cell_layout.addWidget(checkbox)
                 cell_layout.setAlignment(Qt.AlignCenter)
                 cell_layout.setContentsMargins(5, 0, 5, 0)
                 cell_widget.setLayout(cell_layout)
-
+    
                 self.permissions_table.setCellWidget(row_idx, col_idx, cell_widget)
-
+    
+        # Resize to fit
         self.permissions_table.resizeColumnsToContents()
         self.permissions_table.resizeRowsToContents()
 
@@ -189,12 +214,55 @@ class PermissionsForm(AuditBaseForm):
         role_id = checkbox.property("role_id")
         permission = checkbox.property("permission")
         is_checked = checkbox.isChecked()
-
+    
         perm_tuple = (role_id, permission)
         if is_checked:
             self.current_permissions.add(perm_tuple)
         else:
             self.current_permissions.discard(perm_tuple)
+
+    def filter_table(self):
+        """Filter rows by permission name"""
+        filter_text = self.permission_search.text().strip().lower()
+        if not filter_text:
+            for row in range(self.permissions_table.rowCount()):
+                self.permissions_table.setRowHidden(row, False)
+        else:
+            for row in range(self.permissions_table.rowCount()):
+                item = self.permissions_table.item(row, 0)  # Permission name in first column
+                if item and filter_text in item.text().lower():
+                    self.permissions_table.setRowHidden(row, False)
+                else:
+                    self.permissions_table.setRowHidden(row, True)
+
+    def filter_by_role(self):
+        """Filter rows by selected role (show only rows where role has permission)"""
+        role_name = self.role_filter.currentText()
+        if role_name == "All Roles":
+            for row in range(self.permissions_table.rowCount()):
+                self.permissions_table.setRowHidden(row, False)
+            return
+    
+        # Find the column index for the selected role
+        column_count = self.permissions_table.columnCount()
+        role_col_index = -1
+        for col in range(column_count):
+            header_item = self.permissions_table.horizontalHeaderItem(col)
+            if header_item and header_item.text() == role_name:
+                role_col_index = col
+                break
+    
+        if role_col_index == -1:
+            return  # Role not found
+    
+        # Show only rows where checkbox is checked for this role
+        for row in range(self.permissions_table.rowCount()):
+            cell_widget = self.permissions_table.cellWidget(row, role_col_index)
+            if cell_widget and cell_widget.findChild(QCheckBox):
+                checkbox = cell_widget.findChild(QCheckBox)
+                self.permissions_table.setRowHidden(row, not checkbox.isChecked())
+            else:
+                self.permissions_table.setRowHidden(row, True)
 
     def save_permissions(self):
         """Save all permission changes to the database"""
@@ -251,17 +319,6 @@ class PermissionsForm(AuditBaseForm):
         self.build_table()
         QMessageBox.information(self, "Cleared", "Unsaved changes have been cleared.")
 
-    def filter_table(self):
-        """Filter rows by selected role"""
-        filter_text = self.role_filter.currentText()
-        if filter_text == "All Roles":
-            for row in range(self.permissions_table.rowCount()):
-                self.permissions_table.setRowHidden(row, False)
-        else:
-            for row in range(self.permissions_table.rowCount()):
-                item = self.permissions_table.item(row, 0)
-                show = item.text().lower() == filter_text.lower()
-                self.permissions_table.setRowHidden(row, not show)
 
     def showEvent(self, event):
         """On tab show, check permission"""
