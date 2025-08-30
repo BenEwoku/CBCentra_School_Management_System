@@ -1530,7 +1530,7 @@ class TeachersForm(AuditBaseForm):
             if not target_teacher_id:
                 raise ValueError("No teacher selected")
     
-            # Fetch teacher data
+            # Fetch teacher data with photo
             query = '''
                 SELECT 
                     t.teacher_id_code, t.salutation, t.first_name, t.surname, t.email, 
@@ -1538,7 +1538,7 @@ class TeachersForm(AuditBaseForm):
                     t.home_district, t.subject_specialty, t.qualification, t.date_joined,
                     t.emergency_contact_1, t.emergency_contact_2, t.national_id_number,
                     t.birth_date, t.bank_account_number, t.next_of_kin, t.employment_status,
-                    t.is_active, t.staff_type, t.position, t.school_id
+                    t.is_active, t.staff_type, t.position, t.school_id, t.photo_path
                 FROM teachers t
                 WHERE t.id = %s
             '''
@@ -1548,7 +1548,7 @@ class TeachersForm(AuditBaseForm):
                 raise ValueError("Teacher data not found")
     
             # Fetch school info - CORRECT QUERY for your table structure
-            school_id = teacher[-1]  # Last field is school_id
+            school_id = teacher[23]  # school_id position
             school = None
             
             if school_id:
@@ -1577,128 +1577,196 @@ class TeachersForm(AuditBaseForm):
             school_logo = school[4] if school and school[4] else default_logo
     
             class TeacherPDF(FPDF):
-                def __init__(self):
-                    super().__init__()
-                    self.set_auto_page_break(auto=True, margin=15)
+                def __init__(self, teacher_photo=None):
+                    super().__init__(orientation='P', unit='mm', format='A4')
+                    self.set_margins(15, 15, 15)
+                    self.set_auto_page_break(auto=False)  # Manual page breaks for better control
+                    self.teacher_photo = teacher_photo
     
                 def header(self):
+                    # School logo (left side)
                     if os.path.exists(school_logo):
                         try:
-                            self.image(school_logo, 10, 10, 25)
-                        except Exception as img_e:
-                            print(f"Logo load error: {img_e}")
-    
-                    self.set_xy(40, 10)
-                    self.set_font('Arial', 'B', 14)
-                    self.cell(0, 6, school_name.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-    
-                    self.set_x(40)
-                    self.set_font('Arial', '', 10)
-                    self.cell(0, 4, school_address.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-                    self.set_x(40)
-                    self.cell(0, 4, school_phone.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-                    self.set_x(40)
-                    self.cell(0, 4, school_email.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-    
-                    self.ln(10)
-                    self.set_font('Arial', 'B', 16)
-                    self.set_text_color(68, 114, 196)
-                    self.cell(0, 8, 'TEACHER PROFILE FORM', 0, 1, 'C')
-    
-                    self.set_font('Arial', 'I', 10)
-                    self.set_text_color(0, 0, 0)
-                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    self.cell(0, 6, f'Generated on: {timestamp}', 0, 1, 'C')
-                    self.ln(5)
+                            self.image(school_logo, 15, 10, 25)
+                        except:
+                            pass  # Skip if logo can't be loaded
+                    
+                    # Teacher photo (right side of header)
+                    if self.teacher_photo and os.path.exists(self.teacher_photo):
+                        try:
+                            self.image(self.teacher_photo, 165, 5, 30, 30)  # Positioned in header
+                        except:
+                            pass  # Skip if photo can't be loaded
+                    
+                    # School information (centered) - only show if available
+                    self.set_y(10)
+                    if school_name:
+                        self.set_font("Arial", "B", 16)
+                        self.cell(0, 8, school_name, 0, 1, "C")
+                    
+                    if school_address:
+                        self.set_font("Arial", "", 10)
+                        self.cell(0, 5, school_address, 0, 1, "C")
+                    
+                    if school_phone or school_email:
+                        contact_info = ""
+                        if school_phone:
+                            contact_info += school_phone
+                        if school_phone and school_email:
+                            contact_info += " | "
+                        if school_email:
+                            contact_info += school_email
+                        
+                        self.set_font("Arial", "", 10)
+                        self.cell(0, 5, contact_info, 0, 1, "C")
+                    
+                    # Report title
+                    self.ln(3)
+                    self.set_font("Arial", "B", 14)
+                    self.set_text_color(70, 70, 70)  # Dark gray
+                    self.cell(0, 8, "TEACHER PROFILE REPORT", 0, 1, "C")
+                    
+                    # Generation info
+                    self.set_font("Arial", "I", 8)
+                    self.set_text_color(100, 100, 100)
+                    gen_info = f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    if hasattr(self, 'user_session') and self.user_session:
+                        user_name = getattr(self.user_session, 'full_name', 'System')
+                        gen_info += f" | By: {user_name}"
+                    self.cell(0, 4, gen_info, 0, 1, "C")
+                    
+                    # Line separator
+                    self.line(15, self.get_y() + 2, 195, self.get_y() + 2)
+                    self.ln(6)
     
                 def footer(self):
                     self.set_y(-15)
-                    self.set_font('Arial', 'I', 8)
+                    self.set_font("Arial", "I", 8)
                     self.set_text_color(128, 128, 128)
-                    self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+                    self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
     
-                def section_header(self, title):
-                    self.ln(3)
-                    self.set_fill_color(34, 139, 34)
-                    self.set_text_color(255, 255, 255)
-                    self.set_font('Arial', 'B', 12)
-                    self.cell(0, 8, title.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'L', True)
-                    self.set_text_color(0, 0, 0)
+                def section_header(self, title, highlight=False):
+                    self.ln(3)  # Space before section
+                    self.set_font("Arial", "B", 11)
+                    if highlight:
+                        self.set_fill_color(173, 216, 230)  # Light blue highlight
+                        self.set_text_color(0, 0, 0)      # Black text
+                    else:
+                        self.set_fill_color(230, 230, 230)  # Light gray background
+                        self.set_text_color(70, 70, 70)     # Dark gray text
+                    self.cell(0, 7, title, 0, 1, "L", True)
+                    self.ln(3)  # Space after section header
+    
+                def add_field(self, label, value, width1=50, width2=0):
+                    self.set_font("Arial", "B", 10)
+                    self.cell(width1, 6, label, 0, 0)
+                    self.set_font("Arial", "", 10)
+                    if width2 == 0:
+                        width2 = 195 - 15 - width1  # Calculate remaining width
+                    self.cell(width2, 6, str(value) if value else "N/A", 0, 1)
+    
+                def add_multiline_field(self, label, value):
+                    self.set_font("Arial", "B", 10)
+                    self.cell(0, 6, label, 0, 1)
+                    self.set_font("Arial", "", 10)
+                    text = str(value) if value else "N/A"
+                    self.multi_cell(0, 6, text)
                     self.ln(2)
     
-                def add_field(self, label, value, col1_width=60):
-                    self.set_font('Arial', 'B', 10)
-                    safe_label = label.encode('latin-1', 'replace').decode('latin-1')
-                    self.cell(col1_width, 6, safe_label + ':', 0, 0, 'L')
-    
-                    self.set_font('Arial', '', 10)
-                    safe_value = str(value) if value else 'N/A'
-                    safe_value = safe_value.encode('latin-1', 'replace').decode('latin-1')
-                    self.cell(0, 6, safe_value, 0, 1, 'L')
-    
-                def add_signature_line(self, label, width=80):
-                    self.set_font('Arial', '', 10)
-                    safe_label = label.encode('latin-1', 'replace').decode('latin-1')
-                    self.cell(len(safe_label) * 2, 6, safe_label + ': ', 0, 0, 'L')
-                    x, y = self.get_x(), self.get_y()
-                    self.line(x, y + 5, x + width, y + 5)
-                    self.ln(10)
-    
-            # Generate PDF to temporary file first, then read bytes
-            pdf = TeacherPDF()
+            # Create PDF instance with teacher photo
+            photo_path = teacher[24]  # photo_path from query (last field)
+            pdf = TeacherPDF(photo_path)
             pdf.add_page()
     
-            # === Add all sections ===
-            pdf.section_header("Personal Information")
-            pdf.add_field("Teacher ID", teacher[0])
-            full_name = f"{teacher[1]} {teacher[2]} {teacher[3]}".strip()
-            pdf.add_field("Full Name", full_name)
-            pdf.add_field("Gender", teacher[5])
-            pdf.add_field("Birth Date", teacher[16] or "N/A")
-            pdf.add_field("National ID Number", teacher[15])
-            pdf.add_field("Email", teacher[4])
-            pdf.add_field("Phone 1", teacher[6])
-            pdf.add_field("Day Phone", teacher[7])
+            # Personal Information Section
+            pdf.section_header("PERSONAL INFORMATION")
+            
+            pdf.add_field("Teacher ID Code:", teacher[0])
+            full_name = f"{teacher[1] or ''} {teacher[2] or ''} {teacher[3] or ''}".strip()
+            pdf.add_field("Full Name:", full_name)
+            
+            # Two-column layout for compact display
+            current_y = pdf.get_y()
+            pdf.add_field("Gender:", teacher[5], 50, 45)
+            pdf.set_y(current_y)
+            pdf.set_x(110)
+            pdf.add_field("Birth Date:", teacher[16].strftime("%Y-%m-%d") if teacher[16] else "N/A", 40, 45)
+            
+            pdf.add_field("National ID Number:", teacher[15])
+            pdf.add_field("Email:", teacher[4])
+            
+            current_y = pdf.get_y()
+            pdf.add_field("Phone Contact 1:", teacher[6], 50, 45)
+            pdf.set_y(current_y)
+            pdf.set_x(110)
+            pdf.add_field("Day Phone:", teacher[7], 40, 45)
     
-            pdf.section_header("Professional Information")
-            pdf.add_field("Subject Specialty", teacher[10])
-            pdf.add_field("Qualification", teacher[11])
-            pdf.add_field("Date Joined", teacher[12] or "N/A")
-            pdf.add_field("Staff Type", teacher[21])
-            pdf.add_field("Position", teacher[22])
-            pdf.add_field("Bank Account Number", teacher[17])
-            pdf.add_field("Employment Status", teacher[19])
+            # Professional Information Section
+            pdf.section_header("PROFESSIONAL INFORMATION")
+            
+            pdf.add_field("Subject Specialty:", teacher[10])
+            pdf.add_field("Qualification:", teacher[11])
+            pdf.add_field("Date Joined:", teacher[12].strftime("%Y-%m-%d") if teacher[12] else "N/A")
+            
+            current_y = pdf.get_y()
+            pdf.add_field("Staff Type:", teacher[21], 50, 45)
+            pdf.set_y(current_y)
+            pdf.set_x(110)
+            pdf.add_field("Position:", teacher[22], 40, 45)
+            
+            current_y = pdf.get_y()
+            pdf.add_field("Employment Status:", teacher[19], 50, 45)
+            pdf.set_y(current_y)
+            pdf.set_x(110)
+            pdf.add_field("Bank Account:", teacher[17], 40, 45)
     
-            pdf.section_header("School Information")
-            pdf.add_field("School Name", school_name)
-            pdf.add_field("School Address", school_address)
-            pdf.add_field("School Phone", school_phone)
-            pdf.add_field("School Email", school_email)
+            # School Information Section
+            pdf.section_header("SCHOOL INFORMATION")
+            
+            pdf.add_field("School Name:", school_name)
+            pdf.add_field("School Address:", school_address)
+            
+            current_y = pdf.get_y()
+            pdf.add_field("School Phone:", school_phone, 50, 45)
+            pdf.set_y(current_y)
+            pdf.set_x(110)
+            pdf.add_field("School Email:", school_email, 40, 45)
     
-            pdf.section_header("Address & Emergency Contact")
-            pdf.add_field("Current Address", teacher[8])
-            pdf.add_field("Home District", teacher[9])
-            pdf.add_field("Next of Kin", teacher[18])
-            pdf.add_field("Emergency Contact 1", teacher[13])
-            pdf.add_field("Emergency Contact 2", teacher[14])
+            # Address & Emergency Contact Section
+            pdf.section_header("ADDRESS & EMERGENCY CONTACT")
+            
+            pdf.add_field("Current Address:", teacher[8])
+            pdf.add_field("Home District:", teacher[9])
+            pdf.add_field("Next of Kin:", teacher[18])
+            
+            current_y = pdf.get_y()
+            pdf.add_field("Emergency Contact 1:", teacher[13], 50, 45)
+            pdf.set_y(current_y)
+            pdf.set_x(110)
+            pdf.add_field("Emergency Contact 2:", teacher[14], 40, 45)
     
-            pdf.section_header("Declaration")
-            pdf.ln(2)
-            pdf.set_font('Arial', '', 10)
-            declaration = ("I, __________________________________________________, "
-                          "hereby declare that the above information is true and that any "
-                          "attached documents are authentic.")
-            for line in [declaration[i:i+90] for i in range(0, len(declaration), 90)]:
-                pdf.cell(0, 5, line.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'L')
-            pdf.ln(10)
-            pdf.add_signature_line("Signature", 60)
-            pdf.add_signature_line("Date", 60)
+            # Declaration Section
+            pdf.section_header("DECLARATION")
+            pdf.set_font("Arial", "", 10)
+            declaration_text = (
+                "I, _____________________________________________________________, "
+                "hereby declare that the information provided in this form is true "
+                "and accurate to the best of my knowledge.\n\n\n"
+                "Signature: ________________________________________________    "
+                "Date: _________________________\n\n\n"
+            )
+            pdf.multi_cell(0, 3, declaration_text)
     
-            pdf.section_header("For Official Use Only")
-            pdf.ln(2)
-            pdf.add_signature_line("Recommended for appointment on (Date)", 80)
-            pdf.ln(5)
-            pdf.add_signature_line("Administrator Signature", 80)
+            # FOR OFFICIAL USE ONLY Section - Highlighted
+            pdf.section_header("FOR OFFICIAL USE ONLY", highlight=True)
+            pdf.set_font("Arial", "", 10)
+            official_text = (
+                "Recommended for appointment on (Date): ___________________________________\n\n\n"
+                "Administrator Signature: ___________________________________     "
+                "Date: _________________________\n\n"
+                "                                                                                                    (Administrator)"
+            )
+            pdf.multi_cell(0, 3, official_text)
     
             # Use temporary file approach to get PDF bytes
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
@@ -1751,7 +1819,7 @@ class TeachersForm(AuditBaseForm):
             import traceback
             print(f"Full error: {traceback.format_exc()}")
             QMessageBox.critical(self, "Export Error", f"Failed to generate or view PDF:\n{str(e)}")
-
+        
     def import_teachers_data(self):
         """Import teachers data from CSV or Excel file"""
         try:

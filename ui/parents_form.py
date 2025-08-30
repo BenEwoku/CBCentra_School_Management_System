@@ -603,7 +603,7 @@ class ParentsForm(AuditBaseForm):
 
         layout.addWidget(search_frame)
 
-        # Action buttons
+        # Enhanced action buttons with refresh options
         action_layout = QHBoxLayout()
         
         buttons_data = [
@@ -620,7 +620,22 @@ class ParentsForm(AuditBaseForm):
             btn.setStyleSheet(f"background-color: {btn_color}; min-height: 35px;")
             btn.clicked.connect(btn_func)
             action_layout.addWidget(btn)
-
+    
+        # Add refresh menu button
+        refresh_menu_btn = self.add_refresh_controls()
+        action_layout.addWidget(refresh_menu_btn)
+        
+        # Add integrity check button
+        integrity_btn = QPushButton("Check Integrity")
+        integrity_btn.setStyleSheet("background-color: #fd7e14; min-height: 35px;")
+        integrity_btn.clicked.connect(self.validate_parent_student_integrity)
+        action_layout.addWidget(integrity_btn)
+        
+        export_btn = QPushButton("Export Excel")
+        export_btn.setStyleSheet("background-color: #198754; min-height: 35px;")
+        export_btn.clicked.connect(self.export_to_excel)
+        action_layout.addWidget(export_btn)
+    
         action_layout.addStretch()
         layout.addLayout(action_layout)
 
@@ -764,22 +779,28 @@ class ParentsForm(AuditBaseForm):
         self.apply_filters()
 
     def apply_filters(self):
-        """Apply search and filter criteria"""
+        """Apply search and filter criteria with accurate student counts"""
         search_term = self.search_entry.text().strip()
         relation_filter = self.relation_filter.currentText()
         status_filter = self.status_filter.currentText()
         
         try:
-            # Build dynamic query
+            # Enhanced query with accurate student counting
             query = """
                 SELECT p.id, p.full_name, p.relation, p.phone, p.email,
-                       COUNT(DISTINCT sp.student_id) as student_count,
+                       COALESCE(student_counts.student_count, 0) as student_count,
                        CASE WHEN p.is_payer THEN 'Yes' ELSE 'No' END as is_payer,
                        CASE WHEN p.is_emergency_contact THEN 'Yes' ELSE 'No' END as is_emergency,
                        CASE WHEN p.is_active THEN 'Active' ELSE 'Inactive' END as status,
                        DATE_FORMAT(p.created_at, '%Y-%m-%d') as created_date
                 FROM parents p
-                LEFT JOIN student_parent sp ON p.id = sp.parent_id
+                LEFT JOIN (
+                    SELECT sp.parent_id, COUNT(DISTINCT s.id) as student_count
+                    FROM student_parent sp
+                    INNER JOIN students s ON sp.student_id = s.id
+                    WHERE s.is_active = TRUE
+                    GROUP BY sp.parent_id
+                ) student_counts ON p.id = student_counts.parent_id
                 WHERE 1=1
             """
             params = []
@@ -802,9 +823,7 @@ class ParentsForm(AuditBaseForm):
             elif status_filter == "Inactive":
                 query += " AND p.is_active = FALSE"
             
-            query += """ GROUP BY p.id, p.full_name, p.relation, p.phone, p.email,
-                        p.is_payer, p.is_emergency_contact, p.is_active, p.created_at
-                        ORDER BY p.full_name LIMIT 200"""
+            query += " ORDER BY p.full_name LIMIT 200"
             
             self.cursor.execute(query, params)
             parents = self.cursor.fetchall()
@@ -813,25 +832,29 @@ class ParentsForm(AuditBaseForm):
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Filter failed: {str(e)}")
-
+            
     def load_parents(self):
-        """Load all parents with enhanced information"""
+        """Load all parents with enhanced information and proper count calculation"""
         try:
             self.show_loading(True)
             
-            # Use database worker for non-blocking operation
+            # Enhanced query that properly counts only active students
             query = """
                 SELECT p.id, p.full_name, p.relation, p.phone, p.email,
-                       COUNT(DISTINCT sp.student_id) as student_count,
+                       COALESCE(student_counts.student_count, 0) as student_count,
                        CASE WHEN p.is_payer THEN 'Yes' ELSE 'No' END as is_payer,
                        CASE WHEN p.is_emergency_contact THEN 'Yes' ELSE 'No' END as is_emergency,
                        CASE WHEN p.is_active THEN 'Active' ELSE 'Inactive' END as status,
                        DATE_FORMAT(p.created_at, '%Y-%m-%d') as created_date
                 FROM parents p
-                LEFT JOIN student_parent sp ON p.id = sp.parent_id
+                LEFT JOIN (
+                    SELECT sp.parent_id, COUNT(DISTINCT s.id) as student_count
+                    FROM student_parent sp
+                    INNER JOIN students s ON sp.student_id = s.id
+                    WHERE s.is_active = TRUE
+                    GROUP BY sp.parent_id
+                ) student_counts ON p.id = student_counts.parent_id
                 WHERE p.is_active = TRUE
-                GROUP BY p.id, p.full_name, p.relation, p.phone, p.email,
-                         p.is_payer, p.is_emergency_contact, p.is_active, p.created_at
                 ORDER BY p.full_name
                 LIMIT 200
             """
@@ -845,6 +868,7 @@ class ParentsForm(AuditBaseForm):
         except Exception as e:
             self.show_loading(False)
             QMessageBox.critical(self, "Error", f"Failed to load parents: {str(e)}")
+
 
     def populate_parents_table(self, parents):
         """Populate the parents table with data"""
@@ -1252,6 +1276,247 @@ class ParentsForm(AuditBaseForm):
                     
         except Exception as e:
             print(f"Error updating relations breakdown: {e}")
+    
+    def refresh_student_counts(self):
+        """Manually refresh student counts for all visible parents"""
+        try:
+            self.show_loading(True)
+            
+            # Get all parent IDs currently displayed
+            parent_ids = []
+            for row in range(self.parents_table.rowCount()):
+                item = self.parents_table.item(row, 0)  # ID column
+                if item:
+                    parent_ids.append(int(item.text()))
+            
+            if not parent_ids:
+                return
+            
+            # Create placeholders for IN clause
+            placeholders = ','.join(['%s'] * len(parent_ids))
+            
+            # Query to get updated counts
+            count_query = f"""
+                SELECT sp.parent_id, COUNT(DISTINCT s.id) as student_count
+                FROM student_parent sp
+                INNER JOIN students s ON sp.student_id = s.id
+                WHERE s.is_active = TRUE AND sp.parent_id IN ({placeholders})
+                GROUP BY sp.parent_id
+            """
+            
+            self.cursor.execute(count_query, parent_ids)
+            updated_counts = dict(self.cursor.fetchall())
+            
+            # Update the table
+            for row in range(self.parents_table.rowCount()):
+                parent_id_item = self.parents_table.item(row, 0)
+                if parent_id_item:
+                    parent_id = int(parent_id_item.text())
+                    count = updated_counts.get(parent_id, 0)
+                    
+                    # Update the count column (index 5)
+                    count_item = QTableWidgetItem(str(count))
+                    self.parents_table.setItem(row, 5, count_item)
+            
+            QMessageBox.information(self, "Success", "Student counts refreshed successfully!")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh counts: {str(e)}")
+        finally:
+            self.show_loading(False)
+    
+    def cleanup_orphaned_relationships(self):
+        """Remove orphaned parent-student relationships"""
+        try:
+            reply = QMessageBox.question(
+                self, "Cleanup Relationships",
+                "This will remove relationships where:\n"
+                "- Student is inactive/deleted\n"
+                "- Parent is inactive/deleted\n"
+                "- Duplicate relationships exist\n\n"
+                "Continue?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                return
+            
+            self.show_loading(True)
+            
+            # Remove relationships with inactive students
+            cleanup_queries = [
+                """DELETE sp FROM student_parent sp 
+                   LEFT JOIN students s ON sp.student_id = s.id 
+                   WHERE s.id IS NULL OR s.is_active = FALSE""",
+                
+                """DELETE sp FROM student_parent sp 
+                   LEFT JOIN parents p ON sp.parent_id = p.id 
+                   WHERE p.id IS NULL OR p.is_active = FALSE""",
+                
+                # Remove duplicate relationships
+                """DELETE sp1 FROM student_parent sp1
+                   INNER JOIN student_parent sp2 
+                   WHERE sp1.id > sp2.id 
+                   AND sp1.student_id = sp2.student_id 
+                   AND sp1.parent_id = sp2.parent_id"""
+            ]
+            
+            total_deleted = 0
+            for query in cleanup_queries:
+                self.cursor.execute(query)
+                total_deleted += self.cursor.rowcount
+            
+            self.db_connection.commit()
+            
+            QMessageBox.information(
+                self, "Cleanup Complete", 
+                f"Removed {total_deleted} orphaned/duplicate relationships."
+            )
+            
+            # Refresh the display
+            self.load_parents()
+            
+        except Exception as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Error", f"Cleanup failed: {str(e)}")
+        finally:
+            self.show_loading(False)
+    
+    def setup_auto_refresh(self):
+        """Setup automatic refresh of student counts"""
+        # Add a timer to periodically refresh counts
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.check_for_updates)
+        self.refresh_timer.start(30000)  # Check every 30 seconds
+        
+    def check_for_updates(self):
+        """Check if parent-student relationships have been modified"""
+        try:
+            # Get the latest modification timestamp from student_parent table
+            self.cursor.execute("""
+                SELECT MAX(GREATEST(
+                    COALESCE(sp.created_at, '1970-01-01'),
+                    COALESCE(sp.updated_at, '1970-01-01'),
+                    COALESCE(s.updated_at, '1970-01-01'),
+                    COALESCE(p.updated_at, '1970-01-01')
+                )) as last_modified
+                FROM student_parent sp
+                LEFT JOIN students s ON sp.student_id = s.id
+                LEFT JOIN parents p ON sp.parent_id = p.id
+            """)
+            
+            result = self.cursor.fetchone()
+            if result and result[0]:
+                last_modified = result[0]
+                
+                # Check if we need to refresh (compare with stored timestamp)
+                if not hasattr(self, 'last_refresh_time') or last_modified > self.last_refresh_time:
+                    self.refresh_student_counts()
+                    self.last_refresh_time = last_modified
+                    
+        except Exception as e:
+            print(f"Auto-refresh check failed: {e}")
+    
+    def add_refresh_controls(self):
+        """Add refresh controls to the UI"""
+        # Add to the existing action_layout in setup_list_tab
+        
+        # Create refresh menu button
+        refresh_menu_btn = QPushButton("Refresh Options ▼")
+        refresh_menu_btn.setStyleSheet("background-color: #17a2b8; min-height: 35px;")
+        
+        refresh_menu = QMenu()
+        
+        refresh_all_action = QAction("Refresh All Data", self)
+        refresh_all_action.triggered.connect(self.load_parents)
+        refresh_menu.addAction(refresh_all_action)
+        
+        refresh_counts_action = QAction("Refresh Student Counts Only", self)
+        refresh_counts_action.triggered.connect(self.refresh_student_counts)
+        refresh_menu.addAction(refresh_counts_action)
+        
+        cleanup_action = QAction("Cleanup Orphaned Relationships", self)
+        cleanup_action.triggered.connect(self.cleanup_orphaned_relationships)
+        refresh_menu.addAction(cleanup_action)
+        
+        refresh_menu.addSeparator()
+        
+        auto_refresh_action = QAction("Enable Auto-Refresh", self)
+        auto_refresh_action.setCheckable(True)
+        auto_refresh_action.toggled.connect(self.toggle_auto_refresh)
+        refresh_menu.addAction(auto_refresh_action)
+        
+        refresh_menu_btn.setMenu(refresh_menu)
+        
+        return refresh_menu_btn
+    
+    def toggle_auto_refresh(self, enabled):
+        """Toggle automatic refresh on/off"""
+        if enabled:
+            if not hasattr(self, 'refresh_timer'):
+                self.setup_auto_refresh()
+            else:
+                self.refresh_timer.start(30000)
+        else:
+            if hasattr(self, 'refresh_timer'):
+                self.refresh_timer.stop()
+    
+    def validate_parent_student_integrity(self):
+        """Validate data integrity between parents and students"""
+        try:
+            integrity_issues = []
+            
+            # Check for parents with non-existent students
+            self.cursor.execute("""
+                SELECT p.id, p.full_name, COUNT(sp.student_id) as linked_count,
+                       COUNT(s.id) as active_count
+                FROM parents p
+                LEFT JOIN student_parent sp ON p.id = sp.parent_id
+                LEFT JOIN students s ON sp.student_id = s.id AND s.is_active = TRUE
+                WHERE p.is_active = TRUE
+                GROUP BY p.id, p.full_name
+                HAVING linked_count > active_count
+            """)
+            
+            problematic_parents = self.cursor.fetchall()
+            
+            if problematic_parents:
+                for parent_id, parent_name, linked, active in problematic_parents:
+                    integrity_issues.append(
+                        f"Parent '{parent_name}' (ID: {parent_id}) has {linked} links but only {active} active students"
+                    )
+            
+            # Check for duplicate relationships
+            self.cursor.execute("""
+                SELECT sp1.parent_id, sp1.student_id, COUNT(*) as duplicate_count
+                FROM student_parent sp1
+                GROUP BY sp1.parent_id, sp1.student_id
+                HAVING COUNT(*) > 1
+            """)
+            
+            duplicates = self.cursor.fetchall()
+            if duplicates:
+                for parent_id, student_id, count in duplicates:
+                    integrity_issues.append(
+                        f"Duplicate relationship: Parent {parent_id} -> Student {student_id} ({count} times)"
+                    )
+            
+            if integrity_issues:
+                issues_text = "\n".join(integrity_issues[:10])  # Show first 10 issues
+                if len(integrity_issues) > 10:
+                    issues_text += f"\n... and {len(integrity_issues) - 10} more issues"
+                
+                QMessageBox.warning(
+                    self, "Data Integrity Issues Found",
+                    f"Found {len(integrity_issues)} integrity issues:\n\n{issues_text}\n\n"
+                    "Use 'Cleanup Orphaned Relationships' to fix these issues."
+                )
+            else:
+                QMessageBox.information(self, "Integrity Check", "No integrity issues found!")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Integrity check failed: {str(e)}")
 
     def export_to_excel(self):
         """Export parents data to Excel with enhanced formatting"""

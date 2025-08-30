@@ -1,25 +1,25 @@
 # utils/pdf_utils.py
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSpinBox, 
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSpinBox,
     QMessageBox, QFileDialog, QScrollArea, QWidget, QSizePolicy,
-    QGraphicsDropShadowEffect, QComboBox, QLineEdit
+    QGraphicsDropShadowEffect, QComboBox
 )
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QSize, Qt
-from PySide6.QtGui import QPainter, QPixmap, QPageSize, QColor, QGuiApplication
+from PySide6.QtGui import QPainter, QPixmap, QPageSize, QColor, QGuiApplication, QIcon
 import tempfile
 import os
 
 # Constants for better maintainability
 PDF_BASE_WIDTH = 595
 PDF_BASE_HEIGHT = 842
-HIGH_QUALITY_MULTIPLIER = 6  # Increased to 6x for ultra-crisp rendering
 RENDER_DPI = 300  # Professional print DPI
 MAX_ZOOM = 5.0
 MIN_ZOOM = 0.1
 ZOOM_STEP = 1.25
 DEFAULT_ZOOM_LEVELS = [25, 50, 75, 100, 125, 150, 200, 300, 400, 500]
+
 
 def validate_pdf_data(pdf_data):
     """Validate that the data is actually a PDF"""
@@ -38,18 +38,19 @@ def validate_pdf_data(pdf_data):
 
     return True, pdf_bytes
 
+
 class PDFPageContainer(QWidget):
     """Container widget for a PDF page with page number and styling"""
     def __init__(self, page_number, parent=None):
         super().__init__(parent)
         self.page_number = page_number
         self.setup_ui()
-        
+
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
-        
+
         # Page number label
         self.page_label = QLabel(f"Page {self.page_number + 1}")
         self.page_label.setAlignment(Qt.AlignCenter)
@@ -64,12 +65,13 @@ class PDFPageContainer(QWidget):
                 margin-bottom: 5px;
             }
         """)
-        
+
         # Page widget
         self.page_widget = PDFPageWidget()
-        
+
         layout.addWidget(self.page_label)
         layout.addWidget(self.page_widget)
+
 
 class PDFPageWidget(QLabel):
     """Widget to display a single PDF page with professional styling"""
@@ -79,7 +81,7 @@ class PDFPageWidget(QLabel):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.original_pixmap = None
         self.zoom_factor = 1.0
-        
+
         # Professional styling with shadow
         self.setStyleSheet("""
             QLabel {
@@ -92,7 +94,7 @@ class PDFPageWidget(QLabel):
                 border-color: #a0a0a0;
             }
         """)
-        
+
         # Add drop shadow effect
         self.add_drop_shadow()
 
@@ -113,26 +115,22 @@ class PDFPageWidget(QLabel):
     def update_display(self):
         """Update display with current zoom factor using high-quality scaling"""
         if self.original_pixmap:
-            # Calculate target size
             target_size = self.original_pixmap.size() * self.zoom_factor
-            
+
             # Use high-quality transformation for crisp scaling
-            # Avoid SmoothTransformation for text - use FastTransformation for pixel-perfect scaling
             if self.zoom_factor >= 1.0:
-                # For zoom in, use smooth transformation
                 scaled_pixmap = self.original_pixmap.scaled(
                     target_size,
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation
                 )
             else:
-                # For zoom out, use fast transformation to maintain sharpness
                 scaled_pixmap = self.original_pixmap.scaled(
                     target_size,
                     Qt.KeepAspectRatio,
                     Qt.FastTransformation
                 )
-            
+
             self.setPixmap(scaled_pixmap)
             self.resize(scaled_pixmap.size())
 
@@ -141,12 +139,13 @@ class PDFPageWidget(QLabel):
         self.zoom_factor = zoom_factor
         self.update_display()
 
+
 class EnhancedPDFViewerDialog(QDialog):
     """Enhanced PDF viewer with professional appearance and functionality"""
     def __init__(self, pdf_data, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PDF Viewer - CBCentra SMS")
-        self.resize(1000, 800)  # Larger default size
+        self.resize(1100, 800)  # Larger default size
 
         is_valid, result = validate_pdf_data(pdf_data)
         if not is_valid:
@@ -161,7 +160,7 @@ class EnhancedPDFViewerDialog(QDialog):
         self.current_page = 0
         self.zoom_factor = 1.0
         self.page_containers = []
-        self.high_quality_cache = {}  # Cache for high-quality renders
+        self.high_quality_cache = {}
 
         # Get system DPI for high-quality rendering
         self.dpi_ratio = QGuiApplication.primaryScreen().devicePixelRatio()
@@ -170,15 +169,73 @@ class EnhancedPDFViewerDialog(QDialog):
         if not self.load_pdf():
             self.reject()
 
+    def load_icon(self, filename):
+        """
+        Load an icon from static/icons/{filename}
+        Returns QIcon or None if not found
+        """
+        icon_path = os.path.join("static", "icons", filename)
+        if os.path.exists(icon_path):
+            return QIcon(icon_path)
+        else:
+            print(f"Icon not found: {icon_path}")
+            return QIcon()  # Return empty icon to avoid crash
+
+    def get_gray_button_style(self):
+        """Minimal gray button style – no border, just soft hover"""
+        return """
+            QPushButton {
+                background-color: rgba(200, 200, 200, 0.0);
+                border-radius: 6px;
+                min-width: 36px;
+                min-height: 36px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background-color: rgba(180, 180, 180, 0.3);
+            }
+            QPushButton:pressed {
+                background-color: rgba(160, 160, 160, 0.4);
+            }
+        """
+
+    def get_action_button_style(self):
+        """Get minimal, flat button style for Print and Save – matches toolbar"""
+        return """
+            QPushButton {
+                background-color: rgba(200, 200, 200, 0.0);
+                border-radius: 6px;
+                padding: 8px 12px;
+                color: #333333;
+                font-weight: normal;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: rgba(180, 180, 180, 0.3);
+                color: #000000;
+            }
+            QPushButton:pressed {
+                background-color: rgba(160, 160, 160, 0.4);
+            }
+        """
+
+    def darken_color(self, color, factor=0.8):
+        """Utility to darken a color"""
+        if color.startswith('#'):
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+            r, g, b = int(r * factor), int(g * factor), int(b * factor)
+            return f"#{r:02x}{g:02x}{b:02x}"
+        return color
+
     def setup_ui(self):
-        """Setup the user interface with professional styling"""
+        """Setup the user interface with professional styling and named icons"""
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
 
         # Toolbar with enhanced controls
         toolbar_layout = QHBoxLayout()
 
-        # Navigation controls
+        # --- Navigation: Page X of Y ---
         self.page_label = QLabel("Page:")
         toolbar_layout.addWidget(self.page_label)
 
@@ -193,25 +250,39 @@ class EnhancedPDFViewerDialog(QDialog):
 
         self.add_separator(toolbar_layout)
 
-        # Page navigation buttons
-        self.prev_btn = QPushButton("◀ Previous")
+        # --- Previous Button ---
+        self.prev_btn = QPushButton()
+        self.prev_btn.setIcon(self.load_icon("previous.png"))
+        self.prev_btn.setToolTip("Previous Page")
+        self.prev_btn.setStyleSheet(self.get_gray_button_style())
+        self.prev_btn.setFixedSize(36, 36)
+        self.prev_btn.setIconSize(QSize(24, 24))
         self.prev_btn.clicked.connect(self.previous_page)
         toolbar_layout.addWidget(self.prev_btn)
 
-        self.next_btn = QPushButton("Next ▶")
+        # --- Next Button ---
+        self.next_btn = QPushButton()
+        self.next_btn.setIcon(self.load_icon("next.png"))
+        self.next_btn.setToolTip("Next Page")
+        self.next_btn.setStyleSheet(self.get_gray_button_style())
+        self.next_btn.setFixedSize(36, 36)
+        self.next_btn.setIconSize(QSize(24, 24))
         self.next_btn.clicked.connect(self.next_page)
         toolbar_layout.addWidget(self.next_btn)
 
         self.add_separator(toolbar_layout)
 
-        # Zoom controls
-        self.zoom_out_btn = QPushButton("−")
+        # --- Zoom Out ---
+        self.zoom_out_btn = QPushButton()
+        self.zoom_out_btn.setIcon(self.load_icon("zoom-out.png"))
         self.zoom_out_btn.setToolTip("Zoom Out")
+        self.zoom_out_btn.setStyleSheet(self.get_gray_button_style())
+        self.zoom_out_btn.setFixedSize(36, 36)
+        self.zoom_out_btn.setIconSize(QSize(24, 24))
         self.zoom_out_btn.clicked.connect(self.zoom_out)
-        self.zoom_out_btn.setFixedSize(30, 30)
         toolbar_layout.addWidget(self.zoom_out_btn)
 
-        # Zoom dropdown
+        # --- Zoom Combo ---
         self.zoom_combo = QComboBox()
         self.zoom_combo.setEditable(True)
         self.zoom_combo.setFixedWidth(80)
@@ -221,39 +292,61 @@ class EnhancedPDFViewerDialog(QDialog):
         self.zoom_combo.currentTextChanged.connect(self.on_zoom_combo_changed)
         toolbar_layout.addWidget(self.zoom_combo)
 
-        self.zoom_in_btn = QPushButton("+")
+        # --- Zoom In ---
+        self.zoom_in_btn = QPushButton()
+        self.zoom_in_btn.setIcon(self.load_icon("zoom-in.png"))
         self.zoom_in_btn.setToolTip("Zoom In")
+        self.zoom_in_btn.setStyleSheet(self.get_gray_button_style())
+        self.zoom_in_btn.setFixedSize(36, 36)
+        self.zoom_in_btn.setIconSize(QSize(24, 24))
         self.zoom_in_btn.clicked.connect(self.zoom_in)
-        self.zoom_in_btn.setFixedSize(30, 30)
         toolbar_layout.addWidget(self.zoom_in_btn)
 
         self.add_separator(toolbar_layout)
 
-        # Fit buttons
-        self.fit_width_btn = QPushButton("Fit Width")
+        # --- Fit Width ---
+        self.fit_width_btn = QPushButton()
+        self.fit_width_btn.setIcon(self.load_icon("fit-width.png"))
+        self.fit_width_btn.setToolTip("Fit Width")
+        self.fit_width_btn.setStyleSheet(self.get_gray_button_style())
+        self.fit_width_btn.setFixedSize(36, 36)
+        self.fit_width_btn.setIconSize(QSize(24, 24))
         self.fit_width_btn.clicked.connect(self.fit_width)
         toolbar_layout.addWidget(self.fit_width_btn)
 
-        self.fit_page_btn = QPushButton("Fit Page")
+        # --- Fit Page ---
+        self.fit_page_btn = QPushButton()
+        self.fit_page_btn.setIcon(self.load_icon("fit-page.png"))
+        self.fit_page_btn.setToolTip("Fit Page")
+        self.fit_page_btn.setStyleSheet(self.get_gray_button_style())
+        self.fit_page_btn.setFixedSize(36, 36)
+        self.fit_page_btn.setIconSize(QSize(24, 24))
         self.fit_page_btn.clicked.connect(self.fit_page)
         toolbar_layout.addWidget(self.fit_page_btn)
 
         self.add_separator(toolbar_layout)
 
-        # Action buttons moved to toolbar
-        self.print_btn = QPushButton("Print")
+        # --- Print Button ---
+        self.print_btn = QPushButton(" Print")
+        self.print_btn.setIcon(self.load_icon("print.png"))
+        self.print_btn.setIconSize(QSize(24, 24))
+        self.print_btn.setToolTip("Print Document")
         self.print_btn.setStyleSheet(self.get_action_button_style())
         self.print_btn.clicked.connect(self.print_document)
         toolbar_layout.addWidget(self.print_btn)
-
-        self.save_btn = QPushButton("Save PDF")
+        
+        # --- Save Button ---
+        self.save_btn = QPushButton(" Save PDF")
+        self.save_btn.setIcon(self.load_icon("save.png"))
+        self.print_btn.setIconSize(QSize(24, 24))
+        self.save_btn.setToolTip("Save PDF File")
         self.save_btn.setStyleSheet(self.get_action_button_style())
         self.save_btn.clicked.connect(self.save_pdf)
         toolbar_layout.addWidget(self.save_btn)
 
         main_layout.addLayout(toolbar_layout)
 
-        # Scroll area with professional background
+        # --- Scroll Area ---
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setAlignment(Qt.AlignCenter)
@@ -272,8 +365,8 @@ class EnhancedPDFViewerDialog(QDialog):
         self.pages_container = QWidget()
         self.pages_layout = QVBoxLayout(self.pages_container)
         self.pages_layout.setAlignment(Qt.AlignCenter)
-        self.pages_layout.setSpacing(25)  # Good spacing between pages
-        self.pages_layout.setContentsMargins(30, 30, 30, 30)  # Margins around all pages
+        self.pages_layout.setSpacing(25)
+        self.pages_layout.setContentsMargins(30, 30, 30, 30)
 
         self.scroll_area.setWidget(self.pages_container)
         main_layout.addWidget(self.scroll_area)
@@ -283,34 +376,6 @@ class EnhancedPDFViewerDialog(QDialog):
         separator = QLabel("|")
         separator.setStyleSheet("color: #cccccc; margin: 0 8px;")
         layout.addWidget(separator)
-
-    def get_action_button_style(self, color="#4CAF50"):
-        """Get consistent styling for action buttons"""
-        return f"""
-            QPushButton {{
-                background-color: {color};
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-                min-width: 100px;
-            }}
-            QPushButton:hover {{
-                background-color: {self.darken_color(color)};
-            }}
-            QPushButton:pressed {{
-                background-color: {self.darken_color(color, 0.8)};
-            }}
-        """
-
-    def darken_color(self, color, factor=0.8):
-        """Utility to darken a color"""
-        if color.startswith('#'):
-            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-            r, g, b = int(r * factor), int(g * factor), int(b * factor)
-            return f"#{r:02x}{g:02x}{b:02x}"
-        return color
 
     def load_pdf(self):
         """Load PDF document with error handling"""
@@ -369,12 +434,9 @@ class EnhancedPDFViewerDialog(QDialog):
         self.high_quality_cache.clear()
 
         # Calculate ultra-high-quality rendering size using DPI
-        # Standard PDF points: 72 DPI, we render at 300+ DPI for crisp text
         scale_factor = RENDER_DPI / 72.0
         base_width = int(PDF_BASE_WIDTH * scale_factor)
         base_height = int(PDF_BASE_HEIGHT * scale_factor)
-        
-        # Further multiply for screen display quality
         target_width = int(base_width * self.dpi_ratio)
         target_height = int(base_height * self.dpi_ratio)
 
@@ -384,17 +446,10 @@ class EnhancedPDFViewerDialog(QDialog):
             self.page_containers.append(container)
             self.pages_layout.addWidget(container)
 
-            # Render page at ultra-high quality with text optimization
-            image = self.pdf_document.render(
-                page_num, 
-                QSize(target_width, target_height)
-            )
-            
+            image = self.pdf_document.render(page_num, QSize(target_width, target_height))
+
             if not image.isNull():
-                # Apply additional sharpening for text clarity
                 pixmap = QPixmap.fromImage(image)
-                
-                # Cache ultra-high-quality image
                 self.high_quality_cache[page_num] = pixmap
                 container.page_widget.set_page_image(image)
                 container.page_widget.set_zoom(1.0)
@@ -404,14 +459,12 @@ class EnhancedPDFViewerDialog(QDialog):
     def on_zoom_combo_changed(self, text):
         """Handle zoom combo box changes"""
         try:
-            # Extract percentage value
             zoom_text = text.replace('%', '').strip()
             zoom_percentage = float(zoom_text)
             self.zoom_factor = zoom_percentage / 100.0
             self.zoom_factor = max(MIN_ZOOM, min(MAX_ZOOM, self.zoom_factor))
             self.apply_zoom()
         except ValueError:
-            # Reset to current zoom if invalid input
             self.zoom_combo.setCurrentText(f"{int(self.zoom_factor * 100)}%")
 
     def go_to_page(self, page_num):
@@ -424,7 +477,7 @@ class EnhancedPDFViewerDialog(QDialog):
     def previous_page(self):
         """Go to previous page"""
         if self.current_page > 0:
-            self.page_spinbox.setValue(self.current_page)
+            self.page_spinbox.setValue(self.current_page + 1)
 
     def next_page(self):
         """Go to next page"""
@@ -449,7 +502,7 @@ class EnhancedPDFViewerDialog(QDialog):
     def fit_width(self):
         """Fit page width to window"""
         if self.page_containers and self.page_containers[0].page_widget.original_pixmap:
-            available_width = self.scroll_area.viewport().width() - 60  # Account for margins
+            available_width = self.scroll_area.viewport().width() - 60
             original_width = self.page_containers[0].page_widget.original_pixmap.width()
             self.zoom_factor = available_width / original_width
             self.apply_zoom()
@@ -467,27 +520,22 @@ class EnhancedPDFViewerDialog(QDialog):
 
     def apply_zoom(self):
         """Apply zoom using re-rendering for maximum clarity"""
-        # For significant zoom changes, re-render at target resolution
         if hasattr(self, 'zoom_factor') and (self.zoom_factor > 1.5 or self.zoom_factor < 0.8):
             self.render_at_zoom_level()
         else:
-            # For minor zoom changes, use cached high-quality images
             for container in self.page_containers:
                 container.page_widget.set_zoom(self.zoom_factor)
-        
-        # Update zoom combo
+
         self.zoom_combo.setCurrentText(f"{int(self.zoom_factor * 100)}%")
 
     def render_at_zoom_level(self):
         """Re-render pages at current zoom level for maximum sharpness"""
         page_count = self.pdf_document.pageCount()
-        
-        # Calculate render size for current zoom
+
         scale_factor = (RENDER_DPI / 72.0) * self.zoom_factor
         target_width = int(PDF_BASE_WIDTH * scale_factor * self.dpi_ratio)
         target_height = int(PDF_BASE_HEIGHT * scale_factor * self.dpi_ratio)
-        
-        # Limit maximum size to prevent memory issues
+
         max_dimension = 8000
         if target_width > max_dimension or target_height > max_dimension:
             scale = max_dimension / max(target_width, target_height)
@@ -496,36 +544,26 @@ class EnhancedPDFViewerDialog(QDialog):
 
         for page_num in range(min(page_count, len(self.page_containers))):
             container = self.page_containers[page_num]
-            
-            # Re-render at zoom level for crisp display
-            image = self.pdf_document.render(
-                page_num, 
-                QSize(target_width, target_height)
-            )
-            
+            image = self.pdf_document.render(page_num, QSize(target_width, target_height))
             if not image.isNull():
                 container.page_widget.set_page_image(image)
-                container.page_widget.set_zoom(1.0)  # No additional scaling needed
+                container.page_widget.set_zoom(1.0)
 
     def render_pdf_for_print(self, printer):
         """Render PDF for printing with high quality"""
         try:
             if self.pdf_document.pageCount() == 0:
                 raise RuntimeError("PDF document has no pages")
-            
+
             painter = QPainter(printer)
             for page in range(self.pdf_document.pageCount()):
                 if page > 0:
                     printer.newPage()
-                
-                # Render at printer resolution
                 printer_rect = printer.pageRect(QPrinter.DevicePixel)
                 target_size = QSize(printer_rect.width(), printer_rect.height())
                 image = self.pdf_document.render(page, target_size)
-                
                 if not image.isNull():
                     painter.drawPixmap(0, 0, QPixmap.fromImage(image))
-            
             painter.end()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to render PDF for printing:\n{e}")
@@ -536,7 +574,6 @@ class EnhancedPDFViewerDialog(QDialog):
             printer = QPrinter(QPrinter.HighResolution)
             printer.setPageSize(QPageSize(QPageSize.A4))
             print_dialog = QPrintDialog(printer, self)
-            
             if print_dialog.exec() == QPrintDialog.Accepted:
                 self.render_pdf_for_print(printer)
                 QMessageBox.information(self, "Success", "Document sent to printer")
@@ -591,6 +628,7 @@ class EnhancedPDFViewerDialog(QDialog):
             print(f"Cleanup error: {e}")
         super().closeEvent(event)
 
+
 # Utility functions
 def view_pdf(pdf_data, parent=None):
     """View PDF in enhanced viewer"""
@@ -599,6 +637,7 @@ def view_pdf(pdf_data, parent=None):
         viewer.exec()
     except Exception as e:
         QMessageBox.critical(parent, "Error", f"Could not view PDF:\n{e}")
+
 
 def print_pdf_enhanced(pdf_data, parent=None):
     """Print PDF using enhanced viewer"""
@@ -609,6 +648,7 @@ def print_pdf_enhanced(pdf_data, parent=None):
         viewer.close()
     except Exception as e:
         QMessageBox.critical(parent, "Error", f"Could not print PDF:\n{e}")
+
 
 def print_pdf(pdf_data, parent=None):
     """Print PDF (backward compatibility)"""

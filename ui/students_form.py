@@ -797,7 +797,7 @@ class StudentsForm(AuditBaseForm):
     
         export_excel_btn = QPushButton("Export to Excel")
         export_excel_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; }")
-        export_excel_btn.clicked.connect(self.export_to_excel)
+        export_excel_btn.clicked.connect(self.export_students_data)
         action_layout.addWidget(export_excel_btn)
     
         export_pdf_btn = QPushButton("Generate PDF")
@@ -1843,114 +1843,97 @@ class StudentsForm(AuditBaseForm):
         # Toggle buttons
         self.toggle_save_update_buttons()
 
-    def export_to_excel(self):
-        """Export student data to Excel"""
+    def export_students_data(self):
+        """Export students data using shared export_with_green_header method"""
         try:
-            # Get all student data
-            query = '''
-                SELECT s.regNo, s.first_name, s.surname, s.sex, s.date_of_birth,
-                       s.email, s.grade_applied_for, s.class_year, s.enrollment_date,
-                       s.religion, s.citizenship, s.last_school, s.medical_conditions,
-                       s.allergies, 
-                       GROUP_CONCAT(DISTINCT CONCAT(p.full_name, ' (', sp.relation_type, ')') 
-                                   SEPARATOR '; ') as parents
+            # Fetch data from database with comprehensive student information
+            self.cursor.execute('''
+                SELECT 
+                    s.regNo, s.first_name, s.surname, s.full_name, s.sex,
+                    s.date_of_birth, s.email, s.grade_applied_for, s.class_year,
+                    s.enrollment_date, s.religion, s.citizenship, s.last_school,
+                    s.medical_conditions, s.allergies,
+                    CASE WHEN s.is_active = 1 THEN 'Yes' ELSE 'No' END,
+                    GROUP_CONCAT(DISTINCT CONCAT(p.full_name, ' (', sp.relation_type, ')') 
+                                ORDER BY sp.is_primary_contact DESC SEPARATOR '; ') as parents,
+                    GROUP_CONCAT(DISTINCT p.phone ORDER BY sp.is_primary_contact DESC SEPARATOR '; ') as parent_phones,
+                    GROUP_CONCAT(DISTINCT p.email ORDER BY sp.is_primary_contact DESC SEPARATOR '; ') as parent_emails,
+                    sch.school_name
                 FROM students s
                 LEFT JOIN student_parent sp ON s.id = sp.student_id
                 LEFT JOIN parents p ON sp.parent_id = p.id AND p.is_active = TRUE
+                LEFT JOIN schools sch ON s.school_id = sch.id
                 WHERE s.is_active = TRUE
                 GROUP BY s.id
                 ORDER BY s.surname, s.first_name
-            '''
-            
-            self.cursor.execute(query)
-            data = self.cursor.fetchall()
-            
-            if not data:
-                QMessageBox.information(self, "No Data", "No student data to export")
+            ''')
+            students = self.cursor.fetchall()
+    
+            if not students:
+                QMessageBox.information(self, "No Data", "No student data found to export.")
                 return
-            
-            # Create workbook
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Students"
-            
-            # Headers
+    
+            # Define headers (must match SELECT order exactly)
             headers = [
-                "Reg No", "First Name", "Surname", "Sex", "Date of Birth",
-                "Email", "Grade", "Class Year", "Enrollment Date", "Religion",
-                "Citizenship", "Last School", "Medical Conditions", "Allergies", "Parents"
+                "Registration No", "First Name", "Surname", "Full Name", "Sex",
+                "Date of Birth", "Email", "Grade Applied For", "Class Year",
+                "Enrollment Date", "Religion", "Citizenship", "Last School",
+                "Medical Conditions", "Allergies", "Active Status",
+                "Parents/Guardians", "Parent Phone Numbers", "Parent Email Addresses",
+                "School Name"
             ]
-            ws.append(headers)
-            
-            # Add data
-            for row in data:
-                ws.append(list(row))
-            
-            # Format headers
-            header_font = Font(bold=True, color="FFFFFF")
-            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-            
-            for cell in ws[1]:
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
-            
-            # Auto-adjust column widths
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                
-                for cell in column:
-                    try:
-                        cell_length = len(str(cell.value)) if cell.value else 0
-                        if cell_length > max_length:
-                            max_length = cell_length
-                    except:
-                        pass
-                
-                adjusted_width = min(max_length + 2, 50)
-                ws.column_dimensions[column_letter].width = max(adjusted_width, 10)
-            
-            # Save file
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            default_filename = f"students_export_{timestamp}.xlsx"
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save Excel File", default_filename, "Excel Files (*.xlsx)"
+    
+            # Get school name for title
+            school_info = self.get_school_info()
+            title = f"{school_info['name']} - STUDENTS DATA"
+    
+            # Use shared export method
+            self.export_with_green_header(
+                data=students,
+                headers=headers,
+                filename_prefix="students_export",
+                title=title
             )
-            
-            if file_path:
-                wb.save(file_path)
-                QMessageBox.information(self, "Success", 
-                                      f"Student data exported successfully!\nFile: {file_path}")
-                
-                # Try to open the file
-                try:
-                    if platform.system() == "Windows":
-                        os.startfile(file_path)
-                    elif platform.system() == "Darwin":  # macOS
-                        subprocess.run(["open", file_path])
-                    else:  # Linux
-                        subprocess.run(["xdg-open", file_path])
-                except Exception as e:
-                    print(f"Could not open file: {e}")
-                    
+    
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to export to Excel: {str(e)}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export student data:\n{str(e)}")
+    
 
     def generate_pdf_report(self):
-        """Generate PDF report for selected student"""
+        """Generate professional PDF report for selected student with school branding"""
         if not self.current_student_id:
             QMessageBox.warning(self, "No Selection", "Please select a student first.")
             return
         
         try:
+            # Get school information
+            school_query = """
+                SELECT school_name, address, phone, email, logo_path 
+                FROM schools WHERE id = %s LIMIT 1
+            """
+            school_id = getattr(self.user_session, 'school_id', 1) if self.user_session else 1
+            self.cursor.execute(school_query, (school_id,))
+            school_info = self.cursor.fetchone()
+            
+            # Use empty strings if school info not available
+            school_name = school_info[0] if school_info and school_info[0] else ""
+            school_address = school_info[1] if school_info and school_info[1] else ""
+            school_phone = school_info[2] if school_info and school_info[2] else ""
+            school_email = school_info[3] if school_info and school_info[3] else ""
+            
+            # Get default logo path
+            default_logo = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "static", "images", "logo.png"
+            )
+            school_logo = school_info[4] if school_info and school_info[4] else default_logo
+    
             # Get student data
             query = '''
                 SELECT s.first_name, s.surname, s.sex, s.date_of_birth, s.email,
                        s.grade_applied_for, s.class_year, s.enrollment_date, s.regNo,
                        s.religion, s.citizenship, s.last_school, s.medical_conditions, 
-                       s.allergies,
+                       s.allergies, s.photo_path,
                        GROUP_CONCAT(DISTINCT CONCAT(p.full_name, ' (', sp.relation_type, ')') 
                                    SEPARATOR ', ') as parents
                 FROM students s
@@ -1967,105 +1950,268 @@ class StudentsForm(AuditBaseForm):
                 QMessageBox.warning(self, "Error", "Student data not found")
                 return
             
-            # Create PDF
-            pdf = FPDF()
-            pdf.add_page()
+            # Generate PDF bytes and use internal viewer
+            pdf_bytes = self.generate_student_profile_pdf_bytes(student, school_info, school_logo)
             
-            # Header
-            pdf.set_font("Arial", "B", 18)
-            pdf.cell(0, 10, "WINSPIRE LEARNING HUB", 0, 1, "C")
-            pdf.set_font("Arial", "", 12)
-            pdf.cell(0, 5, "Student Profile Report", 0, 1, "C")
-            pdf.ln(10)
-            
-            # Student Information
-            pdf.set_font("Arial", "B", 14)
-            pdf.cell(0, 8, "STUDENT INFORMATION", 0, 1)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(5)
-            
-            pdf.set_font("Arial", "", 11)
-            
-            # Data fields
-            fields = [
-                ("Full Name", f"{student[0]} {student[1]}"),
-                ("Registration Number", student[8]),
-                ("Sex", student[2]),
-                ("Date of Birth", str(student[3]) if student[3] else "N/A"),
-                ("Email", student[4] or "N/A"),
-                ("Grade Applied For", student[5] or "N/A"),
-                ("Class Year", student[6] or "N/A"),
-                ("Enrollment Date", str(student[7]) if student[7] else "N/A"),
-                ("Religion", student[9] or "N/A"),
-                ("Citizenship", student[10] or "N/A"),
-                ("Last School", student[11] or "N/A"),
-                ("Parents/Guardians", student[14] or "N/A")
-            ]
-            
-            for label, value in fields:
-                pdf.set_font("Arial", "B", 10)
-                pdf.cell(50, 8, f"{label}:", 0, 0)
-                pdf.set_font("Arial", "", 10)
-                pdf.cell(0, 8, str(value), 0, 1)
-            
-            # Medical Information
-            pdf.ln(5)
-            pdf.set_font("Arial", "B", 14)
-            pdf.cell(0, 8, "MEDICAL INFORMATION", 0, 1)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(5)
-            
-            pdf.set_font("Arial", "B", 10)
-            pdf.cell(0, 8, "Medical Conditions:", 0, 1)
-            pdf.set_font("Arial", "", 10)
-            medical_text = student[12] or "None reported"
-            pdf.multi_cell(0, 6, medical_text)
-            pdf.ln(3)
-            
-            pdf.set_font("Arial", "B", 10)
-            pdf.cell(0, 8, "Allergies:", 0, 1)
-            pdf.set_font("Arial", "", 10)
-            allergies_text = student[13] or "None reported"
-            pdf.multi_cell(0, 6, allergies_text)
-            
-            # Footer
-            pdf.ln(10)
-            pdf.set_font("Arial", "I", 8)
-            pdf.cell(0, 5, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 0, 1, "C")
-            
-            # Save PDF
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            student_name = f"{student[0]}_{student[1]}".replace(" ", "_")
-            default_filename = f"student_profile_{student_name}_{timestamp}.pdf"
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save PDF File", default_filename, "PDF Files (*.pdf)"
-            )
-            
-            if file_path:
-                pdf.output(file_path)
-                QMessageBox.information(self, "Success", 
-                                      f"PDF report generated successfully!\nFile: {file_path}")
-                
-                # Try to open the PDF
-                try:
-                    if platform.system() == "Windows":
-                        os.startfile(file_path)
-                    elif platform.system() == "Darwin":  # macOS
-                        subprocess.run(["open", file_path])
-                    else:  # Linux
-                        subprocess.run(["xdg-open", file_path])
-                except Exception as e:
-                    print(f"Could not open PDF: {e}")
-                    
+            # Use system's built-in PDF viewer
+            try:
+                from utils.pdf_utils import view_pdf
+                view_pdf(pdf_bytes, parent=self)
+            except ImportError:
+                # Fallback - offer to save file if viewer not available
+                self.save_pdf_fallback(pdf_bytes, student)
+                        
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate PDF: {str(e)}")
+            print(f"PDF generation error: {traceback.format_exc()}")
     
+    def generate_student_profile_pdf_bytes(self, student, school_info, school_logo):
+        """Generate student profile PDF and return PDF bytes"""
+        import tempfile
+        
+        # Create PDF with custom class for better formatting
+        class StudentPDF(FPDF):
+            def __init__(self, student_photo=None):
+                super().__init__(orientation='P', unit='mm', format='A4')
+                self.set_margins(15, 15, 15)
+                self.set_auto_page_break(auto=False)  # Manual page breaks for better control
+                self.student_photo = student_photo
+            
+            def header(self):
+                # School logo (left side)
+                if os.path.exists(school_logo):
+                    try:
+                        self.image(school_logo, 15, 10, 25)
+                    except:
+                        pass  # Skip if logo can't be loaded
+                
+                # Student photo (right side of header)
+                if self.student_photo and os.path.exists(self.student_photo):
+                    try:
+                        self.image(self.student_photo, 165, 5, 30, 30)  # Shifted up to avoid line
+                    except:
+                        pass  # Skip if photo can't be loaded
+                
+                # School information (centered) - only show if available
+                self.set_y(10)
+                if school_info and school_info[0]:
+                    self.set_font("Arial", "B", 16)
+                    self.cell(0, 8, school_info[0], 0, 1, "C")
+                
+                if school_info and school_info[1]:
+                    self.set_font("Arial", "", 10)
+                    self.cell(0, 5, school_info[1], 0, 1, "C")
+                
+                if school_info and (school_info[2] or school_info[3]):
+                    contact_info = ""
+                    if school_info[2]:
+                        contact_info += school_info[2]
+                    if school_info[2] and school_info[3]:
+                        contact_info += " | "
+                    if school_info[3]:
+                        contact_info += school_info[3]
+                    
+                    self.set_font("Arial", "", 10)
+                    self.cell(0, 5, contact_info, 0, 1, "C")
+                
+                # Report title
+                self.ln(3)
+                self.set_font("Arial", "B", 14)
+                self.set_text_color(70, 70, 70)  # Dark gray
+                self.cell(0, 8, "STUDENT PROFILE REPORT", 0, 1, "C")
+                
+                # Generation info
+                self.set_font("Arial", "I", 8)
+                self.set_text_color(100, 100, 100)
+                gen_info = f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                if hasattr(self, 'user_session') and self.user_session:
+                    user_name = getattr(self.user_session, 'full_name', 'System')
+                    gen_info += f" | By: {user_name}"
+                self.cell(0, 4, gen_info, 0, 1, "C")
+                
+                # Line separator
+                self.line(15, self.get_y() + 2, 195, self.get_y() + 2)
+                self.ln(6)
+            
+            def footer(self):
+                self.set_y(-15)
+                self.set_font("Arial", "I", 8)
+                self.set_text_color(128, 128, 128)
+                self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
+            
+            def section_header(self, title, highlight=False):
+                self.ln(3)  # Increased space before section
+                self.set_font("Arial", "B", 11)
+                if highlight:
+                    self.set_fill_color(173, 216, 230)  # Light blue highlight
+                    self.set_text_color(0, 0, 0)      # Black text
+                else:
+                    self.set_fill_color(230, 230, 230)  # Light gray background
+                    self.set_text_color(70, 70, 70)     # Dark gray text
+                self.cell(0, 7, title, 0, 1, "L", True)
+                self.ln(3)  # Increased space after section header
+            
+            def add_field(self, label, value, width1=50, width2=0):
+                self.set_font("Arial", "B", 10)
+                self.cell(width1, 6, label, 0, 0)  # Increased height
+                self.set_font("Arial", "", 10)
+                if width2 == 0:
+                    width2 = 195 - 15 - width1  # Calculate remaining width
+                self.cell(width2, 6, str(value) if value else "N/A", 0, 1)
+            
+            def add_multiline_field(self, label, value):
+                self.set_font("Arial", "B", 10)
+                self.cell(0, 6, label, 0, 1)  # Increased height
+                self.set_font("Arial", "", 10)
+                text = str(value) if value else "N/A"
+                self.multi_cell(0, 6, text)  # Increased line height
+                self.ln(2)  # Added space after multiline fields
+        
+        # Create PDF instance with student photo
+        photo_path = student[14]  # photo_path from query
+        pdf = StudentPDF(photo_path)
+        pdf.add_page()
+        
+        # Student Information Section
+        pdf.section_header("STUDENT INFORMATION")
+        
+        full_name = f"{student[0] or ''} {student[1] or ''}".strip()
+        pdf.add_field("Registration Number:", student[8])
+        pdf.add_field("Full Name:", full_name)
+        
+        # Two-column layout for compact display with spacing
+        current_y = pdf.get_y()
+        pdf.add_field("Sex:", student[2], 50, 45)
+        pdf.set_y(current_y)
+        pdf.set_x(110)
+        pdf.add_field("Date of Birth:", student[3].strftime("%Y-%m-%d") if student[3] else "N/A", 40, 45)
+        
+        current_y = pdf.get_y()
+        pdf.add_field("Religion:", student[9], 50, 45)
+        pdf.set_y(current_y)
+        pdf.set_x(110)
+        pdf.add_field("Citizenship:", student[10], 40, 45)
+        
+        # Academic Information Section
+        pdf.section_header("ACADEMIC INFORMATION")
+        
+        pdf.add_field("Email:", student[4])
+        pdf.add_field("Last School:", student[11])
+        
+        current_y = pdf.get_y()
+        pdf.add_field("Grade Applied For:", student[5], 50, 45)
+        pdf.set_y(current_y)
+        pdf.set_x(110)
+        pdf.add_field("Class Year:", student[6], 40, 45)
+        
+        pdf.add_field("Enrollment Date:", student[7].strftime("%Y-%m-%d") if student[7] else "N/A")
+        
+        # Parent/Guardian Information
+        pdf.section_header("PARENT/GUARDIAN INFORMATION")
+        parents = student[15] or "No parents/guardians linked"
+        pdf.set_font("Arial", "", 10)
+        pdf.multi_cell(0, 6, parents)  # Increased line height
+        pdf.ln(3)  # Added space after section
+        
+        # Medical Information Section
+        pdf.section_header("MEDICAL INFORMATION")
+        
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(50, 6, "Medical Conditions:", 0, 0)  # Increased height
+        pdf.set_font("Arial", "", 10)
+        medical_text = student[12] or "None reported"
+        pdf.multi_cell(0, 6, medical_text)  # Increased line height
+        pdf.ln(2)  # Added space between fields
+        
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(50, 6, "Allergies:", 0, 0)  # Increased height
+        pdf.set_font("Arial", "", 10)
+        allergies_text = student[13] or "None reported"
+        pdf.multi_cell(0, 6, allergies_text)  # Increased line height
+        pdf.ln(3)  # Added space after section
+        
+        # Declaration Section
+        pdf.section_header("DECLARATION")
+        pdf.set_font("Arial", "", 10)
+        declaration_text = (
+            "I, _____________________________________________________________, "
+            "hereby declare that the information provided in this form is true "
+            "and accurate to the best of my knowledge.\n\n\n"
+            "Signature: ________________________________________________    "
+            "Date: _________________________\n\n\n"
+        )
+        pdf.multi_cell(0, 4, declaration_text)  # Increased line height
+        
+        # FOR OFFICIAL USE ONLY Section - Highlighted
+        pdf.section_header("FOR OFFICIAL USE ONLY", highlight=True)
+        pdf.set_font("Arial", "", 10)
+        official_text = (
+            "Recommended admission to class: ____________________________________________\n\n\n"
+            "On (Date): _______________________________     "
+            "Signed: _________________________________\n\n"
+            "                                                                                                    (Principal)"
+        )
+        pdf.multi_cell(0, 4, official_text)  # Increased line height
+        
+        # Use temporary file approach to get PDF bytes
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # Output to temporary file
+            pdf.output(temp_path)
+            
+            # Read the file back as bytes
+            with open(temp_path, 'rb') as f:
+                pdf_bytes = f.read()
+            
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        
+        return pdf_bytes
+    
+    def save_pdf_fallback(self, pdf_bytes, student):
+        """Fallback method to save PDF if viewer not available"""
+        full_name = f"{student[0] or ''} {student[1] or ''}".strip()
+        safe_name = "".join(c for c in full_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"student_profile_{safe_name}_{timestamp}.pdf"
+        
+        # Get save path from user
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save PDF File", default_filename, "PDF Files (*.pdf)"
+        )
+        
+        if file_path:
+            # Save PDF bytes to file
+            with open(file_path, 'wb') as f:
+                f.write(pdf_bytes)
+            
+            # Show success message
+            QMessageBox.information(
+                self, 
+                "Success", 
+                f"Student profile report saved successfully!\nFile: {file_path}"
+            )
+            
+            # Try to open the PDF
+            try:
+                if platform.system() == "Windows":
+                    os.startfile(file_path)
+                elif platform.system() == "Darwin":  # macOS
+                    subprocess.run(["open", file_path])
+                else:  # Linux
+                    subprocess.run(["xdg-open", file_path])
+            except Exception as e:
+                print(f"Could not open PDF: {e}")
+        
     
     def import_students(self):
         if not has_permission(self.user_session, STUDENT_PERMISSIONS['import']):
             QMessageBox.warning(self, "Access Denied", "You don't have permission to import students.")
-        return
+            return
         
         """Import students from CSV or Excel file"""
         try:
