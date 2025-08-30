@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QButtonGroup
 )
 from datetime import datetime
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction, QFont
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction, QFont, QCursor 
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintPreviewWidget, QPrintDialog
@@ -897,13 +897,13 @@ class MainWindow(QMainWindow):
                     {"name": "View Parent Summaries", "icon": "view.png", "handler": self.generate_parent_summary}
                 ]},
                 {"title": "Actions", "actions": [
-                    {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_parents_data},
+                    {"name": "Refresh ▼", "icon": "refresh.png", "handler": self.refresh_parents_data},
                     {"name": "Generate Parent Profile", "icon": "report.png", "handler": self.generate_parent_profile},
                     {"name": "Search Parents", "icon": "search.png", "handler": self.search_parents}
                 ]},
                 {"title": "Import & Export", "actions": [
                     {"name": "Import Parent Data", "icon": "import.png", "handler": self.import_parents_data},
-                    {"name": "Export Parent Data", "icon": "export.png", "handler": self.export_parents_data},
+                    {"name": "Export Parent Data", "icon": "export.png"},
                     {"name": "Backup Data", "icon": "backup.png", "handler": self.backup_parent_data}
                 ]},
                 {"title": "Tools", "actions": [
@@ -1121,25 +1121,42 @@ class MainWindow(QMainWindow):
                 self.parents_form.tab_widget.setCurrentIndex(0)
     
     def refresh_parents_data(self):
-        """Refresh parents data"""
+        """Refresh parents data using the form's built-in refresh action"""
         self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            self.parents_form.load_parents()
-            if hasattr(self.parents_form, 'load_schools'):
-                self.parents_form.load_schools()
-            QMessageBox.information(self, "Refreshed", "Parent data has been refreshed")
-
-    def export_parents_data(self):
-        """Export parents data to Excel"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                self.parents_form.export_parents_data()
-                self.statusBar().showMessage("Parent data exported successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"Failed to export parent data: {str(e)}")
+        if hasattr(self, 'parents_form') and self.parents_form is not None:
+            if hasattr(self.parents_form, 'refresh_all_action'):
+                self.parents_form.refresh_all_action.trigger()  # Same as clicking the menu!
+            else:
+                self.parents_form.load_parents()  # Fallback
         else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
+            QMessageBox.warning(self, "Warning", "Parents form not available.")
+            
+
+    # 1. Update your refresh_parents_data method to position menu correctly
+    def refresh_parents_data(self):
+        """Show the full refresh options menu when ribbon 'Refresh' is clicked"""
+        # Make sure we're on the Parents tab
+        self.on_tab_clicked("Parents")
+    
+        # Check if the refresh button exists and is valid
+        if not hasattr(self, 'parents_form') or not self.parents_form:
+            QMessageBox.warning(self, "Unavailable", "Parents module not ready.")
+            return
+    
+        # Create and show the menu at cursor position instead of using the button
+        if not hasattr(self.parents_form, 'refresh_menu'):
+            QMessageBox.warning(self, "Error", "Refresh menu not available.")
+            return
+    
+        # Get the menu from parents form
+        menu = self.parents_form.refresh_menu
+        if not menu:
+            QMessageBox.critical(self, "Error", "Refresh menu is missing.")
+            return
+    
+        # Show the menu at the current cursor position (where you clicked)
+        cursor_pos = QCursor.pos()
+        menu.exec(cursor_pos)
     
     def import_parents_data(self):
         """Import parents data from CSV"""
@@ -1624,11 +1641,6 @@ class MainWindow(QMainWindow):
             self.staff_form.load_teachers()
             self.staff_form.load_schools()
 
-        # In on_tab_clicked method, add:
-        if tab_name == "Parents" and hasattr(self, 'parents_form'):
-            self.parents_form.load_parents()
-            if hasattr(self.parents_form, 'load_schools'):
-                self.parents_form.load_schools()
 
     def mousePressEvent(self, event):
         """Handle clicks outside sidebar to close it"""

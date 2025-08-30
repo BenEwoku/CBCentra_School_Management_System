@@ -394,31 +394,72 @@ class ParentsForm(AuditBaseForm):
             return
 
         self.setup_ui()
-        self.load_parents()
+        #self.load_parents()
 
+    # 1. Update your ParentsForm setup_ui method to initialize the menu
     def setup_ui(self):
         layout = QVBoxLayout(self)
         self.setWindowTitle("Parents Management System")
         self.resize(1400, 900)
-
+    
         # Tab widget
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
-
+    
         self.form_tab = QWidget()
         self.list_tab = QWidget()
         self.analytics_tab = QWidget()
-
+    
         self.tabs.addTab(self.form_tab, "Parent Form")
         self.tabs.addTab(self.list_tab, "Parents List")
         self.tabs.addTab(self.analytics_tab, "Analytics")
-
+    
         self.setup_form_tab()
         self.setup_list_tab()
         self.setup_analytics_tab()
+        self._last_error = False
         
-        # Update stats periodically
+        # Initialize the refresh menu HERE - this is the key fix
+        self.create_refresh_menu()
+        
+        # Update stats periodically and load data without message
         self.update_statistics()
+        self.load_parents()  # No success message on startup
+    
+    # 2. Create a separate method to initialize the refresh menu
+    def create_refresh_menu(self):
+        """Create the refresh menu (called during initialization)"""
+        self.refresh_menu = QMenu(self)
+    
+        # Action 1: Refresh All Data
+        refresh_all_action = QAction("🔄 Refresh All Data", self)
+        refresh_all_action.triggered.connect(self.refresh_all_data)
+        self.refresh_menu.addAction(refresh_all_action)
+    
+        # Action 2: Refresh Student Counts Only
+        refresh_counts_action = QAction("🔢 Refresh Student Counts Only", self)
+        refresh_counts_action.triggered.connect(self.refresh_student_counts)
+        self.refresh_menu.addAction(refresh_counts_action)
+    
+        # Action 3: Cleanup Orphaned Relationships
+        cleanup_action = QAction("🧹 Cleanup Orphaned Relationships", self)
+        cleanup_action.triggered.connect(self.cleanup_orphaned_relationships)
+        self.refresh_menu.addAction(cleanup_action)
+    
+        # Separator
+        self.refresh_menu.addSeparator()
+    
+        # Action 4: Enable Auto-Refresh (Toggle)
+        auto_refresh_action = QAction("⏱ Enable Auto-Refresh", self)
+        auto_refresh_action.setCheckable(True)
+        auto_refresh_action.toggled.connect(self.toggle_auto_refresh)
+        self.refresh_menu.addAction(auto_refresh_action)
+    
+    # 3. Remove/update the add_refresh_controls method since we're not using the button
+    def add_refresh_controls(self):
+        """Legacy method - refresh menu is now created in create_refresh_menu"""
+        # This method can be removed or just return None
+        return None
 
     def setup_form_tab(self):
         layout = QVBoxLayout(self.form_tab)
@@ -558,9 +599,10 @@ class ParentsForm(AuditBaseForm):
         self.first_name_entry.textChanged.connect(self.update_full_name)
         self.surname_entry.textChanged.connect(self.update_full_name)
 
+    # Updated setup_list_tab method with refresh button removed
     def setup_list_tab(self):
         layout = QVBoxLayout(self.list_tab)
-
+    
         # Enhanced search section
         search_frame = QFrame()
         search_frame.setStyleSheet("""
@@ -573,13 +615,13 @@ class ParentsForm(AuditBaseForm):
             }
         """)
         search_layout = QHBoxLayout(search_frame)
-
+    
         search_layout.addWidget(QLabel("Search:"))
         self.search_entry = QLineEdit()
         self.search_entry.setPlaceholderText("Search by name, phone, email, or relation...")
         self.search_entry.textChanged.connect(self.on_search_text_changed)
         search_layout.addWidget(self.search_entry)
-
+    
         # Filter by relation
         relation_filter = QComboBox()
         relation_filter.addItems(["All Relations", "Father", "Mother", "Guardian", "Other"])
@@ -587,7 +629,7 @@ class ParentsForm(AuditBaseForm):
         self.relation_filter = relation_filter
         search_layout.addWidget(QLabel("Relation:"))
         search_layout.addWidget(relation_filter)
-
+    
         # Status filter
         status_filter = QComboBox()
         status_filter.addItems(["All Status", "Active", "Inactive"])
@@ -595,51 +637,37 @@ class ParentsForm(AuditBaseForm):
         self.status_filter = status_filter
         search_layout.addWidget(QLabel("Status:"))
         search_layout.addWidget(status_filter)
-
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setStyleSheet("background-color: #17a2b8;")
-        refresh_btn.clicked.connect(self.load_parents)
-        search_layout.addWidget(refresh_btn)
-
+    
         layout.addWidget(search_frame)
-
-        # Enhanced action buttons with refresh options
+    
+        # Action buttons WITHOUT refresh options button
         action_layout = QHBoxLayout()
         
         buttons_data = [
             ("New Parent", self.new_parent, "#28a745"),
             ("Edit Selected", self.edit_selected_parent, "#ffc107"),
             ("View Details", self.view_parent_details, "#17a2b8"),
-            ("Link Student", self.link_student_to_parent, "#6f42c1"),
             ("Export Excel", self.export_to_excel, "#198754"),
             ("Generate PDF", self.generate_pdf_report, "#dc3545")
+            # Removed refresh options button since it's now in ribbon
         ]
         
         for btn_text, btn_func, btn_color in buttons_data:
             btn = QPushButton(btn_text)
-            btn.setStyleSheet(f"background-color: {btn_color}; min-height: 35px;")
+            btn.setStyleSheet(f"background-color: {btn_color}; color: white; min-height: 35px; border-radius: 6px; font-weight: bold;")
             btn.clicked.connect(btn_func)
             action_layout.addWidget(btn)
     
-        # Add refresh menu button
-        refresh_menu_btn = self.add_refresh_controls()
-        action_layout.addWidget(refresh_menu_btn)
-        
         # Add integrity check button
         integrity_btn = QPushButton("Check Integrity")
-        integrity_btn.setStyleSheet("background-color: #fd7e14; min-height: 35px;")
+        integrity_btn.setStyleSheet("background-color: #fd7e14; color: white; min-height: 35px; border-radius: 6px; font-weight: bold;")
         integrity_btn.clicked.connect(self.validate_parent_student_integrity)
         action_layout.addWidget(integrity_btn)
-        
-        export_btn = QPushButton("Export Excel")
-        export_btn.setStyleSheet("background-color: #198754; min-height: 35px;")
-        export_btn.clicked.connect(self.export_to_excel)
-        action_layout.addWidget(export_btn)
     
         action_layout.addStretch()
         layout.addLayout(action_layout)
-
-        # Enhanced table
+    
+        # Enhanced table (rest of the method stays the same)
         self.parents_table = QTableWidget()
         self.parents_table.setColumnCount(10)
         self.parents_table.setHorizontalHeaderLabels([
@@ -670,18 +698,18 @@ class ParentsForm(AuditBaseForm):
         self.parents_table.setSortingEnabled(True)
         self.parents_table.cellClicked.connect(self.on_parent_select)
         self.parents_table.cellDoubleClicked.connect(self.view_parent_details)
-
+    
         # Context menu
         self.parents_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.parents_table.customContextMenuRequested.connect(self.show_context_menu)
-
+    
         layout.addWidget(self.parents_table)
-
+    
     def setup_analytics_tab(self):
         """Setup analytics tab with statistics and charts"""
         layout = QVBoxLayout(self.analytics_tab)
         
-        # Statistics cards
+        # Statistics cards with gray theme
         stats_frame = QFrame()
         stats_frame.setStyleSheet("""
             QFrame {
@@ -694,11 +722,11 @@ class ParentsForm(AuditBaseForm):
         """)
         stats_layout = QHBoxLayout(stats_frame)
         
-        # Create stat cards
-        self.total_parents_lbl = self.create_stat_card("Total Parents", "0", "#007bff")
-        self.active_parents_lbl = self.create_stat_card("Active Parents", "0", "#28a745")
-        self.fee_payers_lbl = self.create_stat_card("Fee Payers", "0", "#ffc107")
-        self.emergency_contacts_lbl = self.create_stat_card("Emergency Contacts", "0", "#dc3545")
+        # Create stat cards with light gray color scheme
+        self.total_parents_lbl = self.create_stat_card("Total Parents", "0", "#f8f9fa")
+        self.active_parents_lbl = self.create_stat_card("Active Parents", "0", "#f8f9fa")
+        self.fee_payers_lbl = self.create_stat_card("Fee Payers", "0", "#f8f9fa")
+        self.emergency_contacts_lbl = self.create_stat_card("Emergency Contacts", "0", "#f8f9fa")
         
         stats_layout.addWidget(self.total_parents_lbl)
         stats_layout.addWidget(self.active_parents_lbl)
@@ -707,7 +735,7 @@ class ParentsForm(AuditBaseForm):
         
         layout.addWidget(stats_frame)
         
-        # Relations breakdown
+        # Relations breakdown with enhanced table
         relations_frame = QFrame()
         relations_frame.setStyleSheet("""
             QFrame {
@@ -720,39 +748,92 @@ class ParentsForm(AuditBaseForm):
         relations_layout = QVBoxLayout(relations_frame)
         
         relations_title = QLabel("Relations Breakdown")
-        relations_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        relations_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #495057;")
         relations_layout.addWidget(relations_title)
         
+        # Enhanced relations table
         self.relations_table = QTableWidget()
-        self.relations_table.setColumnCount(3)
-        self.relations_table.setHorizontalHeaderLabels(["Relation", "Count", "Percentage"])
+        self.relations_table.setColumnCount(4)
+        self.relations_table.setHorizontalHeaderLabels(["Relation", "Count", "Percentage", "Status"])
+        
+        # Set table styling
+        self.relations_table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #dee2e6;
+                background-color: white;
+                alternate-background-color: #f8f9fa;
+                selection-background-color: #e9ecef;
+            }
+            QHeaderView::section {
+                background-color: #495057;
+                color: white;
+                padding: 8px;
+                border: 1px solid #dee2e6;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #dee2e6;
+            }
+        """)
+        
+        # Configure table properties
         self.relations_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.relations_table.setMaximumHeight(300)
+        self.relations_table.setAlternatingRowColors(True)
+        self.relations_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.relations_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.relations_table.setSortingEnabled(True)
+        self.relations_table.setMaximumHeight(400)
+        
         relations_layout.addWidget(self.relations_table)
         
+        # Add summary section below the table
+        summary_frame = QFrame()
+        summary_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 10px;
+                margin-top: 10px;
+            }
+        """)
+        summary_layout = QHBoxLayout(summary_frame)
+        
+        self.relations_summary_lbl = QLabel("Relations Summary: Loading...")
+        self.relations_summary_lbl.setStyleSheet("font-size: 12px; color: #6c757d;")
+        summary_layout.addWidget(self.relations_summary_lbl)
+        
+        relations_layout.addWidget(summary_frame)
         layout.addWidget(relations_frame)
         layout.addStretch()
-
+    
     def create_stat_card(self, title, value, color):
-        """Create a statistics card widget"""
+        """Create a statistics card widget with light gray theme and royal blue borders"""
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: {color};
                 border-radius: 8px;
-                color: white;
+                color: #495057;
                 padding: 15px;
+                margin: 5px;
+                border: 2px solid #4169e1;
+            }}
+            QFrame:hover {{
+                background-color: #6c757d;
+                color: white;
             }}
         """)
         card_layout = QVBoxLayout(card)
         
-        title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("font-size: 12px; font-weight: normal;")
-        title_lbl.setAlignment(Qt.AlignCenter)
-        
         value_lbl = QLabel(value)
-        value_lbl.setStyleSheet("font-size: 24px; font-weight: bold;")
+        value_lbl.setStyleSheet("font-size: 28px; font-weight: bold; margin-bottom: 5px;")
         value_lbl.setAlignment(Qt.AlignCenter)
+        
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet("font-size: 12px; font-weight: normal; opacity: 0.9;")
+        title_lbl.setAlignment(Qt.AlignCenter)
         
         card_layout.addWidget(value_lbl)
         card_layout.addWidget(title_lbl)
@@ -761,7 +842,8 @@ class ParentsForm(AuditBaseForm):
         card.value_label = value_lbl
         
         return card
-
+    
+    
     def update_full_name(self):
         """Auto-update full name when first name or surname changes"""
         first = self.first_name_entry.text().strip()
@@ -833,12 +915,10 @@ class ParentsForm(AuditBaseForm):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Filter failed: {str(e)}")
             
-    def load_parents(self):
+    def load_parents(self, show_success_message=False):
         """Load all parents with enhanced information and proper count calculation"""
         try:
             self.show_loading(True)
-            
-            # Enhanced query that properly counts only active students
             query = """
                 SELECT p.id, p.full_name, p.relation, p.phone, p.email,
                        COALESCE(student_counts.student_count, 0) as student_count,
@@ -858,17 +938,27 @@ class ParentsForm(AuditBaseForm):
                 ORDER BY p.full_name
                 LIMIT 200
             """
-            
             self.db_worker = DatabaseWorker(query)
             self.db_worker.data_loaded.connect(self.populate_parents_table)
             self.db_worker.error_occurred.connect(self.handle_database_error)
-            self.db_worker.finished.connect(lambda: self.show_loading(False))
-            self.db_worker.start()
             
+            def on_finished():
+                self.show_loading(False)
+                # Only show success message if explicitly requested (manual refresh)
+                if show_success_message and (not hasattr(self, '_last_error') or not self._last_error):
+                    QMessageBox.information(self, "Success", "Data refreshed successfully!")
+                elif hasattr(self, '_last_error') and self._last_error:
+                    self._last_error = False  # Reset
+    
+            self.db_worker.finished.connect(on_finished)
+            self.db_worker.start()
         except Exception as e:
             self.show_loading(False)
             QMessageBox.critical(self, "Error", f"Failed to load parents: {str(e)}")
-
+    
+    def refresh_all_data(self):
+        """Manually refresh all data with success message"""
+        self.load_parents(show_success_message=True)
 
     def populate_parents_table(self, parents):
         """Populate the parents table with data"""
@@ -912,6 +1002,7 @@ class ParentsForm(AuditBaseForm):
     def handle_database_error(self, error_message):
         """Handle database errors"""
         self.show_loading(False)
+        self._last_error = True
         QMessageBox.critical(self, "Database Error", error_message)
 
     def show_context_menu(self, position):
@@ -1211,15 +1302,6 @@ class ParentsForm(AuditBaseForm):
         finally:
             self.show_loading(False)
 
-    def link_student_to_parent(self):
-        """Link a student to the selected parent"""
-        if not self.current_parent_id:
-            QMessageBox.warning(self, "Select", "Please select a parent first.")
-            return
-            
-        # This would open a dialog to select students
-        QMessageBox.information(self, "Feature", "Student linking dialog will be implemented here.")
-
     def update_statistics(self):
         """Update statistics in header and analytics tab"""
         try:
@@ -1251,6 +1333,7 @@ class ParentsForm(AuditBaseForm):
         except Exception as e:
             print(f"Error updating statistics: {e}")
 
+    
     def update_relations_breakdown(self):
         """Update relations breakdown table"""
         try:
@@ -1276,7 +1359,7 @@ class ParentsForm(AuditBaseForm):
                     
         except Exception as e:
             print(f"Error updating relations breakdown: {e}")
-    
+        
     def refresh_student_counts(self):
         """Manually refresh student counts for all visible parents"""
         try:
@@ -1417,39 +1500,7 @@ class ParentsForm(AuditBaseForm):
                     
         except Exception as e:
             print(f"Auto-refresh check failed: {e}")
-    
-    def add_refresh_controls(self):
-        """Add refresh controls to the UI"""
-        # Add to the existing action_layout in setup_list_tab
-        
-        # Create refresh menu button
-        refresh_menu_btn = QPushButton("Refresh Options ▼")
-        refresh_menu_btn.setStyleSheet("background-color: #17a2b8; min-height: 35px;")
-        
-        refresh_menu = QMenu()
-        
-        refresh_all_action = QAction("Refresh All Data", self)
-        refresh_all_action.triggered.connect(self.load_parents)
-        refresh_menu.addAction(refresh_all_action)
-        
-        refresh_counts_action = QAction("Refresh Student Counts Only", self)
-        refresh_counts_action.triggered.connect(self.refresh_student_counts)
-        refresh_menu.addAction(refresh_counts_action)
-        
-        cleanup_action = QAction("Cleanup Orphaned Relationships", self)
-        cleanup_action.triggered.connect(self.cleanup_orphaned_relationships)
-        refresh_menu.addAction(cleanup_action)
-        
-        refresh_menu.addSeparator()
-        
-        auto_refresh_action = QAction("Enable Auto-Refresh", self)
-        auto_refresh_action.setCheckable(True)
-        auto_refresh_action.toggled.connect(self.toggle_auto_refresh)
-        refresh_menu.addAction(auto_refresh_action)
-        
-        refresh_menu_btn.setMenu(refresh_menu)
-        
-        return refresh_menu_btn
+
     
     def toggle_auto_refresh(self, enabled):
         """Toggle automatic refresh on/off"""
