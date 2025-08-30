@@ -13,6 +13,8 @@ from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, S
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintPreviewWidget, QPrintDialog
 from PySide6.QtPdf import QPdfDocument
+
+# Import your UI forms
 from ui.schools_form import SchoolsForm
 from ui.users_form import UsersForm
 from ui.teachers_form import TeachersForm
@@ -21,6 +23,11 @@ from ui.audit_logs_form import AuditLogsForm
 from ui.audit_base_form import AuditBaseForm
 from ui.students_form import StudentsForm
 from ui.parents_form import ParentsForm
+
+# Import the new ribbon components
+from ui.ribbon_manager import RibbonManager
+from ui.ribbon_handlers import RibbonHandlers
+
 from utils.permissions import has_permission
 from fpdf import FPDF
 from docx import Document
@@ -44,7 +51,7 @@ class MainWindow(QMainWindow):
         # Create AuditBaseForm instance for styling and utilities
         self.audit_base = AuditBaseForm(user_session=user_session)
         
-        # 🔥 INHERIT ALL STYLING from AuditBaseForm
+        # Inherit all styling from AuditBaseForm
         self.setStyleSheet(self.audit_base.styleSheet())
         self.colors = self.audit_base.colors
         self.fonts = self.audit_base.fonts
@@ -53,6 +60,10 @@ class MainWindow(QMainWindow):
         self.log_audit_action = self.audit_base.log_audit_action
         self.export_with_green_header = self.audit_base.export_with_green_header
         self.get_school_info = self.audit_base.get_school_info
+        
+        # Initialize ribbon components AFTER setting up colors and fonts
+        self.ribbon_manager = RibbonManager(self)
+        self.ribbon_handlers = RibbonHandlers(self)
         
         # Use the passed parameters
         self.app_config = config or {
@@ -86,9 +97,9 @@ class MainWindow(QMainWindow):
                 from utils.permissions import get_role_permissions
                 role = self.user_session.get('role', 'user')
                 self.user_session['permissions'] = get_role_permissions(role)
-                print(f"🔁 Permissions auto-generated for role '{role}': {self.user_session['permissions']}")
+                print(f"Permissions auto-generated for role '{role}': {self.user_session['permissions']}")
             except Exception as e:
-                print(f"❌ Failed to load permissions: {e}")
+                print(f"Failed to load permissions: {e}")
                 self.user_session['permissions'] = ['view_own_profile'] if self.user_session.get('role') != 'admin' else [
                     'view_login_logs', 'view_audit_logs', 'view_all_data'
                 ]
@@ -117,11 +128,11 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(self.app_paths['app_icon']))
     
     def init_ui(self):
-        #self.apply_styles()
         self.create_main_tabs()
-        self.create_ribbon_panel()
+        # Use the ribbon manager to create ribbon panel
+        self.ribbon_manager.create_ribbon_panel()
         self.create_sidebar()
-        #self.create_logout_action()
+        
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
         self.create_content_pages()
@@ -139,7 +150,110 @@ class MainWindow(QMainWindow):
         
         # Update UI for current user session
         self.update_ui_for_user_session()
+
+    def toggle_ribbon(self):
+        """Toggle ribbon visibility - now delegates to ribbon manager"""
+        self.ribbon_manager.toggle_ribbon_visibility()
     
+    def update_ribbon_panel(self, main_tab):
+        """Update ribbon panel - now delegates to ribbon manager"""
+        self.ribbon_manager.update_ribbon_panel(main_tab)
+
+    # === DELEGATE RIBBON ACTIONS TO HANDLERS ===
+    # User Management Actions
+    def add_new_user(self):
+        return self.ribbon_handlers.add_new_user()
+    
+    def refresh_user_data(self):
+        return self.ribbon_handlers.refresh_user_data()
+    
+    def execute_user_export_dialog(self):
+        return self.ribbon_handlers.execute_user_export_dialog()
+
+    # Staff/Teachers Actions  
+    def show_teachers_form(self):
+        return self.ribbon_handlers.show_teachers_form()
+    
+    def add_new_teacher(self):
+        return self.ribbon_handlers.add_new_teacher()
+    
+    def export_teachers_data(self):
+        return self.ribbon_handlers.export_teachers_data()
+    
+    def import_teachers_data(self):
+        return self.ribbon_handlers.import_teachers_data()
+    
+    def generate_teacher_summary(self):
+        return self.ribbon_handlers.generate_teacher_summary()
+    
+    def refresh_teachers_data(self):
+        return self.ribbon_handlers.refresh_teachers_data()
+    
+    def generate_teacher_profile(self):
+        return self.ribbon_handlers.generate_teacher_profile()
+
+    # Parents Actions
+    def show_parents_form(self):
+        return self.ribbon_handlers.show_parents_form()
+    
+    def add_new_parent(self):
+        return self.ribbon_handlers.add_new_parent()
+    
+    def refresh_parents_data(self):
+        return self.ribbon_handlers.refresh_parents_data()
+    
+    def import_parents_data(self):
+        return self.ribbon_handlers.import_parents_data()
+    
+    def generate_parent_summary(self):
+        return self.ribbon_handlers.generate_parent_summary()
+    
+    def generate_parent_profile(self):
+        return self.ribbon_handlers.generate_parent_profile()
+    
+    def search_parents(self):
+        return self.ribbon_handlers.search_parents()
+    
+    def manage_parent_contacts(self):
+        return self.ribbon_handlers.manage_parent_contacts()
+    
+    def view_parent_children(self):
+        return self.ribbon_handlers.view_parent_children()
+    
+    def backup_parent_data(self):
+        return self.ribbon_handlers.backup_parent_data()
+    
+    def validate_parent_data(self):
+        return self.ribbon_handlers.validate_parent_data()
+
+    # Security & Reports Actions
+    def show_login_logs(self):
+        return self.ribbon_handlers.show_login_logs()
+    
+    def show_audit_logs(self):
+        return self.ribbon_handlers.show_audit_logs()
+    
+    def generate_security_report(self):
+        return self.ribbon_handlers.generate_security_report()
+
+    # Global System Actions
+    def refresh_all_data(self):
+        return self.ribbon_handlers.refresh_all_data()
+    
+    def settings_action(self):
+        return self.ribbon_handlers.settings_action()
+    
+    def new_action(self):
+        return self.ribbon_handlers.new_action()
+    
+    def open_action(self):
+        return self.ribbon_handlers.open_action()
+    
+    def print_action(self):
+        return self.ribbon_handlers.print_action()
+
+
+     #methods in mainwindow
     def safe_disconnect(self, signal, slot):
         try:
             signal.disconnect(slot)
@@ -731,670 +845,6 @@ class MainWindow(QMainWindow):
         
         return circular_pixmap
 
-
-    def create_ribbon_panel(self):
-        """Create the modern ribbon-style panel (cleaned, no scroll context menu)"""
-        self.ribbon_container = QWidget()
-        self.ribbon_container.setObjectName("ribbonContainer")
-        self.ribbon_container.setFixedHeight(90)
-    
-        ribbon_layout = QVBoxLayout(self.ribbon_container)
-        ribbon_layout.setContentsMargins(0, 0, 0, 0)
-        ribbon_layout.setSpacing(0)
-    
-        # Scrollable ribbon area
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-    
-        # 🔹 Disable default scroll context menu
-        scroll_area.setContextMenuPolicy(Qt.NoContextMenu)
-        scroll_area.horizontalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
-        scroll_area.verticalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
-    
-        # Ribbon panel content
-        self.ribbon_panel = QWidget()
-        self.ribbon_panel.setObjectName("ribbonPanel")
-        self.ribbon_panel_layout = QHBoxLayout(self.ribbon_panel)
-        self.ribbon_panel_layout.setContentsMargins(10, 3, 10, 5)
-        self.ribbon_panel_layout.setSpacing(8)
-    
-        scroll_area.setWidget(self.ribbon_panel)
-        ribbon_layout.addWidget(scroll_area)
-    
-        # Add ribbon to toolbar
-        self.addToolBarBreak(Qt.TopToolBarArea)
-        self.ribbon_toolbar = QToolBar("Ribbon")
-        self.ribbon_toolbar.setMovable(False)
-        self.ribbon_toolbar.addWidget(self.ribbon_container)
-        self.addToolBar(Qt.TopToolBarArea, self.ribbon_toolbar)
-    
-        # Initialize ribbon content (Dashboard as default)
-        self.update_ribbon_panel("Dashboard")
-
-
-    def create_ribbon_group(self, title, actions):
-        """Create a modern ribbon group with enhanced styling"""
-        group = QWidget()
-        group.setObjectName("ribbonGroup")
-        
-        # Add shadow effect to ribbon group since CSS box-shadow doesn't work
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(8)
-        shadow.setColor(QColor(0, 0, 0, 30))
-        shadow.setOffset(0, 2)
-        group.setGraphicsEffect(shadow)
-        
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-
-        # Buttons container
-        buttons_container = QWidget()
-        buttons_layout = QHBoxLayout(buttons_container)
-        buttons_layout.setContentsMargins(6, 5, 6, 5)
-        buttons_layout.setSpacing(3)
-
-        for action in actions:
-            btn = QPushButton()
-            btn.setObjectName("ribbonButton")
-            btn.setToolTip(action["name"])
-            
-            # Load icon (handle both .jpg and .png)
-            icon_path = f"static/icons/{action['icon']}"
-            if not os.path.exists(icon_path):
-                # Try with .jpg extension if .png doesn't exist
-                icon_path = icon_path.replace('.png', '.jpg')
-            
-            if os.path.exists(icon_path):
-                btn.setIcon(QIcon(icon_path))
-            else:
-                # Create a simple placeholder icon
-                btn.setText(action["name"][:2].upper())
-            
-            btn.setIconSize(QSize(32, 32))
-            if "handler" in action:
-                btn.clicked.connect(action["handler"])
-            buttons_layout.addWidget(btn)
-
-        layout.addWidget(buttons_container)
-
-        # Modern group title
-        title_label = QLabel(title)
-        title_label.setObjectName("ribbonGroupTitle")
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
-
-        return group
-
-    def update_ribbon_panel(self, main_tab):
-        """Update ribbon panel with modern styling without overlapping main navigation"""
-        # Clear existing content
-        while self.ribbon_panel_layout.count():
-            item = self.ribbon_panel_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-    
-        # Define ribbon groups per tab
-        #  Keep your existing ribbon_groups logic
-        ribbon_groups = {
-            "Dashboard": [
-                {"title": "View", "actions": [
-                    {"name": "Overview", "icon": "overview.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(0)},
-                    {"name": "Statistics", "icon": "statistics.png"},
-                    {"name": "Print", "icon": "print.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(2)}
-                ]},
-                {"title": "User Management", "actions": [
-                    {"name": "Manage Users", "icon": "users.png", "handler": lambda: self.dashboard_tabs.setCurrentIndex(1)},
-                    {"name": "Add User", "icon": "adduser.jpg", "handler": self.add_new_user},
-                    {"name": "Export User Data", "icon": "export.png", "handler": self.execute_user_export_dialog},
-                    {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_user_data}
-                ]},
-                {"title": "Security & Reports", "actions": [
-                    {"name": "Login Logs", "icon": "security.jpg", "handler": self.show_login_logs},
-                    {"name": "Audit Trail", "icon": "audit.jpg", "handler": self.show_audit_logs},
-                    {"name": "Security Report", "icon": "report_security.jpg", "handler": self.generate_security_report}
-                ]},
-                {"title": "Tools", "actions": [
-                    {"name": "Settings", "icon": "settings.png", "handler": self.settings_action},
-                    {"name": "Global Refresh", "icon": "refresh.png", "handler": self.refresh_all_data}
-                ]}
-            ],
-            "Schools": [
-                {"title": "Manage", "actions": [
-                    {"name": "List Schools", "icon": "info.png"},
-                    {"name": "Add New", "icon": "new.jpg"},
-                    {"name": "Import", "icon": "import.png"}
-                ]},
-                {"title": "Configuration", "actions": [
-                    {"name": "Settings", "icon": "settings.png"},
-                    {"name": "Options", "icon": "options.png"},
-                    {"name": "Export", "icon": "export.png"}
-                ]}
-            ],
-            "Staff": [
-                {"title": "Staff Records", "actions": [
-                    {"name": "Teachers", "icon": "teacher.jpg", "handler": self.show_teachers_form},
-                    {"name": "Add Teacher", "icon": "addstaff.jpg", "handler": self.add_new_teacher},
-                    {"name": "View Teacher Summaries", "icon": "view.png", "handler": self.generate_teacher_summary}
-                ]},
-                {"title": "Actions", "actions": [
-                    {"name": "Refresh", "icon": "refresh.png", "handler": self.refresh_teachers_data},
-                    {"name": "Generate Teacher Form", "icon": "report.png", "handler": self.generate_teacher_profile},
-                    {"name": "Print", "icon": "print.png"}
-                ]},
-                {"title": "Import & Export", "actions": [
-                    {"name": "Import Teacher Data (CSV)", "icon": "import.png", "handler": self.import_teachers_data},
-                    {"name": "Export Teacher Data (Excel)", "icon": "export.png", "handler": self.export_teachers_data}
-                ]}
-            ],
-            "Parents": [
-                {"title": "Parent Records", "actions": [
-                    {"name": "Parents", "icon": "parents.jpg", "handler": self.show_parents_form},
-                    {"name": "Add Parent", "icon": "addparent.jpg", "handler": self.add_new_parent},
-                    {"name": "View Parent Summaries", "icon": "view.png", "handler": self.generate_parent_summary}
-                ]},
-                {"title": "Actions", "actions": [
-                    {"name": "Refresh ▼", "icon": "refresh.png", "handler": self.refresh_parents_data},
-                    {"name": "Generate Parent Profile", "icon": "report.png", "handler": self.generate_parent_profile},
-                    {"name": "Search Parents", "icon": "search.png", "handler": self.search_parents}
-                ]},
-                {"title": "Import & Export", "actions": [
-                    {"name": "Import Parent Data", "icon": "import.png", "handler": self.import_parents_data},
-                    {"name": "Export Parent Data", "icon": "export.png"},
-                    {"name": "Backup Data", "icon": "backup.png", "handler": self.backup_parent_data}
-                ]},
-                {"title": "Tools", "actions": [
-                    {"name": "View Children", "icon": "children.png", "handler": self.view_parent_children},
-                    {"name": "Manage Contacts", "icon": "contacts.png", "handler": self.manage_parent_contacts},
-                    {"name": "Validate Data", "icon": "validate.png", "handler": self.validate_parent_data}
-                ]}
-            ],
-        }.get(main_tab, [
-            {"title": "Common", "actions": [
-                {"name": "New", "icon": "new.jpg", "handler": self.new_action},
-                {"name": "Open", "icon": "open.jpg", "handler": self.open_action},
-                {"name": "Print", "icon": "print.png", "handler": self.print_action}
-            ]},
-            {"title": "Actions", "actions": [
-                {"name": "Settings", "icon": "settings.png", "handler": self.settings_action},
-                {"name": "Options", "icon": "options.png"}
-            ]}
-        ])
-    
-        # Add each group to ribbon panel
-        for group in ribbon_groups:
-            ribbon_group_widget = self.create_ribbon_group(group["title"], group["actions"])
-            self.ribbon_panel_layout.addWidget(ribbon_group_widget)
-    
-        self.ribbon_panel_layout.addStretch()  # ensures no overlap
-    
-        # Ensure ribbon container height is correct
-        self.ribbon_container.setFixedHeight(90)
-        self.ribbon_toolbar.setFixedHeight(90)
-
-    
-    # Ribbon button handlers
-    #for users
-    def open_users_form(self):
-        """Open the users management form in dashboard"""
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(1)  # Switch to Users tab
-        self.statusBar().showMessage("User Management - Ready to manage system users")
-
-    def add_new_user(self):
-        """Quick action to add a new user"""
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(1)  # Switch to Users tab
-        if hasattr(self, 'users_form'):
-            self.users_form.clear_form()
-        self.statusBar().showMessage("Ready to add new user")
-
-    def refresh_user_data(self):
-        """Refresh user data in the dashboard users form"""
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(1)  # Switch to Users tab
-        
-        if hasattr(self, 'users_form'):
-            try:
-                # Call the refresh method on your users form
-                self.users_form.refresh_data()
-                self.statusBar().showMessage("User data refreshed successfully!")
-            except Exception as e:
-                self.statusBar().showMessage(f"Error refreshing user data: {str(e)}")
-                QMessageBox.critical(self, "Refresh Error", f"Failed to refresh user data: {e}")
-        else:
-            self.statusBar().showMessage("Users form not available for refresh")
-            QMessageBox.warning(self, "Refresh Failed", "Users form is not initialized")
-
-    def execute_user_export_dialog(self):
-        """Open export dialog and safely call users_form.export_users"""
-        if not hasattr(self, 'users_form') or self.users_form is None:
-            QMessageBox.warning(self, "Error", "User management form not available.")
-            return
-    
-        # Get filename
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Users",
-            f"users_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            "CSV Files (*.csv);;Excel Files (*.xlsx);;PDF Files (*.pdf);;All Files (*)"
-        )
-        if not filename:
-            return  # Cancelled
-    
-        try:
-            success = self.users_form.export_users(filename)
-            if success:
-                QMessageBox.information(self, "Success", f"Users exported to:\n{os.path.basename(filename)}")
-                self.statusBar().showMessage(f"Exported user data to {os.path.basename(filename)}")
-            else:
-                QMessageBox.critical(self, "Export Failed", "Could not export data.")
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export: {str(e)}")
-
-    def export_login_statistics(self, filename):
-        """Export user login statistics"""
-        try:
-            query = '''
-                SELECT u.username, u.full_name, u.role,
-                       COUNT(ll.id) as total_logins,
-                       SUM(CASE WHEN ll.login_status = 'success' THEN 1 ELSE 0 END) as successful_logins,
-                       SUM(CASE WHEN ll.login_status = 'failed' THEN 1 ELSE 0 END) as failed_logins,
-                       MAX(ll.login_time) as last_login
-                FROM users u
-                LEFT JOIN login_logs ll ON u.id = ll.user_id
-                GROUP BY u.id, u.username, u.full_name, u.role
-                ORDER BY total_logins DESC
-            '''
-            
-            self.users_form.cursor.execute(query)
-            login_stats = self.users_form.cursor.fetchall()
-            
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['Username', 'Full Name', 'Role', 'Total Logins', 
-                               'Successful Logins', 'Failed Logins', 'Last Login'])
-                writer.writerows(login_stats)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Export login statistics error: {e}")
-            return False
-        
-    #for staff/teachers
-    def show_teachers_form(self):
-        """Switch to teachers form and ensure it's visible"""
-        self.on_tab_clicked("Staff")
-        if hasattr(self, 'staff_form'):
-            self.staff_form.load_teachers()
-    
-    def add_new_teacher(self):
-        """Prepare the form for adding a new teacher"""
-        self.on_tab_clicked("Staff")
-        if hasattr(self, 'staff_form'):
-            self.staff_form.clear_fields()
-            self.staff_form.tab_widget.setCurrentIndex(0)  # Switch to form tab
-    
-    def export_teachers_data(self):
-        """Export teachers data to Excel"""
-        self.on_tab_clicked("Staff")
-        if hasattr(self, 'staff_form'):
-            self.staff_form.export_teachers_data()
-
-    def import_teachers_data(self):
-        """Export teachers data to Excel"""
-        self.on_tab_clicked("Staff")
-        if hasattr(self, 'staff_form'):
-            self.staff_form.import_teachers_data()
-
-    def generate_teacher_summary(self):
-        """Export teachers data to Excel"""
-        self.on_tab_clicked("Staff")
-        if hasattr(self, 'staff_form'):
-            self.staff_form.generate_teacher_report()
-    
-    def refresh_teachers_data(self):
-        """Refresh teachers data"""
-        self.on_tab_clicked("Staff")
-        if hasattr(self, 'staff_form'):
-            self.staff_form.load_teachers()
-            self.staff_form.load_schools()
-            QMessageBox.information(self, "Refreshed", "Teacher data has been refreshed")
-    
-    def print_teachers_list(self):
-        """Print teachers list (placeholder)"""
-        QMessageBox.information(self, "Print", "Print functionality will be implemented here")
-
-
-    # Add this method to your MainWindow class for the generate teacher report functionality
-    def generate_teacher_profile(self):
-        """Generate teacher report from the staff form"""
-        if not hasattr(self, 'staff_form'):
-            QMessageBox.warning(self, "Error", "Staff form not loaded")
-            return
-        
-        teacher_id = getattr(self.staff_form, 'current_teacher_id', None)
-        if not teacher_id:
-            QMessageBox.warning(self, "Warning", "Please select a teacher")
-            return
-        
-        try:
-            pdf_bytes = self.staff_form.generate_teacher_profile_pdf(teacher_id)
-            self.show_pdf_preview_dialog(pdf_bytes)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate PDF:\n{str(e)}")
-
-    def print_loaded_pdf(self):
-        """Print the currently loaded PDF bytes"""
-        try:
-            if not hasattr(self, 'current_pdf_bytes') or not self.current_pdf_bytes:
-                QMessageBox.warning(self, "No PDF", "No PDF is currently loaded for printing")
-                return
-                
-            # Use the PDF utilities to print
-            try:
-                from utils.pdf_utils import print_pdf
-                print_pdf(self.current_pdf_bytes, parent=self)
-            except ImportError:
-                # Fallback if utils module not available
-                QMessageBox.information(self, "Print", "PDF print utilities not available")
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Print Error", f"Failed to print PDF:\n{str(e)}")
-
-    def show_parents_form(self):
-        """Switch to parents form and ensure it's visible"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            self.parents_form.load_parents()
-    
-    def add_new_parent(self):
-        """Prepare the form for adding a new parent"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            self.parents_form.clear_fields()
-            if hasattr(self.parents_form, 'tab_widget'):
-                self.parents_form.tab_widget.setCurrentIndex(0)
-    
-    def refresh_parents_data(self):
-        """Refresh parents data using the form's built-in refresh action"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form') and self.parents_form is not None:
-            if hasattr(self.parents_form, 'refresh_all_action'):
-                self.parents_form.refresh_all_action.trigger()  # Same as clicking the menu!
-            else:
-                self.parents_form.load_parents()  # Fallback
-        else:
-            QMessageBox.warning(self, "Warning", "Parents form not available.")
-            
-
-    # 1. Update your refresh_parents_data method to position menu correctly
-    def refresh_parents_data(self):
-        """Show the full refresh options menu when ribbon 'Refresh' is clicked"""
-        # Make sure we're on the Parents tab
-        self.on_tab_clicked("Parents")
-    
-        # Check if the refresh button exists and is valid
-        if not hasattr(self, 'parents_form') or not self.parents_form:
-            QMessageBox.warning(self, "Unavailable", "Parents module not ready.")
-            return
-    
-        # Create and show the menu at cursor position instead of using the button
-        if not hasattr(self.parents_form, 'refresh_menu'):
-            QMessageBox.warning(self, "Error", "Refresh menu not available.")
-            return
-    
-        # Get the menu from parents form
-        menu = self.parents_form.refresh_menu
-        if not menu:
-            QMessageBox.critical(self, "Error", "Refresh menu is missing.")
-            return
-    
-        # Show the menu at the current cursor position (where you clicked)
-        cursor_pos = QCursor.pos()
-        menu.exec(cursor_pos)
-    
-    def import_parents_data(self):
-        """Import parents data from CSV"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                self.parents_form.import_parents_data()
-                self.statusBar().showMessage("Parent data import initiated")
-            except Exception as e:
-                QMessageBox.critical(self, "Import Error", f"Failed to import parent data: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
-    
-    def generate_parent_summary(self):
-        """Generate parent summary report"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                self.parents_form.generate_parent_report()
-                self.statusBar().showMessage("Parent summary report generated")
-            except Exception as e:
-                QMessageBox.critical(self, "Report Error", f"Failed to generate parent summary: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
-    
-    def generate_parent_profile(self):
-        """Generate individual parent profile PDF"""
-        if not hasattr(self, 'parents_form'):
-            QMessageBox.warning(self, "Error", "Parents form not loaded")
-            return
-        
-        parent_id = getattr(self.parents_form, 'current_parent_id', None)
-        if not parent_id:
-            QMessageBox.warning(self, "Warning", "Please select a parent")
-            return
-        
-        try:
-            pdf_bytes = self.parents_form.generate_parent_profile_pdf(parent_id)
-            self.current_pdf_bytes = pdf_bytes  # Store for printing
-            self.show_pdf_preview_dialog(pdf_bytes)
-            self.statusBar().showMessage("Parent profile PDF generated")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate parent profile PDF: {str(e)}")
-    
-    def print_parents_list(self):
-        """Print parents list"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                # Generate printable parents list
-                pdf_bytes = self.parents_form.generate_parents_list_pdf()
-                self.current_pdf_bytes = pdf_bytes
-                self.show_pdf_preview_dialog(pdf_bytes)
-                self.statusBar().showMessage("Parents list ready for printing")
-            except Exception as e:
-                QMessageBox.critical(self, "Print Error", f"Failed to prepare parents list: {str(e)}")
-        else:
-            QMessageBox.information(self, "Print", "Parents list print functionality will be implemented")
-    
-    def search_parents(self):
-        """Open parent search dialog"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                # If parents form has a search method, call it
-                if hasattr(self.parents_form, 'show_search_dialog'):
-                    self.parents_form.show_search_dialog()
-                else:
-                    # Basic search implementation
-                    search_term, ok = QInputDialog.getText(self, "Search Parents", "Enter parent name or ID:")
-                    if ok and search_term:
-                        self.parents_form.search_parents(search_term)
-            except Exception as e:
-                QMessageBox.critical(self, "Search Error", f"Failed to search parents: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
-    
-    def manage_parent_contacts(self):
-        """Manage parent contact information"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                # If parents form has contact management, use it
-                if hasattr(self.parents_form, 'manage_contacts'):
-                    self.parents_form.manage_contacts()
-                else:
-                    QMessageBox.information(self, "Contacts", "Contact management feature coming soon")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open contact management: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
-    
-    def view_parent_children(self):
-        """View children linked to selected parent"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            parent_id = getattr(self.parents_form, 'current_parent_id', None)
-            if not parent_id:
-                QMessageBox.warning(self, "Warning", "Please select a parent first")
-                return
-            
-            try:
-                if hasattr(self.parents_form, 'view_children'):
-                    self.parents_form.view_children(parent_id)
-                else:
-                    QMessageBox.information(self, "Children", "Child viewing feature coming soon")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to view parent's children: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
-    
-    def backup_parent_data(self):
-        """Create backup of parent data"""
-        try:
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                "Backup Parent Data",
-                f"parents_backup_{timestamp}.sql",
-                "SQL Files (*.sql);;All Files (*)"
-            )
-            
-            if filename:
-                if hasattr(self, 'parents_form') and hasattr(self.parents_form, 'backup_data'):
-                    success = self.parents_form.backup_data(filename)
-                    if success:
-                        QMessageBox.information(self, "Backup Complete", f"Parent data backed up to: {filename}")
-                        self.statusBar().showMessage("Parent data backup completed successfully")
-                    else:
-                        QMessageBox.critical(self, "Backup Failed", "Failed to create backup")
-                else:
-                    QMessageBox.information(self, "Backup", "Backup functionality will be implemented")
-                    
-        except Exception as e:
-            QMessageBox.critical(self, "Backup Error", f"Failed to backup parent data: {str(e)}")
-    
-    def validate_parent_data(self):
-        """Validate parent data integrity"""
-        self.on_tab_clicked("Parents")
-        if hasattr(self, 'parents_form'):
-            try:
-                if hasattr(self.parents_form, 'validate_data'):
-                    issues = self.parents_form.validate_data()
-                    if issues:
-                        QMessageBox.warning(self, "Data Issues Found", f"Found {len(issues)} data integrity issues")
-                    else:
-                        QMessageBox.information(self, "Validation Complete", "All parent data is valid")
-                else:
-                    QMessageBox.information(self, "Validation", "Data validation feature coming soon")
-            except Exception as e:
-                QMessageBox.critical(self, "Validation Error", f"Failed to validate data: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Error", "Parents form not available")
-
-    #for login logs
-    def show_login_logs(self):
-        """Show Login Activity tab directly"""
-        if not has_permission(self.user_session, "view_login_logs"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to view login logs.")
-            return
-    
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(2)  # Login Activity is now tab 2
-        self.login_logs_form.load_login_logs()
-        self.statusBar().showMessage("Login activity logs loaded")
-    
-    def show_audit_logs(self):
-        """Show Audit Trail tab directly"""
-        if not has_permission(self.user_session, "view_audit_logs"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to view audit logs.")
-            return
-    
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(3)  # Audit Trail is now tab 3
-        self.audit_logs_form.load_audit_logs()
-        self.statusBar().showMessage("Audit trail logs loaded")
-    
-    def export_audit_reports(self):
-        """Export audit reports"""
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(2)  # Reports tab
-        
-        if hasattr(self, 'audit_logs_form'):
-            try:
-                self.audit_logs_form.export_logs()
-                self.statusBar().showMessage("Audit reports exported successfully!")
-            except Exception as e:
-                self.statusBar().showMessage(f"Error exporting audit reports: {str(e)}")
-                QMessageBox.critical(self, "Export Error", f"Failed to export audit reports: {e}")
-        else:
-            self.statusBar().showMessage("Audit logs form not available for export")
-    
-    def generate_security_report(self):
-        """Generate security report (placeholder)"""
-        self.on_tab_clicked("Dashboard")
-        self.dashboard_tabs.setCurrentIndex(2)  # Reports tab
-        QMessageBox.information(self, "Coming Soon", "Security reports feature will be available in the next update")
-
-    #Global refresh all data
-    def refresh_all_data(self):
-        """Refresh all data across dashboard tabs"""
-        current_tab = self.dashboard_tabs.currentIndex()
-        
-        # Refresh based on current dashboard tab
-        if current_tab == 0:  # Overview tab
-            self.load_dashboard_stats()
-            self.statusBar().showMessage("Dashboard overview refreshed!")
-        elif current_tab == 1 and hasattr(self, 'users_form'):  # Users tab
-            self.refresh_user_data()
-        elif current_tab == 2:  # Reports tab
-            # Refresh based on which reports subtab is active
-            current_report_tab = self.reports_tabs.currentIndex()
-            if current_report_tab == 0 and hasattr(self, 'login_logs_form'):  # Login Logs
-                self.login_logs_form.load_login_logs()
-                self.statusBar().showMessage("Login logs refreshed!")
-            else:
-                self.statusBar().showMessage("Reports data refreshed!")
-        else:
-            self.statusBar().showMessage("Refresh completed")
- 
-
-    #for system
-    def settings_action(self):
-        """Handle settings action"""
-        QMessageBox.information(self, "Settings", "Settings panel will be implemented here.")
-
-    def new_action(self):
-        """Handle new action"""
-        QMessageBox.information(self, "New", "New action triggered from ribbon.")
-
-    def open_action(self):
-        """Handle open action"""
-        QMessageBox.information(self, "Open", "Open action triggered from ribbon.")
-
-    def print_action(self):
-        """Handle print action"""
-        QMessageBox.information(self, "Print", "Print action triggered from ribbon.")
 
     def create_sidebar(self):
         """Create modern floating sidebar with darker gradient background, full height, and animations"""
