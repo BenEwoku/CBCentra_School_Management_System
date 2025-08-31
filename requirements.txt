@@ -9,3 +9,5 @@ openpyxl
 Pillow
 fpdf
 pandas
+seaborn
+matplotlib

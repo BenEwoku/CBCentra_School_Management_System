@@ -21,6 +21,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 import mysql.connector
 from mysql.connector import Error
+# Add these imports at the top of the file with other matplotlib imports
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 
 class DatabaseWorker(QThread):
@@ -704,144 +708,6 @@ class ParentsForm(AuditBaseForm):
         self.parents_table.customContextMenuRequested.connect(self.show_context_menu)
     
         layout.addWidget(self.parents_table)
-    
-    def setup_analytics_tab(self):
-        """Setup analytics tab with statistics and charts"""
-        layout = QVBoxLayout(self.analytics_tab)
-        
-        # Statistics cards with gray theme
-        stats_frame = QFrame()
-        stats_frame.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #dee2e6;
-                border-radius: 8px;
-                padding: 20px;
-                margin-bottom: 15px;
-            }
-        """)
-        stats_layout = QHBoxLayout(stats_frame)
-        
-        # Create stat cards with light gray color scheme
-        self.total_parents_lbl = self.create_stat_card("Total Parents", "0", "#f8f9fa")
-        self.active_parents_lbl = self.create_stat_card("Active Parents", "0", "#f8f9fa")
-        self.fee_payers_lbl = self.create_stat_card("Fee Payers", "0", "#f8f9fa")
-        self.emergency_contacts_lbl = self.create_stat_card("Emergency Contacts", "0", "#f8f9fa")
-        
-        stats_layout.addWidget(self.total_parents_lbl)
-        stats_layout.addWidget(self.active_parents_lbl)
-        stats_layout.addWidget(self.fee_payers_lbl)
-        stats_layout.addWidget(self.emergency_contacts_lbl)
-        
-        layout.addWidget(stats_frame)
-        
-        # Relations breakdown with enhanced table
-        relations_frame = QFrame()
-        relations_frame.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #dee2e6;
-                border-radius: 8px;
-                padding: 20px;
-            }
-        """)
-        relations_layout = QVBoxLayout(relations_frame)
-        
-        relations_title = QLabel("Relations Breakdown")
-        relations_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #495057;")
-        relations_layout.addWidget(relations_title)
-        
-        # Enhanced relations table
-        self.relations_table = QTableWidget()
-        self.relations_table.setColumnCount(4)
-        self.relations_table.setHorizontalHeaderLabels(["Relation", "Count", "Percentage", "Status"])
-        
-        # Set table styling
-        self.relations_table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #dee2e6;
-                background-color: white;
-                alternate-background-color: #f8f9fa;
-                selection-background-color: #e9ecef;
-            }
-            QHeaderView::section {
-                background-color: #495057;
-                color: white;
-                padding: 8px;
-                border: 1px solid #dee2e6;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #dee2e6;
-            }
-        """)
-        
-        # Configure table properties
-        self.relations_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.relations_table.setAlternatingRowColors(True)
-        self.relations_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.relations_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.relations_table.setSortingEnabled(True)
-        self.relations_table.setMaximumHeight(400)
-        
-        relations_layout.addWidget(self.relations_table)
-        
-        # Add summary section below the table
-        summary_frame = QFrame()
-        summary_frame.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                padding: 10px;
-                margin-top: 10px;
-            }
-        """)
-        summary_layout = QHBoxLayout(summary_frame)
-        
-        self.relations_summary_lbl = QLabel("Relations Summary: Loading...")
-        self.relations_summary_lbl.setStyleSheet("font-size: 12px; color: #6c757d;")
-        summary_layout.addWidget(self.relations_summary_lbl)
-        
-        relations_layout.addWidget(summary_frame)
-        layout.addWidget(relations_frame)
-        layout.addStretch()
-    
-    def create_stat_card(self, title, value, color):
-        """Create a statistics card widget with light gray theme and royal blue borders"""
-        card = QFrame()
-        card.setStyleSheet(f"""
-            QFrame {{
-                background-color: {color};
-                border-radius: 8px;
-                color: #495057;
-                padding: 15px;
-                margin: 5px;
-                border: 2px solid #4169e1;
-            }}
-            QFrame:hover {{
-                background-color: #6c757d;
-                color: white;
-            }}
-        """)
-        card_layout = QVBoxLayout(card)
-        
-        value_lbl = QLabel(value)
-        value_lbl.setStyleSheet("font-size: 28px; font-weight: bold; margin-bottom: 5px;")
-        value_lbl.setAlignment(Qt.AlignCenter)
-        
-        title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("font-size: 12px; font-weight: normal; opacity: 0.9;")
-        title_lbl.setAlignment(Qt.AlignCenter)
-        
-        card_layout.addWidget(value_lbl)
-        card_layout.addWidget(title_lbl)
-        
-        # Store value label for updates
-        card.value_label = value_lbl
-        
-        return card
     
     
     def update_full_name(self):
@@ -1792,6 +1658,421 @@ class ParentsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"PDF generation failed: {str(e)}")
         finally:
             self.show_loading(False)
+
+    def setup_analytics_tab(self):
+        """Setup enhanced analytics tab with statistics, charts, and visualizations"""
+        # Main scroll area
+        analytics_scroll = QScrollArea()
+        analytics_scroll.setWidgetResizable(True)
+        analytics_scroll.setFrameShape(QFrame.NoFrame)
+        analytics_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        analytics_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Container widget
+        analytics_container = QWidget()
+        main_layout = QVBoxLayout(analytics_container)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
+        
+        analytics_scroll.setWidget(analytics_container)
+        
+        # Set scroll area as main layout
+        self.analytics_tab.setLayout(QVBoxLayout())
+        self.analytics_tab.layout().addWidget(analytics_scroll)
+        self.analytics_tab.layout().setContentsMargins(0, 0, 0, 0)
+        
+        # Title and refresh button
+        header_layout = QHBoxLayout()
+        title = QLabel("Parents Analytics Dashboard")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1f538d; padding: 10px;")
+        header_layout.addWidget(title)
+        
+        header_layout.addStretch()
+        
+        refresh_analytics_btn = QPushButton("Refresh Analytics")
+        refresh_analytics_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 8px 15px;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #218838; }
+        """)
+        refresh_analytics_btn.clicked.connect(self.refresh_parents_analytics)
+        header_layout.addWidget(refresh_analytics_btn)
+        
+        main_layout.addLayout(header_layout)
+        
+        # === OVERVIEW STATISTICS CARDS ===
+        stats_container = QWidget()
+        stats_layout = QHBoxLayout(stats_container)
+        stats_layout.setSpacing(15)
+        
+        # Total Parents Card
+        self.total_parents_card = self.create_stats_card("Total Parents", "0", "#007bff")
+        stats_layout.addWidget(self.total_parents_card)
+        
+        # Active Parents Card
+        self.active_parents_card = self.create_stats_card("Active Parents", "0", "#28a745")
+        stats_layout.addWidget(self.active_parents_card)
+        
+        # Fee Payers Card
+        self.fee_payers_card = self.create_stats_card("Fee Payers", "0", "#ffc107")
+        stats_layout.addWidget(self.fee_payers_card)
+        
+        # Emergency Contacts Card
+        self.emergency_contacts_card = self.create_stats_card("Emergency Contacts", "0", "#dc3545")
+        stats_layout.addWidget(self.emergency_contacts_card)
+        
+        main_layout.addWidget(stats_container)
+        
+        # === CHARTS SECTION ===
+        charts_container = QWidget()
+        charts_layout = QHBoxLayout(charts_container)
+        charts_layout.setSpacing(20)
+        
+        # Left side - Relation Distribution
+        left_chart_group = QGroupBox("Distribution by Relation Type")
+        left_chart_group.setMinimumHeight(400)
+        left_chart_layout = QVBoxLayout()
+        left_chart_group.setLayout(left_chart_layout)
+        
+        # Create matplotlib figure for relation distribution
+        self.relation_figure = Figure(figsize=(8, 6))
+        self.relation_canvas = FigureCanvas(self.relation_figure)
+        self.relation_canvas.setMinimumHeight(350)
+        left_chart_layout.addWidget(self.relation_canvas)
+        charts_layout.addWidget(left_chart_group, 1)
+        
+        # Right side - Student Count Distribution  
+        right_chart_group = QGroupBox("Distribution by Parent-Student Count")
+        right_chart_group.setMinimumHeight(400)
+        right_chart_layout = QVBoxLayout()
+        right_chart_group.setLayout(right_chart_layout)
+        
+        # Create matplotlib figure for student count distribution
+        self.student_count_figure = Figure(figsize=(8, 6))
+        self.student_count_canvas = FigureCanvas(self.student_count_figure)
+        self.student_count_canvas.setMinimumHeight(350)
+        right_chart_layout.addWidget(self.student_count_canvas)
+        charts_layout.addWidget(right_chart_group, 1)
+        
+        main_layout.addWidget(charts_container)
+        
+        # === DETAILED TABLES ===
+        tables_container = QWidget()
+        tables_layout = QHBoxLayout(tables_container)
+        tables_layout.setSpacing(20)
+        
+        # Relation breakdown table
+        relation_table_group = QGroupBox("Relation Type Breakdown")
+        relation_table_group.setMinimumHeight(250)
+        relation_table_layout = QVBoxLayout()
+        relation_table_group.setLayout(relation_table_layout)
+        
+        self.relation_stats_table = QTableWidget()
+        self.relation_stats_table.setColumnCount(4)
+        self.relation_stats_table.setHorizontalHeaderLabels(["Relation Type", "Count", "Percentage", "Avg Students"])
+        self.relation_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.relation_stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.relation_stats_table.setMinimumHeight(250)
+        self.relation_stats_table.setAlternatingRowColors(True)
+        self.relation_stats_table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #ddd;
+            }
+        """)
+        relation_table_layout.addWidget(self.relation_stats_table)
+        tables_layout.addWidget(relation_table_group, 1)
+        
+        # Student count breakdown table
+        student_count_table_group = QGroupBox("Student-Parent Count Distribution")
+        student_count_table_group.setMinimumHeight(250)
+        student_count_table_layout = QVBoxLayout()
+        student_count_table_group.setLayout(student_count_table_layout)
+        
+        self.student_count_stats_table = QTableWidget()
+        self.student_count_stats_table.setColumnCount(3)
+        self.student_count_stats_table.setHorizontalHeaderLabels(["Students", "Parents", "Percentage"])
+        self.student_count_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.student_count_stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.student_count_stats_table.setMinimumHeight(250)
+        self.student_count_stats_table.setAlternatingRowColors(True)
+        self.student_count_stats_table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #ddd;
+            }
+        """)
+        student_count_table_layout.addWidget(self.student_count_stats_table)
+        tables_layout.addWidget(student_count_table_group, 1)
+        
+        main_layout.addWidget(tables_container)
+        
+        # Add stretch to push content to top and allow scrolling
+        main_layout.addStretch()
+        
+        # Load initial analytics data
+        QTimer.singleShot(500, self.refresh_parents_analytics)
+    
+    def create_stats_card(self, title, value, color):
+        """Create a statistics card widget for parents analytics"""
+        card = QFrame()
+        card.setFrameStyle(QFrame.Box)
+        card.setMinimumHeight(120)
+        card.setMinimumWidth(200)
+        card.setStyleSheet(f"""
+            QFrame {{
+                border: 2px solid {color};
+                border-radius: 10px;
+                background-color: white;
+                padding: 15px;
+            }}
+            QLabel {{
+                border: none;
+                background: transparent;
+            }}
+        """)
+        
+        layout = QVBoxLayout(card)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(8)
+        
+        # Title
+        title_label = QLabel(title)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {color}; margin-bottom: 5px;")
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        
+        # Value
+        value_label = QLabel(value)
+        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #333;")
+        value_label.setWordWrap(True)
+        layout.addWidget(value_label)
+        
+        # Store value label for updates
+        card.value_label = value_label
+        
+        return card
+    
+    def refresh_parents_analytics(self):
+        """Refresh all parents analytics data"""
+        try:
+            # Show loading cursor
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            
+            # Load all analytics components
+            self.load_parents_overview_stats()
+            self.load_relation_distribution()
+            self.load_student_count_distribution()
+            self.update_parents_charts()
+            
+            # Show success popup only if manually triggered (not initial load)
+            if hasattr(self, '_analytics_initial_load_complete'):
+                QApplication.restoreOverrideCursor()
+                QMessageBox.information(self, "Refresh Complete", 
+                                      "Parents analytics data has been refreshed successfully!")
+            else:
+                self._analytics_initial_load_complete = True
+                QApplication.restoreOverrideCursor()
+            
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Failed to load parents analytics: {str(e)}")
+    
+    def load_parents_overview_stats(self):
+        """Load overview statistics for parents"""
+        try:
+            # Total parents
+            self.cursor.execute("SELECT COUNT(*) FROM parents")
+            total_parents = self.cursor.fetchone()[0]
+            
+            # Active parents
+            self.cursor.execute("SELECT COUNT(*) FROM parents WHERE is_active = TRUE")
+            total_active = self.cursor.fetchone()[0]
+            
+            # Fee payers
+            self.cursor.execute("SELECT COUNT(*) FROM parents WHERE is_payer = TRUE AND is_active = TRUE")
+            fee_payers = self.cursor.fetchone()[0]
+            
+            # Emergency contacts
+            self.cursor.execute("SELECT COUNT(*) FROM parents WHERE is_emergency_contact = TRUE AND is_active = TRUE")
+            emergency_contacts = self.cursor.fetchone()[0]
+            
+            # Update cards
+            self.total_parents_card.value_label.setText(str(total_parents))
+            self.active_parents_card.value_label.setText(str(total_active))
+            self.fee_payers_card.value_label.setText(str(fee_payers))
+            self.emergency_contacts_card.value_label.setText(str(emergency_contacts))
+            
+            # Force UI update
+            self.total_parents_card.value_label.update()
+            self.active_parents_card.value_label.update()
+            self.fee_payers_card.value_label.update()
+            self.emergency_contacts_card.value_label.update()
+            
+        except Exception as e:
+            print(f"Error loading parents overview stats: {e}")
+    
+    def load_relation_distribution(self):
+        """Load distribution by relation type"""
+        try:
+            query = """
+                SELECT 
+                    COALESCE(relation, 'Not Specified') as relation,
+                    COUNT(*) as total_count,
+                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM parents WHERE is_active = TRUE)), 1) as percentage,
+                    ROUND(AVG(student_counts.student_count), 1) as avg_students
+                FROM parents p
+                LEFT JOIN (
+                    SELECT sp.parent_id, COUNT(DISTINCT s.id) as student_count
+                    FROM student_parent sp
+                    INNER JOIN students s ON sp.student_id = s.id
+                    WHERE s.is_active = TRUE
+                    GROUP BY sp.parent_id
+                ) student_counts ON p.id = student_counts.parent_id
+                WHERE p.is_active = TRUE
+                GROUP BY p.relation
+                ORDER BY total_count DESC
+            """
+            self.cursor.execute(query)
+            relation_data = self.cursor.fetchall()
+            
+            # Update table
+            self.relation_stats_table.setRowCount(len(relation_data))
+            
+            for row_idx, (relation, count, percentage, avg_students) in enumerate(relation_data):
+                self.relation_stats_table.setItem(row_idx, 0, QTableWidgetItem(str(relation)))
+                self.relation_stats_table.setItem(row_idx, 1, QTableWidgetItem(str(count)))
+                self.relation_stats_table.setItem(row_idx, 2, QTableWidgetItem(f"{percentage}%"))
+                self.relation_stats_table.setItem(row_idx, 3, QTableWidgetItem(str(avg_students)))
+            
+            self.relation_stats_data = relation_data
+            
+        except Exception as e:
+            print(f"Error loading relation distribution: {e}")
+    
+    def load_student_count_distribution(self):
+        """Load distribution by student count"""
+        try:
+            query = """
+                SELECT 
+                    student_counts.student_count,
+                    COUNT(*) as parent_count,
+                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM parents WHERE is_active = TRUE)), 1) as percentage
+                FROM parents p
+                LEFT JOIN (
+                    SELECT sp.parent_id, COUNT(DISTINCT s.id) as student_count
+                    FROM student_parent sp
+                    INNER JOIN students s ON sp.student_id = s.id
+                    WHERE s.is_active = TRUE
+                    GROUP BY sp.parent_id
+                ) student_counts ON p.id = student_counts.parent_id
+                WHERE p.is_active = TRUE
+                GROUP BY student_counts.student_count
+                ORDER BY student_counts.student_count
+            """
+            self.cursor.execute(query)
+            student_count_data = self.cursor.fetchall()
+            
+            # Update table
+            self.student_count_stats_table.setRowCount(len(student_count_data))
+            
+            for row_idx, (student_count, parent_count, percentage) in enumerate(student_count_data):
+                student_count_display = str(student_count) if student_count is not None else "0"
+                self.student_count_stats_table.setItem(row_idx, 0, QTableWidgetItem(student_count_display))
+                self.student_count_stats_table.setItem(row_idx, 1, QTableWidgetItem(str(parent_count)))
+                self.student_count_stats_table.setItem(row_idx, 2, QTableWidgetItem(f"{percentage}%"))
+            
+            self.student_count_stats_data = student_count_data
+            
+        except Exception as e:
+            print(f"Error loading student count distribution: {e}")
+    
+    def update_parents_charts(self):
+        """Update both parents charts with current data"""
+        self.update_relation_chart()
+        self.update_student_count_chart()
+    
+    def update_relation_chart(self):
+        """Update the relation distribution chart"""
+        try:
+            self.relation_figure.clear()
+            ax = self.relation_figure.add_subplot(111)
+            
+            if hasattr(self, 'relation_stats_data') and self.relation_stats_data:
+                relations = [item[0] for item in self.relation_stats_data]
+                counts = [item[1] for item in self.relation_stats_data]
+                
+                # Create bar chart
+                bars = ax.bar(relations, counts, color=['#4472C4', '#E15759', '#76B7B2', '#F28E2B', '#59A14F'])
+                
+                ax.set_xlabel('Relation Type', fontsize=12, fontweight='bold')
+                ax.set_ylabel('Number of Parents', fontsize=12, fontweight='bold')
+                ax.set_title('Parent Distribution by Relation Type', fontsize=14, fontweight='bold', pad=20)
+                ax.tick_params(axis='x', rotation=45)
+                ax.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=9, fontweight='bold')
+            else:
+                # Show placeholder when no data
+                ax.text(0.5, 0.5, 'No Data Available\nAdd parents to see charts', 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=14, color='gray')
+                ax.set_title('Parent Distribution by Relation Type', fontsize=14, fontweight='bold')
+            
+            self.relation_figure.tight_layout()
+            self.relation_canvas.draw()
+            
+        except Exception as e:
+            print(f"Error updating relation chart: {e}")
+    
+    def update_student_count_chart(self):
+        """Update the student count distribution chart"""
+        try:
+            self.student_count_figure.clear()
+            ax = self.student_count_figure.add_subplot(111)
+            
+            if hasattr(self, 'student_count_stats_data') and self.student_count_stats_data:
+                student_counts = [item[0] if item[0] is not None else 0 for item in self.student_count_stats_data]
+                parent_counts = [item[1] for item in self.student_count_stats_data]
+                
+                # Create bar chart
+                bars = ax.bar([str(x) for x in student_counts], parent_counts, color='#4E79A7')
+                
+                ax.set_xlabel('Number of Students', fontsize=12, fontweight='bold')
+                ax.set_ylabel('Number of Parents', fontsize=12, fontweight='bold')
+                ax.set_title('Distribution by Parent-Student Count', fontsize=14, fontweight='bold', pad=20)
+                ax.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=9, fontweight='bold')
+            else:
+                # Show placeholder when no data
+                ax.text(0.5, 0.5, 'No Data Available\nAdd parents to see charts', 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=14, color='gray')
+                ax.set_title('Distribution by Student Count', fontsize=14, fontweight='bold')
+            
+            self.student_count_figure.tight_layout()
+            self.student_count_canvas.draw()
+            
+        except Exception as e:
+            print(f"Error updating student count chart: {e}")
 
     def closeEvent(self, event):
         """Clean up database connections on close"""

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication, QLineEdit
 )
 from PySide6.QtGui import QFont, QPalette, QIcon, QPixmap, QPainter, QAction
-from PySide6.QtCore import Qt, Signal, QSize, QDate
+from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
 import mysql.connector
 from mysql.connector import Error
 from PIL import Image, ImageQt
@@ -23,6 +23,9 @@ from utils.permissions import has_permission
 from ui.audit_base_form import AuditBaseForm
 from ui.departments_form import DepartmentsForm
 from utils.pdf_utils import view_pdf
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 # Add parent directory to path to import models
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,7 +35,6 @@ from models.models import get_db_connection
 # Change class definition
 class TeachersForm(AuditBaseForm):
     teacher_selected = Signal(int)
-
     def __init__(self, parent=None, user_session=None):
         super().__init__(parent, user_session)
         self.user_session = user_session
@@ -60,7 +62,7 @@ class TeachersForm(AuditBaseForm):
         self.load_schools()
         self.load_departments_combo()
         self.apply_button_permissions()
-    
+
     def setup_ui(self):
         """Set up the user interface"""
         # Main layout
@@ -71,20 +73,23 @@ class TeachersForm(AuditBaseForm):
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
         
-        # Create tabs
+        # Create tabs - ADD ANALYTICS TAB
         self.teacher_form_tab = QWidget()
         self.teacher_data_tab = QWidget()
+        self.analytics_tab = QWidget()  # NEW ANALYTICS TAB
         self.departments_tab = QWidget()
         
-        # Add tabs to widget
+        # Add tabs to widget - ADD ANALYTICS TAB
         self.tab_widget.addTab(self.teacher_form_tab, "Staff Form")
         self.tab_widget.addTab(self.teacher_data_tab, "Staff Data")
+        self.tab_widget.addTab(self.analytics_tab, "Staff Analytics")  # NEW TAB
         self.departments_tab = DepartmentsForm(self.tab_widget, user_session=self.user_session)
         self.tab_widget.addTab(self.departments_tab, "Departments")
         
-        # Setup each tab
+        # Setup each tab - ADD ANALYTICS TAB SETUP
         self.setup_teacher_form_tab()
         self.setup_teacher_data_tab()
+        self.setup_analytics_tab()  # NEW METHOD - THIS SHOULD NOW WORK
         self.setup_departments_tab()
 
     def setup_teacher_form_tab(self):
@@ -1349,7 +1354,9 @@ class TeachersForm(AuditBaseForm):
     def refresh_data(self):
         """Refresh all data in the form with progress indication"""
         try:
-            #force
+            # Ensure connection first
+            self._ensure_connection()
+            
             self.db_connection.commit()
             self.status_label.setText("Refreshing...")
             self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
@@ -1360,6 +1367,10 @@ class TeachersForm(AuditBaseForm):
             self.load_schools()
             self.load_departments_combo()
             self.clear_fields()
+            
+            # Refresh analytics if the tab is active
+            if self.tab_widget.currentIndex() == 2:  # Analytics tab index
+                self.refresh_staff_analytics()
     
             # Reapply button permissions after refresh
             self.apply_button_permissions()
@@ -1374,7 +1385,7 @@ class TeachersForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Unexpected error during refresh: {e}")
             self.status_label.setText("Refresh Failed")
             self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
-
+        
     def export_teachers_data(self):
         """Export teachers data using shared export_with_green_header method"""
         try:
@@ -1819,6 +1830,504 @@ class TeachersForm(AuditBaseForm):
             import traceback
             print(f"Full error: {traceback.format_exc()}")
             QMessageBox.critical(self, "Export Error", f"Failed to generate or view PDF:\n{str(e)}")
+
+    def setup_analytics_tab(self):
+        """Setup the analytics tab for staff statistics and charts"""
+        # Main scroll area
+        analytics_scroll = QScrollArea()
+        analytics_scroll.setWidgetResizable(True)
+        analytics_scroll.setFrameShape(QFrame.NoFrame)
+        analytics_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        analytics_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Container widget
+        analytics_container = QWidget()
+        main_layout = QVBoxLayout(analytics_container)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
+        
+        analytics_scroll.setWidget(analytics_container)
+        
+        # Set scroll area as main layout
+        self.analytics_tab.setLayout(QVBoxLayout())
+        self.analytics_tab.layout().addWidget(analytics_scroll)
+        self.analytics_tab.layout().setContentsMargins(0, 0, 0, 0)
+        
+        # Title and refresh button
+        header_layout = QHBoxLayout()
+        title = QLabel("Staff Analytics Dashboard")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1f538d; padding: 10px;")
+        header_layout.addWidget(title)
+        
+        header_layout.addStretch()
+        
+        refresh_analytics_btn = QPushButton("Refresh Data")
+        refresh_analytics_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 8px 15px;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #218838; }
+        """)
+        refresh_analytics_btn.clicked.connect(self.refresh_staff_analytics)
+        header_layout.addWidget(refresh_analytics_btn)
+        
+        main_layout.addLayout(header_layout)
+        
+        # === OVERVIEW STATISTICS CARDS ===
+        stats_container = QWidget()
+        stats_layout = QHBoxLayout(stats_container)
+        stats_layout.setSpacing(15)
+        
+        # Total Staff Card
+        self.total_staff_card = self.create_stats_card("Total Staff", "0", "#007bff")
+        stats_layout.addWidget(self.total_staff_card)
+        
+        # Active Staff Card
+        self.active_staff_card = self.create_stats_card("Active Staff", "0", "#28a745")
+        stats_layout.addWidget(self.active_staff_card)
+        
+        # Inactive Staff Card
+        self.inactive_staff_card = self.create_stats_card("Inactive Staff", "0", "#dc3545")
+        stats_layout.addWidget(self.inactive_staff_card)
+        
+        # Male/Female Ratio Card
+        self.gender_ratio_card = self.create_stats_card("Gender Ratio", "M: 0% | F: 0%", "#6f42c1")
+        stats_layout.addWidget(self.gender_ratio_card)
+        
+        main_layout.addWidget(stats_container)
+        
+        # === CHARTS SECTION ===
+        charts_container = QWidget()
+        charts_layout = QHBoxLayout(charts_container)
+        charts_layout.setSpacing(20)
+        
+        # Left side - Staff Type Distribution
+        left_chart_group = QGroupBox("Distribution by Staff Type")
+        left_chart_group.setMinimumHeight(400)
+        left_chart_layout = QVBoxLayout()
+        left_chart_group.setLayout(left_chart_layout)
+        
+        # Create matplotlib figure for staff type distribution
+        self.staff_type_figure = Figure(figsize=(8, 6))
+        self.staff_type_canvas = FigureCanvas(self.staff_type_figure)
+        self.staff_type_canvas.setMinimumHeight(350)
+        left_chart_layout.addWidget(self.staff_type_canvas)
+        charts_layout.addWidget(left_chart_group, 1)
+        
+        # Right side - Position Distribution  
+        right_chart_group = QGroupBox("Distribution by Position")
+        right_chart_group.setMinimumHeight(400)
+        right_chart_layout = QVBoxLayout()
+        right_chart_group.setLayout(right_chart_layout)
+        
+        # Create matplotlib figure for position distribution
+        self.position_figure = Figure(figsize=(8, 6))
+        self.position_canvas = FigureCanvas(self.position_figure)
+        self.position_canvas.setMinimumHeight(350)
+        right_chart_layout.addWidget(self.position_canvas)
+        charts_layout.addWidget(right_chart_group, 1)
+        
+        main_layout.addWidget(charts_container)
+        
+        # === DETAILED TABLES ===
+        tables_container = QWidget()
+        tables_layout = QHBoxLayout(tables_container)
+        tables_layout.setSpacing(20)
+        
+        # Staff type breakdown table
+        staff_type_table_group = QGroupBox("Staff Type Breakdown")
+        staff_type_table_group.setMinimumHeight(250)
+        staff_type_table_layout = QVBoxLayout()
+        staff_type_table_group.setLayout(staff_type_table_layout)
+        
+        self.staff_type_stats_table = QTableWidget()
+        self.staff_type_stats_table.setColumnCount(4)
+        self.staff_type_stats_table.setHorizontalHeaderLabels(["Staff Type", "Male", "Female", "Total"])
+        self.staff_type_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.staff_type_stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.staff_type_stats_table.setMinimumHeight(250)
+        self.staff_type_stats_table.setAlternatingRowColors(True)
+        self.staff_type_stats_table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #ddd;
+            }
+        """)
+        staff_type_table_layout.addWidget(self.staff_type_stats_table)
+        tables_layout.addWidget(staff_type_table_group, 1)
+        
+        # Position breakdown table
+        position_table_group = QGroupBox("Position Breakdown")
+        position_table_group.setMinimumHeight(250)
+        position_table_layout = QVBoxLayout()
+        position_table_group.setLayout(position_table_layout)
+        
+        self.position_stats_table = QTableWidget()
+        self.position_stats_table.setColumnCount(4)
+        self.position_stats_table.setHorizontalHeaderLabels(["Position", "Male", "Female", "Total"])
+        self.position_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.position_stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.position_stats_table.setMinimumHeight(250)
+        self.position_stats_table.setAlternatingRowColors(True)
+        self.position_stats_table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #ddd;
+            }
+        """)
+        position_table_layout.addWidget(self.position_stats_table)
+        tables_layout.addWidget(position_table_group, 1)
+        
+        main_layout.addWidget(tables_container)
+        
+        # Add stretch to push content to top and allow scrolling
+        main_layout.addStretch()
+        
+        # Load initial analytics data
+        QTimer.singleShot(500, self.refresh_staff_analytics)
+    
+    def create_stats_card(self, title, value, color):
+        """Create a statistics card widget for staff analytics"""
+        card = QFrame()
+        card.setFrameStyle(QFrame.Box)
+        card.setMinimumHeight(120)
+        card.setMinimumWidth(200)
+        card.setStyleSheet(f"""
+            QFrame {{
+                border: 2px solid {color};
+                border-radius: 10px;
+                background-color: white;
+                padding: 15px;
+            }}
+            QLabel {{
+                border: none;
+                background: transparent;
+            }}
+        """)
+        
+        layout = QVBoxLayout(card)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(8)
+        
+        # Title
+        title_label = QLabel(title)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {color}; margin-bottom: 5px;")
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        
+        # Value
+        value_label = QLabel(value)
+        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #333;")
+        value_label.setWordWrap(True)
+        layout.addWidget(value_label)
+        
+        # Store value label for updates
+        card.value_label = value_label
+        
+        return card
+    
+    def refresh_staff_analytics(self):
+        """Refresh all staff analytics data"""
+        try:
+            # Show loading cursor
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            
+            # Load all analytics components
+            self.load_staff_overview_stats()
+            self.load_staff_type_distribution()
+            self.load_position_distribution()
+            self.update_staff_charts()
+            
+            # Show success popup only if manually triggered (not initial load)
+            if hasattr(self, '_analytics_initial_load_complete'):
+                QApplication.restoreOverrideCursor()
+                QMessageBox.information(self, "Refresh Complete", 
+                                      "Staff analytics data has been refreshed successfully!")
+            else:
+                self._analytics_initial_load_complete = True
+                QApplication.restoreOverrideCursor()
+            
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Failed to load staff analytics: {str(e)}")
+    
+    def load_staff_overview_stats(self):
+        """Load overview statistics for staff"""
+        try:
+            # Total staff
+            self.cursor.execute("SELECT COUNT(*) FROM teachers")
+            total_staff = self.cursor.fetchone()[0]
+            
+            # Active staff
+            self.cursor.execute("SELECT COUNT(*) FROM teachers WHERE is_active = TRUE")
+            total_active = self.cursor.fetchone()[0]
+            
+            # Inactive staff
+            total_inactive = total_staff - total_active
+            
+            # Gender distribution (active staff only)
+            self.cursor.execute("""
+                SELECT gender, COUNT(*) FROM teachers 
+                WHERE is_active = TRUE 
+                GROUP BY gender
+            """)
+            gender_data = self.cursor.fetchall()
+            
+            male_count = 0
+            female_count = 0
+            
+            for gender, count in gender_data:
+                if gender and gender.lower() in ['male', 'm']:
+                    male_count = count
+                elif gender and gender.lower() in ['female', 'f']:
+                    female_count = count
+            
+            # Calculate percentages
+            if total_active > 0:
+                male_percent = round((male_count / total_active) * 100, 1)
+                female_percent = round((female_count / total_active) * 100, 1)
+            else:
+                male_percent = female_percent = 0
+            
+            # Update cards
+            self.total_staff_card.value_label.setText(str(total_staff))
+            self.active_staff_card.value_label.setText(str(total_active))
+            self.inactive_staff_card.value_label.setText(str(total_inactive))
+            self.gender_ratio_card.value_label.setText(f"M: {male_percent}% | F: {female_percent}%")
+            
+            # Force UI update
+            self.total_staff_card.value_label.update()
+            self.active_staff_card.value_label.update()
+            self.inactive_staff_card.value_label.update()
+            self.gender_ratio_card.value_label.update()
+            
+        except Exception as e:
+            print(f"Error loading staff overview stats: {e}")
+    
+    def load_staff_type_distribution(self):
+        """Load distribution by staff type"""
+        try:
+            query = """
+                SELECT 
+                    staff_type,
+                    gender,
+                    COUNT(*) as count
+                FROM teachers 
+                WHERE is_active = TRUE 
+                GROUP BY staff_type, gender
+                ORDER BY staff_type, gender
+            """
+            self.cursor.execute(query)
+            staff_type_data = self.cursor.fetchall()
+            
+            # Process data into a dictionary
+            staff_type_stats = {}
+            for staff_type, gender, count in staff_type_data:
+                if staff_type not in staff_type_stats:
+                    staff_type_stats[staff_type] = {'Male': 0, 'Female': 0, 'Total': 0}
+                
+                if gender and gender.lower() in ['male', 'm']:
+                    staff_type_stats[staff_type]['Male'] = count
+                elif gender and gender.lower() in ['female', 'f']:
+                    staff_type_stats[staff_type]['Female'] = count
+                
+                staff_type_stats[staff_type]['Total'] += count
+            
+            # Update table
+            staff_types = list(staff_type_stats.keys())
+            self.staff_type_stats_table.setRowCount(len(staff_types))
+            
+            for row_idx, staff_type in enumerate(staff_types):
+                stats = staff_type_stats.get(staff_type, {'Male': 0, 'Female': 0, 'Total': 0})
+                
+                self.staff_type_stats_table.setItem(row_idx, 0, QTableWidgetItem(staff_type or "Unknown"))
+                self.staff_type_stats_table.setItem(row_idx, 1, QTableWidgetItem(str(stats['Male'])))
+                self.staff_type_stats_table.setItem(row_idx, 2, QTableWidgetItem(str(stats['Female'])))
+                self.staff_type_stats_table.setItem(row_idx, 3, QTableWidgetItem(str(stats['Total'])))
+            
+            self.staff_type_stats_data = staff_type_stats
+            
+        except Exception as e:
+            print(f"Error loading staff type distribution: {e}")
+    
+    def load_position_distribution(self):
+        """Load distribution by position"""
+        try:
+            query = """
+                SELECT 
+                    position,
+                    gender,
+                    COUNT(*) as count
+                FROM teachers 
+                WHERE is_active = TRUE 
+                AND position IS NOT NULL 
+                AND position != ''
+                GROUP BY position, gender
+                ORDER BY position, gender
+            """
+            self.cursor.execute(query)
+            position_data = self.cursor.fetchall()
+            
+            # Process data
+            position_stats = {}
+            for position, gender, count in position_data:
+                if position not in position_stats:
+                    position_stats[position] = {'Male': 0, 'Female': 0, 'Total': 0}
+                
+                if gender and gender.lower() in ['male', 'm']:
+                    position_stats[position]['Male'] = count
+                elif gender and gender.lower() in ['female', 'f']:
+                    position_stats[position]['Female'] = count
+                
+                position_stats[position]['Total'] += count
+            
+            # Update table - show top 10 positions by total count
+            sorted_positions = sorted(position_stats.items(), key=lambda x: x[1]['Total'], reverse=True)
+            top_positions = [item[0] for item in sorted_positions[:10]]  # Top 10 positions
+            
+            self.position_stats_table.setRowCount(len(top_positions))
+            
+            for row_idx, position in enumerate(top_positions):
+                stats = position_stats.get(position, {'Male': 0, 'Female': 0, 'Total': 0})
+                
+                # Calculate percentages
+                total = stats['Total']
+                if total > 0:
+                    male_percent = f"{stats['Male']} ({round(stats['Male']/total*100, 1)}%)"
+                    female_percent = f"{stats['Female']} ({round(stats['Female']/total*100, 1)}%)"
+                else:
+                    male_percent = "0 (0%)"
+                    female_percent = "0 (0%)"
+                
+                self.position_stats_table.setItem(row_idx, 0, QTableWidgetItem(position))
+                self.position_stats_table.setItem(row_idx, 1, QTableWidgetItem(male_percent))
+                self.position_stats_table.setItem(row_idx, 2, QTableWidgetItem(female_percent))
+                self.position_stats_table.setItem(row_idx, 3, QTableWidgetItem(str(total)))
+            
+            self.position_stats_data = position_stats
+            
+        except Exception as e:
+            print(f"Error loading position distribution: {e}")
+    
+    def update_staff_charts(self):
+        """Update both staff charts with current data"""
+        self.update_staff_type_chart()
+        self.update_position_chart()
+    
+    def update_staff_type_chart(self):
+        """Update the staff type distribution chart"""
+        try:
+            self.staff_type_figure.clear()
+            ax = self.staff_type_figure.add_subplot(111)
+            
+            if hasattr(self, 'staff_type_stats_data') and self.staff_type_stats_data:
+                staff_types = list(self.staff_type_stats_data.keys())
+                male_counts = [self.staff_type_stats_data.get(staff_type, {}).get('Male', 0) for staff_type in staff_types]
+                female_counts = [self.staff_type_stats_data.get(staff_type, {}).get('Female', 0) for staff_type in staff_types]
+                
+                x = range(len(staff_types))
+                width = 0.35
+                
+                bars1 = ax.bar([i - width/2 for i in x], male_counts, width, 
+                              label='Male', color='#4472C4', alpha=0.8)
+                bars2 = ax.bar([i + width/2 for i in x], female_counts, width,
+                              label='Female', color='#E15759', alpha=0.8)
+                
+                ax.set_xlabel('Staff Type', fontsize=12, fontweight='bold')
+                ax.set_ylabel('Number of Staff', fontsize=12, fontweight='bold')
+                ax.set_title('Staff Distribution by Type', fontsize=14, fontweight='bold', pad=20)
+                ax.set_xticks(x)
+                ax.set_xticklabels(staff_types, fontsize=11, rotation=45, ha='right')
+                ax.legend(fontsize=11)
+                ax.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar in bars1:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=9, fontweight='bold')
+                
+                for bar in bars2:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=9, fontweight='bold')
+            else:
+                # Show placeholder when no data
+                ax.text(0.5, 0.5, 'No Data Available\nAdd staff to see charts', 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=14, color='gray')
+                ax.set_title('Staff Distribution by Type', fontsize=14, fontweight='bold')
+            
+            self.staff_type_figure.tight_layout()
+            self.staff_type_canvas.draw()
+            
+        except Exception as e:
+            print(f"Error updating staff type chart: {e}")
+    
+    def update_position_chart(self):
+        """Update the position distribution chart"""
+        try:
+            self.position_figure.clear()
+            ax = self.position_figure.add_subplot(111)
+            
+            if hasattr(self, 'position_stats_data') and self.position_stats_data:
+                # Get top 10 positions by total count
+                sorted_positions = sorted(self.position_stats_data.items(), key=lambda x: x[1]['Total'], reverse=True)
+                top_positions = [item[0] for item in sorted_positions[:10]]
+                
+                male_counts = [self.position_stats_data.get(position, {}).get('Male', 0) for position in top_positions]
+                female_counts = [self.position_stats_data.get(position, {}).get('Female', 0) for position in top_positions]
+                
+                x = range(len(top_positions))
+                width = 0.35
+                
+                bars1 = ax.bar([i - width/2 for i in x], male_counts, width,
+                              label='Male', color='#70AD47', alpha=0.8)
+                bars2 = ax.bar([i + width/2 for i in x], female_counts, width,
+                              label='Female', color='#FFC000', alpha=0.8)
+                
+                ax.set_xlabel('Position', fontsize=12, fontweight='bold')
+                ax.set_ylabel('Number of Staff', fontsize=12, fontweight='bold')
+                ax.set_title('Staff Distribution by Position (Top 10)', fontsize=14, fontweight='bold', pad=20)
+                ax.set_xticks(x)
+                ax.set_xticklabels(top_positions, fontsize=11, rotation=45, ha='right')
+                ax.legend(fontsize=11)
+                ax.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar in bars1:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=9, fontweight='bold')
+                
+                for bar in bars2:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=9, fontweight='bold')
+            else:
+                # Show placeholder when no data
+                ax.text(0.5, 0.5, 'No Data Available\nAdd staff to see charts', 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=14, color='gray')
+                ax.set_title('Staff Distribution by Position', fontsize=14, fontweight='bold')
+            
+            self.position_figure.tight_layout()
+            self.position_canvas.draw()
+            
+        except Exception as e:
+            print(f"Error updating position chart: {e}")
         
     def import_teachers_data(self):
         """Import teachers data from CSV or Excel file"""

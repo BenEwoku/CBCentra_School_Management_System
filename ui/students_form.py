@@ -10,9 +10,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMessageBox,
     QFileDialog, QScrollArea, QFrame, QGroupBox, QGridLayout, QComboBox,
-    QFormLayout, QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication
+    QFormLayout, QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication,
+    QSizePolicy
 )
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QPixmap, QIcon, QFont, QAction 
 from PySide6.QtWidgets import QProgressDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel
 
@@ -28,6 +29,11 @@ import subprocess
 import random
 import pandas as pd
 from datetime import datetime
+# Add this to your imports at the top of the file (after your existing imports)
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import seaborn as sns
 # Define required permissions
 STUDENT_PERMISSIONS = {
     'create': 'create_student',
@@ -426,12 +432,13 @@ class StudentsForm(AuditBaseForm):
         # Create tabs
         self.form_tab = QWidget()
         self.list_tab = QWidget()
-
+        self.analytics_tab = QWidget()  # NEW
         self.tabs.addTab(self.form_tab, "Student Form")
         self.tabs.addTab(self.list_tab, "Students List")
-
+        self.tabs.addTab(self.analytics_tab, "Analytics")  # NEW
         self.setup_form_tab()
         self.setup_list_tab()
+        self.setup_analytics_tab()  # NEW
         
     def setup_form_tab(self):
         """Setup the Student Form tab with two-column layout and scroll bar"""
@@ -2847,6 +2854,481 @@ class StudentsForm(AuditBaseForm):
             return True  # User confirmed import
         return False  # User canceled
 
+    
+    def setup_analytics_tab(self):
+        """Setup the analytics tab with statistics and charts - Enhanced with proper scrolling and layout"""
+        # Main scroll area
+        analytics_scroll = QScrollArea()
+        analytics_scroll.setWidgetResizable(True)
+        analytics_scroll.setFrameShape(QFrame.NoFrame)
+        analytics_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        analytics_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Container widget
+        analytics_container = QWidget()
+        main_layout = QVBoxLayout(analytics_container)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
+        
+        analytics_scroll.setWidget(analytics_container)
+        
+        # Set scroll area as main layout
+        self.analytics_tab.setLayout(QVBoxLayout())
+        self.analytics_tab.layout().addWidget(analytics_scroll)
+        self.analytics_tab.layout().setContentsMargins(0, 0, 0, 0)
+        
+        # Title and refresh button
+        header_layout = QHBoxLayout()
+        title = QLabel("Student Analytics Dashboard")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1f538d; padding: 10px;")
+        header_layout.addWidget(title)
+        
+        header_layout.addStretch()
+        
+        refresh_analytics_btn = QPushButton("Refresh Data")
+        refresh_analytics_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 8px 15px;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #218838; }
+        """)
+        refresh_analytics_btn.clicked.connect(self.refresh_analytics)
+        header_layout.addWidget(refresh_analytics_btn)
+        
+        main_layout.addLayout(header_layout)
+        
+        # === OVERVIEW STATISTICS CARDS ===
+        stats_container = QWidget()
+        stats_layout = QHBoxLayout(stats_container)
+        stats_layout.setSpacing(15)
+        
+        # Total Students Card
+        self.total_students_card = self.create_stats_card("Total Students", "0", "#007bff")
+        stats_layout.addWidget(self.total_students_card)
+        
+        # Active Students Card
+        self.active_students_card = self.create_stats_card("Active Students", "0", "#28a745")
+        stats_layout.addWidget(self.active_students_card)
+        
+        # Inactive Students Card
+        self.inactive_students_card = self.create_stats_card("Inactive Students", "0", "#dc3545")
+        stats_layout.addWidget(self.inactive_students_card)
+        
+        # Male/Female Ratio Card
+        self.gender_ratio_card = self.create_stats_card("Gender Ratio", "M: 0% | F: 0%", "#6f42c1")
+        stats_layout.addWidget(self.gender_ratio_card)
+        
+        main_layout.addWidget(stats_container)
+        
+        # === CHARTS SECTION ===
+        charts_container = QWidget()
+        charts_layout = QHBoxLayout(charts_container)
+        charts_layout.setSpacing(20)
+        
+        # Left side - Class Distribution
+        left_chart_group = QGroupBox("Distribution by Class")
+        left_chart_group.setMinimumHeight(350)  # Set minimum height
+        left_chart_layout = QVBoxLayout()
+        left_chart_group.setLayout(left_chart_layout)
+        
+        # Create matplotlib figure for class distribution
+        self.class_figure = Figure(figsize=(8, 6))  # Larger figure size
+        self.class_canvas = FigureCanvas(self.class_figure)
+        self.class_canvas.setMinimumHeight(300)  # Set minimum height
+        left_chart_layout.addWidget(self.class_canvas)
+        charts_layout.addWidget(left_chart_group, 1)  # Add stretch factor
+        
+        # Right side - Level Distribution  
+        right_chart_group = QGroupBox("Distribution by Level")
+        right_chart_group.setMinimumHeight(350)  # Set minimum height
+        right_chart_layout = QVBoxLayout()
+        right_chart_group.setLayout(right_chart_layout)
+        
+        # Create matplotlib figure for level distribution
+        self.level_figure = Figure(figsize=(8, 6))  # Larger figure size
+        self.level_canvas = FigureCanvas(self.level_figure)
+        self.level_canvas.setMinimumHeight(300)  # Set minimum height
+        right_chart_layout.addWidget(self.level_canvas)
+        charts_layout.addWidget(right_chart_group, 1)  # Add stretch factor
+        
+        main_layout.addWidget(charts_container)
+        
+        # === DETAILED TABLES ===
+        tables_container = QWidget()
+        tables_layout = QHBoxLayout(tables_container)
+        tables_layout.setSpacing(20)
+        
+        # Class breakdown table
+        class_table_group = QGroupBox("Class Breakdown")
+        class_table_group.setMinimumHeight(270)  # Set minimum height
+        class_table_layout = QVBoxLayout()
+        class_table_group.setLayout(class_table_layout)
+        
+        self.class_stats_table = QTableWidget()
+        self.class_stats_table.setColumnCount(4)
+        self.class_stats_table.setHorizontalHeaderLabels(["Class", "Male", "Female", "Total"])
+        self.class_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.class_stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.class_stats_table.setMinimumHeight(200)  # Set minimum height
+        class_table_layout.addWidget(self.class_stats_table)
+        tables_layout.addWidget(class_table_group, 1)  # Add stretch factor
+        
+        # Level breakdown table
+        level_table_group = QGroupBox("Level Breakdown")
+        level_table_group.setMinimumHeight(250)  # Set minimum height
+        level_table_layout = QVBoxLayout()
+        level_table_group.setLayout(level_table_layout)
+        
+        self.level_stats_table = QTableWidget()
+        self.level_stats_table.setColumnCount(4)
+        self.level_stats_table.setHorizontalHeaderLabels(["Level", "Male", "Female", "Total"])
+        self.level_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.level_stats_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.level_stats_table.setMinimumHeight(200)  # Set minimum height
+        level_table_layout.addWidget(self.level_stats_table)
+        tables_layout.addWidget(level_table_group, 1)  # Add stretch factor
+        
+        main_layout.addWidget(tables_container)
+        
+        # Add stretch to push content to top and allow scrolling
+        main_layout.addStretch()
+        
+        # Load initial analytics data
+        #QTimer.singleShot(500, self.refresh_analytics)  # Small delay to ensure UI is ready
+    
+    def create_stats_card(self, title, value, color):
+        """Create a statistics card widget with improved styling"""
+        card = QFrame()
+        card.setFrameStyle(QFrame.Box)
+        card.setMinimumHeight(120)  # Set minimum height
+        card.setMinimumWidth(200)   # Set minimum width
+        card.setStyleSheet(f"""
+            QFrame {{
+                border: 2px solid {color};
+                border-radius: 10px;
+                background-color: white;
+                padding: 15px;
+            }}
+            QLabel {{
+                border: none;
+                background: transparent;
+            }}
+        """)
+        
+        layout = QVBoxLayout(card)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(8)  # Add spacing between elements
+        
+        # Title
+        title_label = QLabel(title)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {color}; margin-bottom: 5px;")
+        title_label.setWordWrap(True)  # Allow text wrapping
+        layout.addWidget(title_label)
+        
+        # Value
+        value_label = QLabel(value)
+        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #333;")
+        value_label.setWordWrap(True)  # Allow text wrapping
+        layout.addWidget(value_label)
+        
+        # Store value label for updates
+        card.value_label = value_label
+        
+        return card
+    
+    def refresh_analytics(self):
+        """Refresh all analytics data with popup confirmation"""
+        try:
+            # Show loading message
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            
+            # Load all analytics components
+            self.load_overview_stats()
+            self.load_class_distribution()
+            self.load_level_distribution()
+            self.update_charts()
+            
+            # Show success popup
+            QApplication.restoreOverrideCursor()
+            QMessageBox.information(self, "Refresh Complete", 
+                                  "Analytics data has been refreshed successfully!")
+            
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Failed to load analytics: {str(e)}")
+    
+    def load_overview_stats(self):
+        """Load overview statistics"""
+        try:
+            # Total students
+            self.cursor.execute("SELECT COUNT(*) FROM students WHERE is_active = TRUE")
+            total_active = self.cursor.fetchone()[0]
+            
+            self.cursor.execute("SELECT COUNT(*) FROM students WHERE is_active = FALSE")
+            total_inactive = self.cursor.fetchone()[0]
+            
+            total_students = total_active + total_inactive
+            
+            # Gender distribution (active students only)
+            self.cursor.execute("""
+                SELECT sex, COUNT(*) FROM students 
+                WHERE is_active = TRUE 
+                GROUP BY sex
+            """)
+            gender_data = self.cursor.fetchall()
+            
+            male_count = 0
+            female_count = 0
+            
+            for sex, count in gender_data:
+                if sex and sex.lower() in ['male', 'm']:
+                    male_count = count
+                elif sex and sex.lower() in ['female', 'f']:
+                    female_count = count
+            
+            # Calculate percentages
+            if total_active > 0:
+                male_percent = round((male_count / total_active) * 100, 1)
+                female_percent = round((female_count / total_active) * 100, 1)
+            else:
+                male_percent = female_percent = 0
+            
+            # Update cards
+            self.total_students_card.value_label.setText(str(total_students))
+            self.active_students_card.value_label.setText(str(total_active))
+            self.inactive_students_card.value_label.setText(str(total_inactive))
+            self.gender_ratio_card.value_label.setText(f"M: {male_percent}% | F: {female_percent}%")
+            
+            # Force UI update
+            self.total_students_card.value_label.update()
+            self.active_students_card.value_label.update()
+            self.inactive_students_card.value_label.update()
+            self.gender_ratio_card.value_label.update()
+            
+        except Exception as e:
+            print(f"Error loading overview stats: {e}")
+    
+    def load_class_distribution(self):
+        """Load distribution by class (S1-S6)"""
+        try:
+            query = """
+                SELECT 
+                    grade_applied_for,
+                    sex,
+                    COUNT(*) as count
+                FROM students 
+                WHERE is_active = TRUE 
+                AND grade_applied_for IN ('S1', 'S2', 'S3', 'S4', 'S5', 'S6')
+                GROUP BY grade_applied_for, sex
+                ORDER BY grade_applied_for, sex
+            """
+            self.cursor.execute(query)
+            class_data = self.cursor.fetchall()
+            
+            # Process data into a dictionary
+            class_stats = {}
+            for grade, sex, count in class_data:
+                if grade not in class_stats:
+                    class_stats[grade] = {'Male': 0, 'Female': 0, 'Total': 0}
+                
+                if sex and sex.lower() in ['male', 'm']:
+                    class_stats[grade]['Male'] = count
+                elif sex and sex.lower() in ['female', 'f']:
+                    class_stats[grade]['Female'] = count
+                
+                class_stats[grade]['Total'] += count
+            
+            # Update table
+            classes = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6']
+            self.class_stats_table.setRowCount(len(classes))
+            
+            for row_idx, grade in enumerate(classes):
+                stats = class_stats.get(grade, {'Male': 0, 'Female': 0, 'Total': 0})
+                
+                self.class_stats_table.setItem(row_idx, 0, QTableWidgetItem(grade))
+                self.class_stats_table.setItem(row_idx, 1, QTableWidgetItem(str(stats['Male'])))
+                self.class_stats_table.setItem(row_idx, 2, QTableWidgetItem(str(stats['Female'])))
+                self.class_stats_table.setItem(row_idx, 3, QTableWidgetItem(str(stats['Total'])))
+            
+            self.class_stats_data = class_stats
+            
+        except Exception as e:
+            print(f"Error loading class distribution: {e}")
+    
+    def load_level_distribution(self):
+        """Load distribution by level (O-Level: S1-S4, A-Level: S5-S6)"""
+        try:
+            query = """
+                SELECT 
+                    CASE 
+                        WHEN grade_applied_for IN ('S1', 'S2', 'S3', 'S4') THEN 'O-Level'
+                        WHEN grade_applied_for IN ('S5', 'S6') THEN 'A-Level'
+                        ELSE 'Other'
+                    END as level,
+                    sex,
+                    COUNT(*) as count
+                FROM students 
+                WHERE is_active = TRUE 
+                AND grade_applied_for IN ('S1', 'S2', 'S3', 'S4', 'S5', 'S6')
+                GROUP BY level, sex
+                ORDER BY level, sex
+            """
+            self.cursor.execute(query)
+            level_data = self.cursor.fetchall()
+            
+            # Process data
+            level_stats = {}
+            for level, sex, count in level_data:
+                if level not in level_stats:
+                    level_stats[level] = {'Male': 0, 'Female': 0, 'Total': 0}
+                
+                if sex and sex.lower() in ['male', 'm']:
+                    level_stats[level]['Male'] = count
+                elif sex and sex.lower() in ['female', 'f']:
+                    level_stats[level]['Female'] = count
+                
+                level_stats[level]['Total'] += count
+            
+            # Update table
+            levels = ['O-Level', 'A-Level']
+            self.level_stats_table.setRowCount(len(levels))
+            
+            for row_idx, level in enumerate(levels):
+                stats = level_stats.get(level, {'Male': 0, 'Female': 0, 'Total': 0})
+                
+                # Calculate percentages
+                total = stats['Total']
+                male_percent = f"{stats['Male']} ({round(stats['Male']/total*100, 1)}%)" if total > 0 else "0 (0%)"
+                female_percent = f"{stats['Female']} ({round(stats['Female']/total*100, 1)}%)" if total > 0 else "0 (0%)"
+                
+                self.level_stats_table.setItem(row_idx, 0, QTableWidgetItem(level))
+                self.level_stats_table.setItem(row_idx, 1, QTableWidgetItem(male_percent))
+                self.level_stats_table.setItem(row_idx, 2, QTableWidgetItem(female_percent))
+                self.level_stats_table.setItem(row_idx, 3, QTableWidgetItem(str(total)))
+            
+            self.level_stats_data = level_stats
+            
+        except Exception as e:
+            print(f"Error loading level distribution: {e}")
+    
+    def update_charts(self):
+        """Update both charts with current data"""
+        self.update_class_chart()
+        self.update_level_chart()
+    
+    def update_class_chart(self):
+        """Update the class distribution chart with improved styling"""
+        try:
+            self.class_figure.clear()
+            ax = self.class_figure.add_subplot(111)
+            
+            if hasattr(self, 'class_stats_data') and self.class_stats_data:
+                classes = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6']
+                male_counts = [self.class_stats_data.get(cls, {}).get('Male', 0) for cls in classes]
+                female_counts = [self.class_stats_data.get(cls, {}).get('Female', 0) for cls in classes]
+                
+                x = range(len(classes))
+                width = 0.35
+                
+                bars1 = ax.bar([i - width/2 for i in x], male_counts, width, 
+                              label='Male', color='#4472C4', alpha=0.8)
+                bars2 = ax.bar([i + width/2 for i in x], female_counts, width,
+                              label='Female', color='#E15759', alpha=0.8)
+                
+                ax.set_xlabel('Class', fontsize=12, fontweight='bold')
+                ax.set_ylabel('Number of Students', fontsize=12, fontweight='bold')
+                ax.set_title('Student Distribution by Class', fontsize=14, fontweight='bold', pad=20)
+                ax.set_xticks(x)
+                ax.set_xticklabels(classes, fontsize=11)
+                ax.legend(fontsize=11)
+                ax.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar in bars1:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=10, fontweight='bold')
+                
+                for bar in bars2:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=10, fontweight='bold')
+            else:
+                # Show placeholder when no data
+                ax.text(0.5, 0.5, 'No Data Available\nAdd students to see charts', 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=14, color='gray')
+                ax.set_title('Student Distribution by Class', fontsize=14, fontweight='bold')
+            
+            self.class_figure.tight_layout()
+            self.class_canvas.draw()
+            
+        except Exception as e:
+            print(f"Error updating class chart: {e}")
+    
+    def update_level_chart(self):
+        """Update the level distribution chart with improved styling"""
+        try:
+            self.level_figure.clear()
+            ax = self.level_figure.add_subplot(111)
+            
+            if hasattr(self, 'level_stats_data') and self.level_stats_data:
+                levels = ['O-Level', 'A-Level']
+                male_counts = [self.level_stats_data.get(level, {}).get('Male', 0) for level in levels]
+                female_counts = [self.level_stats_data.get(level, {}).get('Female', 0) for level in levels]
+                
+                x = range(len(levels))
+                width = 0.35
+                
+                bars1 = ax.bar([i - width/2 for i in x], male_counts, width,
+                              label='Male', color='#70AD47', alpha=0.8)
+                bars2 = ax.bar([i + width/2 for i in x], female_counts, width,
+                              label='Female', color='#FFC000', alpha=0.8)
+                
+                ax.set_xlabel('Level', fontsize=12, fontweight='bold')
+                ax.set_ylabel('Number of Students', fontsize=12, fontweight='bold')
+                ax.set_title('Student Distribution by Level', fontsize=14, fontweight='bold', pad=20)
+                ax.set_xticks(x)
+                ax.set_xticklabels(levels, fontsize=11)
+                ax.legend(fontsize=11)
+                ax.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar in bars1:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=11, fontweight='bold')
+                
+                for bar in bars2:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                               f'{int(height)}', ha='center', va='bottom', 
+                               fontsize=11, fontweight='bold')
+            else:
+                # Show placeholder when no data
+                ax.text(0.5, 0.5, 'No Data Available\nAdd students to see charts', 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=14, color='gray')
+                ax.set_title('Student Distribution by Level', fontsize=14, fontweight='bold')
+            
+            self.level_figure.tight_layout()
+            self.level_canvas.draw()
+            
+        except Exception as e:
+            print(f"Error updating level chart: {e}")
 
 def main():
     """Main function to run the application"""
