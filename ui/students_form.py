@@ -694,7 +694,7 @@ class StudentsForm(AuditBaseForm):
         parent_layout.addWidget(parent_scroll)
     
         self.add_parent_btn = QPushButton("+ Add Parent")
-        self.add_parent_btn.setStyleSheet("font-weight: bold; color: green;")
+        self.add_parent_btn.setStyleSheet("font-weight: bold; color: white;")
         self.add_parent_btn.clicked.connect(self.add_parent_to_student)
         parent_layout.addWidget(self.add_parent_btn)
     

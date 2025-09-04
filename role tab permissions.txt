@@ -1,0 +1,86 @@
+UPDATE role_tab_permissions
+SET can_access = 1
+WHERE role_name = 'admin'
+AND tab_name IN (
+    'Dashboard.Overview', 
+    'Dashboard.User Management',
+    'Dashboard.Permissions',
+    'Dashboard.User Permissions',
+    'Dashboard.Tab Access Management',
+    'Dashboard.Login Activity',
+    'Dashboard.Audit Trail',
+    'Schools.School Registration',
+    'Schools.Schools Database',
+    'Staff.Staff Form',
+    'Staff.Staff Data',
+    'Staff.Staff Analytics',
+    'Staff.Departments',
+    'Classes.Class Form',
+    'Classes.Student Class Assignments',
+    'Classes.Academic Years',
+    'Classes.Terms',
+    'Parents.Parent Form',
+    'Parents.Parents List',
+    'Parents.Analytics',
+    'Students.Student Form',
+    'Students.Students List',
+    'Students.Analytics',
+    'Exams.Exam Setup',
+    'Exams.Results Entry',
+    'Exams.Report Cards',
+    'Activities.Activity Management',
+    'Activities.Participation',
+    'Others.System Settings',
+    'Others.Backup'
+);
+
+
+
+
+
+
+# id, role_name, tab_name, can_access, created_at
+'1', 'admin', 'Dashboard.Overview', '1', '2025-09-02 15:53:17'
+'2', 'admin', 'Dashboard.User Management', '1', '2025-09-02 15:53:17'
+'3', 'admin', 'Dashboard.Permissions', '1', '2025-09-02 15:53:17'
+'4', 'admin', 'Dashboard.User Permissions', '1', '2025-09-02 15:53:17'
+'5', 'admin', 'Dashboard.Tab Access Management', '1', '2025-09-02 15:53:17'
+'6', 'admin', 'Dashboard.Login Activity', '1', '2025-09-02 15:53:17'
+'7', 'admin', 'Dashboard.Audit Trail', '1', '2025-09-02 15:53:17'
+'8', 'admin', 'Schools.School Registration', '1', '2025-09-02 15:53:17'
+'9', 'admin', 'Schools.Schools Database', '1', '2025-09-02 15:53:17'
+'10', 'admin', 'Staff.Staff Form', '1', '2025-09-02 15:53:17'
+'11', 'admin', 'Staff.Staff Data', '1', '2025-09-02 15:53:17'
+'12', 'admin', 'Staff.Staff Analytics', '1', '2025-09-02 15:53:17'
+'13', 'admin', 'Staff.Departments', '1', '2025-09-02 15:53:17'
+'14', 'admin', 'Classes.Class Form', '1', '2025-09-02 15:53:17'
+'15', 'admin', 'Classes.Student Class Assignments', '1', '2025-09-02 15:53:17'
+'16', 'admin', 'Classes.Academic Years', '1', '2025-09-02 15:53:17'
+'17', 'admin', 'Classes.Terms', '1', '2025-09-02 15:53:17'
+'18', 'admin', 'Parents.Parent Form', '1', '2025-09-02 15:53:17'
+'19', 'admin', 'Parents.Parents List', '1', '2025-09-02 15:53:17'
+'20', 'admin', 'Parents.Analytics', '1', '2025-09-02 15:53:17'
+'21', 'admin', 'Students.Student Form', '1', '2025-09-02 15:53:17'
+'22', 'admin', 'Students.Students List', '1', '2025-09-02 15:53:17'
+'23', 'admin', 'Students.Analytics', '1', '2025-09-02 15:53:17'
+'24', 'admin', 'Dashboard', '1', '2025-09-02 15:59:17'
+'25', 'admin', 'Schools', '1', '2025-09-02 15:59:17'
+'26', 'admin', 'Staff', '1', '2025-09-02 15:59:17'
+'27', 'admin', 'Classes', '1', '2025-09-02 15:59:17'
+'28', 'admin', 'Parents', '1', '2025-09-02 15:59:17'
+'29', 'admin', 'Students', '1', '2025-09-02 15:59:17'
+'30', 'admin', 'Exams', '0', '2025-09-02 15:59:17'
+'31', 'admin', 'Activities', '1', '2025-09-02 15:59:17'
+'32', 'admin', 'Finance', '1', '2025-09-02 15:59:17'
+'33', 'admin', 'Others', '1', '2025-09-02 15:59:17'
+'67', 'admin', 'Exams.Exam Setup', '1', '2025-09-02 21:19:15'
+'68', 'admin', 'Exams.Results Entry', '1', '2025-09-02 21:19:15'
+'69', 'admin', 'Exams.Report Cards', '1', '2025-09-02 21:19:15'
+'70', 'admin', 'Activities.Activity Management', '1', '2025-09-02 21:19:15'
+'71', 'admin', 'Activities.Participation', '1', '2025-09-02 21:19:15'
+'72', 'admin', 'Finance.Fee Management', '1', '2025-09-02 21:19:15'
+'73', 'admin', 'Finance.Payments', '0', '2025-09-02 21:19:15'
+'74', 'admin', 'Finance.Reports', '0', '2025-09-02 21:19:15'
+'75', 'admin', 'Others.System Settings', '1', '2025-09-02 21:19:15'
+'76', 'admin', 'Others.Backup', '1', '2025-09-02 21:19:15'
+

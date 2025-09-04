@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from models.models import get_db_connection, test_connection, check_tables_exist
 from ui.main_window import MainWindow
 from ui.login_form import LoginForm
+import traceback
 
 
 class CBCentraApplication:
@@ -183,21 +184,24 @@ class CBCentraApplication:
                     pass
                 
     def show_login_form(self):
-        """Show login form and handle authentication"""
-        self.login_form = LoginForm()
+        """Show login form modally"""
+        self.login_form = LoginForm()  # Now QDialog
         self.login_form.login_successful.connect(self.on_login_successful)
-        self.login_form.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
-        self.login_form.setWindowTitle(f"{self.app_config['name']} - Login")  # Use app_config here
-        
-        # Center the login form on screen
+        self.login_form.setWindowTitle(f"{self.app_config['name']} - Login")
+    
+        # Center on screen
         screen_geometry = QApplication.primaryScreen().availableGeometry()
-        login_size = self.login_form.size()
-        x = (screen_geometry.width() - login_size.width()) // 2
-        y = (screen_geometry.height() - login_size.height()) // 2
-        self.login_form.move(x, y)
-        
-        # Show the login form modally
-        self.login_form.show()
+        x = (screen_geometry.width() - 500) // 2
+        y = (screen_geometry.height() - 600) // 2
+        self.login_form.setGeometry(x, y, 500, 600)
+    
+        # Show MODALLY — blocks until accept() or reject()
+        result = self.login_form.exec()
+    
+        # Only proceed if login was successful
+        if not self.user_session:
+            return False
+    
         return True
 
     def on_login_successful(self, user_session):

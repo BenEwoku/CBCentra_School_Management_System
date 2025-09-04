@@ -48,8 +48,8 @@ class AuditBaseForm(QWidget):
         """Set up shared colors, fonts, and QSS styling"""
         # === Color Palette ===
         self.colors = {
-            'primary': '#007BFF',           # Blue
-            'primary_dark': '#0056b3',
+            'primary': '#0056b3',           # Blue
+            'primary_dark': '#007BFF',
             'success': '#28a745',          # Green
             'danger': '#dc3545',           # Red
             'warning': '#ffc107',          # Amber
@@ -122,12 +122,12 @@ class AuditBaseForm(QWidget):
             QPushButton#menuToggle {{
                 background: rgba(255, 255, 255, 0.1);
                 color: white;
-                padding: 8px 12px;
+                padding: 6px 10px;
                 border: none;
                 border-radius: 8px;
-                min-width: 40px;
-                max-width: 50px;
-                font-size: 14px;
+                min-width: 36px;
+                max-width: 44px;
+                font-size: 16px;
                 font-weight: bold;
                 margin: 2px;
             }}
@@ -179,39 +179,45 @@ class AuditBaseForm(QWidget):
                 padding: 8px 12px;
                 border: none;
                 border-radius: 4px;
-                min-width: 60px;
+                min-width: 70px;
                 font-size: 13px;
                 font-weight: 500;
-                margin: 2px 3px;
+                margin: 2px -2px;
             }}
             
             QPushButton#tabButton:hover {{
-                background: {self.colors['tab_hover']};
-                border: 1px solid rgba(255, 255, 255, 0.3);
-            }}
-            
-            QPushButton#tabButton:checked {{
-                background: {self.colors['tab_checked']};
-                border: 1px solid rgba(255, 255, 255, 0.4);
-                font-weight: bold;
-                color: #ffffff;
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                color: #212529;
             }}
             
             QPushButton#tabButton:pressed {{
-                background: rgba(255, 255, 255, 0.3);
+                background: #f1f3f4;
+                border: 1px solid #ced4da;
+                color: #212529;
+            }}
+            
+            QPushButton#tabButton:checked {{
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                color: #212529;
+                font-weight: bold;
+                /* Simulate "inset" */
+                padding-top: 9px;
+                padding-bottom: 7px;
             }}
     
             /* Profile Section Styling (Right Side) */
             QWidget#profileContainer {{
                 background: transparent;
-                border-radius: 25px;
-                padding: 5px 15px;
-                margin: 5px;
+                border-radius: 16px;
+                padding: 8px 14px;
+                margin: 4px;
             }}
             
             QLabel#userName {{
                 color: white;
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: 600;
                 padding-right: 8px;
                 background: transparent;
@@ -219,23 +225,23 @@ class AuditBaseForm(QWidget):
             
             QLabel#profilePic {{
                 border: 2px solid rgba(255, 255, 255, 0.2);
-                border-radius: 18px;
+                border-radius: 16px;          /* ✅ Now a perfect circle */
                 background: transparent;
             }}
             
             QLabel#profilePic:hover {{
-                border: 2px solid rgba(255, 255, 255, 0.4);
+                border: 2px solid rgba(255, 255, 255, 0.6);  /* ✅ Stronger hover */
             }}
             
             QPushButton#ribbonToggle {{
                 background: rgba(255, 255, 255, 0.15);
                 color: white;
-                padding: 8px 12px;
+                padding: 2px 4px;
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
-                font-size: 12px;
+                font-size: 14px;
                 font-weight: bold;
-                min-width: 20px;
+                min-width: 10px;
                 margin-left: 6px;
             }}
             
@@ -615,17 +621,17 @@ class AuditBaseForm(QWidget):
     
             /* === PHOTO LABEL === */
             QLabel[class="photo"] {{
-                border: 2px dashed {self.colors['border']};
+                border: 2px solid {self.colors['border']};
                 border-radius: 12px;
                 background-color: {self.colors['surface']};
                 color: #7f8c8d;
                 font-size: 12px;
                 text-align: center;
-                padding: 20px;
-                min-width: 180px;
-                min-height: 180px;
-                max-width: 180px;
-                max-height: 180px;
+                padding: 16px;
+                min-width: 160px;
+                min-height: 160px;
+                max-width: 160px;
+                max-height: 160px;
             }}
     
             /* === MENU BAR === */
@@ -678,25 +684,31 @@ class AuditBaseForm(QWidget):
     
             QTabBar::tab {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #e9ecef, stop: 1 #dee2e6);
-                border: 1px solid {self.colors['border']};
+                    stop: 0 #e6edf3,
+                    stop: 1 #d8e2ec
+                );
+                border: 1px solid #cacedb;
                 padding: 8px 16px;
                 margin-right: 2px;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
                 font-weight: 500;
+                color: #2c3e50;
             }}
-    
-            QTabBar::tab:selected {{
-                background: {self.colors['background']};
-                border-bottom: 2px solid {self.colors['primary']};
-                color: {self.colors['primary']};
-                font-weight: bold;
-            }}
-    
+            
             QTabBar::tab:hover:!selected {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #f1f3f4, stop: 1 #e9ecef);
+                    stop: 0 #dce6f1,
+                    stop: 1 #cacedb
+                );
+                border: 1px solid #b8c8db;
+            }}
+            
+            QTabBar::tab:selected {{
+                background: white;
+                border-bottom: 2px solid #007BFF;
+                color: #007BFF;
+                font-weight: bold;
             }}
             
             /* === OVERRIDE: RIBBON BUTTONS - SMALL, FLAT, NO BORDER === */
@@ -714,7 +726,7 @@ class AuditBaseForm(QWidget):
                 color: #495057;
             }}
             QPushButton#ribbonButton:hover {{
-                background-color: #f0f0f0;
+                background-color: #e0e0e0;
             }}
             QPushButton#ribbonButton:pressed {{
                 background-color: #e8e8e8;

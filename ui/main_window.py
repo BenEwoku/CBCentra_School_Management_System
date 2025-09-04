@@ -1,5 +1,6 @@
 # ui/main_window.py
 import os
+import mysql.connector
 from PySide6.QtWidgets import (
     QMainWindow, QMessageBox, QToolBar, QWidget,
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QStackedWidget,
@@ -23,6 +24,10 @@ from ui.audit_logs_form import AuditLogsForm
 from ui.audit_base_form import AuditBaseForm
 from ui.students_form import StudentsForm
 from ui.parents_form import ParentsForm
+from ui.class_form import ClassesForm
+
+# Import the tab access management form
+from ui.tab_access_form import TabAccessManagementForm
 
 # Import the new ribbon components
 from ui.ribbon_manager import RibbonManager
@@ -45,7 +50,7 @@ class MainWindow(QMainWindow):
         # Store instance variables
         self.user_session = user_session or {}
         self.app_config = config or {}
-        self.db_connection = db_connection
+        self.db_connection = db_connection  # IMPORTANT: Store DB connection for tab access
         self.app_paths = app_paths or {}
         
         # Create AuditBaseForm instance for styling and utilities
@@ -65,7 +70,7 @@ class MainWindow(QMainWindow):
         self.ribbon_manager = RibbonManager(self)
         self.ribbon_handlers = RibbonHandlers(self)
         
-        # Use the passed parameters
+        # App configuration
         self.app_config = config or {
             'name': 'CBCentra School Management System',
             'window_title': 'CBCentra SMS Desktop', 
@@ -104,7 +109,6 @@ class MainWindow(QMainWindow):
                     'view_login_logs', 'view_audit_logs', 'view_all_data'
                 ]
         
-        self.db_connection = db_connection
         self.app_paths = app_paths or {
             'icons': 'static/icons',
             'images': 'static/images',
@@ -116,6 +120,7 @@ class MainWindow(QMainWindow):
         self.current_pdf_bytes = None
         self.current_file_path = None
         self.current_file_type = None
+        self.visible_nested_tabs = {}  # Store nested tabs visibility
 
         self.init_ui()
         self.setup_window()
@@ -126,8 +131,117 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(*self.app_config['min_size'])
         if os.path.exists(self.app_paths['app_icon']):
             self.setWindowIcon(QIcon(self.app_paths['app_icon']))
+
+    # ========================================
+    # DATABASE-DRIVEN TAB VISIBILITY METHODS 
+    # ========================================
+    def get_visible_tabs_for_user(self):
+        """Return tabs visible to current user from database"""
+        if not self.db_connection:
+            return self.get_fallback_visible_tabs()
+        
+        user_id = self.user_session.get('user_id')
+        user_role = self.user_session.get('role', 'user')
+        
+        try:
+            cursor = self.db_connection.cursor()
+            
+            # Get role-based defaults
+            cursor.execute("""
+                SELECT tab_name, can_access 
+                FROM role_tab_permissions 
+                WHERE role_name = %s AND can_access = 1
+            """, (user_role,))
+            role_tabs = set(row[0] for row in cursor.fetchall())
+            
+            # Apply user-specific overrides
+            cursor.execute("""
+                SELECT tab_name, access_type 
+                FROM user_tab_overrides 
+                WHERE user_id = %s
+            """, (user_id,))
+            user_overrides = cursor.fetchall()
+            cursor.close()
+            
+            # Build final tab list
+            accessible_tabs = set(role_tabs)
+            
+            for tab_name, access_type in user_overrides:
+                if access_type == 'grant':
+                    accessible_tabs.add(tab_name)
+                elif access_type == 'deny':
+                    accessible_tabs.discard(tab_name)
+            
+            # Separate main tabs from nested tabs
+            main_tabs = []
+            nested_tabs = {
+                'Dashboard': [],
+                'Schools': [],
+                'Staff': [],
+                'Classes': [],
+                'Parents': [],
+                'Students': []
+            }
+            
+            for tab_name in accessible_tabs:
+                if '.' in tab_name:  # Nested tab format: MainTab.NestedTab
+                    parent, child = tab_name.split('.', 1)
+                    if parent in nested_tabs:
+                        nested_tabs[parent].append(child)
+                else:  # Main tab
+                    if tab_name not in ['Dashboard']:  # Dashboard is always available if user can log in
+                        main_tabs.append(tab_name)
+            
+            # Always include Dashboard if user is logged in
+            if 'Dashboard' not in main_tabs:
+                main_tabs.insert(0, 'Dashboard')
+                
+            return sorted(main_tabs), nested_tabs
+            
+        except Exception as e:
+            print(f"Error loading user tabs from database: {e}")
+            return self.get_fallback_visible_tabs()
+
+    def get_fallback_visible_tabs(self):
+        """Fallback method using hardcoded rules if database fails"""
+        user_role = self.user_session.get('role', 'user')
+        
+        # Fallback main tabs by role
+        if user_role == 'admin':
+            main_tabs = ['Dashboard', 'Schools', 'Staff', 'Classes', 'Parents', 'Students', 'Exams', 'Activities', 'Finance', 'Others']
+        elif user_role == 'headteacher':
+            main_tabs = ['Dashboard', 'Schools', 'Staff', 'Classes', 'Parents', 'Students', 'Exams', 'Activities']
+        elif user_role == 'teacher':
+            main_tabs = ['Dashboard', 'Classes', 'Students', 'Activities']
+        elif user_role == 'secretary':
+            main_tabs = ['Dashboard', 'Students', 'Parents']
+        elif user_role == 'accountant':
+            main_tabs = ['Dashboard', 'Finance', 'Students']
+        else:
+            main_tabs = ['Dashboard']
+        
+        # Fallback nested tabs
+        nested_tabs = {
+            'Dashboard': ['Overview'] if user_role != 'admin' else [
+                'Overview', 'User Management', 'Permissions', 'User Permissions', 
+                'Tab Access Management', 'Login Activity', 'Audit Trail'
+            ],
+            'Schools': ['School Registration', 'Schools Database'] if 'Schools' in main_tabs else [],
+            'Staff': ['Staff Form', 'Staff Data', 'Staff Analytics', 'Departments'] if 'Staff' in main_tabs else [],
+            'Classes': ['Class Form', 'Student Class Assignments', 'Academic Years', 'Terms'] if 'Classes' in main_tabs else [],
+            'Parents': ['Parent Form', 'Parents List', 'Analytics'] if 'Parents' in main_tabs else [],
+            'Students': ['Student Form', 'Students List', 'Analytics'] if 'Students' in main_tabs else []
+        }
+        
+        return main_tabs, nested_tabs
     
+    # ========================
+    # UI INITIALIZATION
+    # ========================
     def init_ui(self):
+        # Get visible tabs once and store them
+        self.visible_main_tabs, self.visible_nested_tabs = self.get_visible_tabs_for_user()
+        
         self.create_main_tabs()
         # Use the ribbon manager to create ribbon panel
         self.ribbon_manager.create_ribbon_panel()
@@ -151,6 +265,433 @@ class MainWindow(QMainWindow):
         # Update UI for current user session
         self.update_ui_for_user_session()
 
+        # ================================
+        # DEBUG: Check visible tabs
+        # ================================
+        print("=== DEBUG: User Tab Visibility ===")
+        print("Main Tabs:", self.visible_main_tabs)
+        for main_tab, nested in self.visible_nested_tabs.items():
+            print(f"Nested Tabs for {main_tab}: {nested}")
+        print("=================================")
+
+
+    # ======================================
+    # MAIN TABS CREATION (DATABASE-DRIVEN)
+    # ======================================
+    def create_main_tabs(self):
+        """Create the main navigation tabs based on database permissions"""
+        self.main_tabbar = QToolBar("Main Tabs")
+        self.main_tabbar.setObjectName("mainTabs")
+        self.main_tabbar.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, self.main_tabbar)
+        
+        # Add menu toggle button first
+        menu_btn = QPushButton("☰")
+        menu_btn.setObjectName("tabButton")
+        menu_btn.setToolTip("Toggle Menu")
+        menu_btn.setCheckable(True)
+        menu_btn.clicked.connect(self.toggle_sidebar)
+        self.main_tabbar.addWidget(menu_btn)
+        
+        self.tab_buttons = [menu_btn]
+        
+        # Use the stored visible tabs instead of querying again
+        visible_main_tabs = self.visible_main_tabs
+        
+        # Create tab mapping for navigation
+        self.tab_to_index = {}
+        current_index = 0
+        
+        # Create tab buttons only for visible tabs
+        for tab_name in visible_main_tabs:
+            btn = QPushButton(tab_name)
+            btn.setObjectName("tabButton")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda _, t=tab_name: self.on_tab_clicked(t))
+            self.main_tabbar.addWidget(btn)
+            self.tab_buttons.append(btn)
+            
+            # Map tab to content page index
+            self.tab_to_index[tab_name] = current_index
+            current_index += 1
+        
+        # Set first visible tab as active
+        if len(self.tab_buttons) > 1:
+            self.tab_buttons[1].setChecked(True)
+        
+        # Add spacer and profile section
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        spacer.setStyleSheet("background: transparent;")
+        self.main_tabbar.addWidget(spacer)
+    
+        # Create profile section (now includes the toggle button)
+        self.create_profile_section()
+    
+    # =====================================
+    # CONTENT PAGES CREATION (NESTED TABS)
+    # =====================================
+    def create_content_pages(self):
+        """Create content pages only for visible tabs with their nested tabs"""
+        # Use the stored visible tabs instead of querying again
+        visible_main_tabs = self.visible_main_tabs
+        
+        for tab_name in visible_main_tabs:
+            if tab_name == 'Dashboard':
+                dashboard_page = self.create_dashboard_page()
+                self.stacked_widget.addWidget(dashboard_page)
+            elif tab_name == 'Schools':
+                schools_page = self.create_schools_page()
+                self.stacked_widget.addWidget(schools_page)
+            elif tab_name == 'Staff':
+                staff_page = self.create_staff_page()
+                self.stacked_widget.addWidget(staff_page)
+            elif tab_name == 'Classes':
+                classes_page = self.create_classes_page()
+                self.stacked_widget.addWidget(classes_page)
+            elif tab_name == 'Parents':
+                parents_page = self.create_parents_page()
+                self.stacked_widget.addWidget(parents_page)
+            elif tab_name == 'Students':
+                students_page = self.create_students_page()
+                self.stacked_widget.addWidget(students_page)
+            else:
+                # Placeholder for other tabs (Exams, Activities, Finance, Others)
+                placeholder_page = self.create_placeholder_page(tab_name)
+                self.stacked_widget.addWidget(placeholder_page)
+
+    # =========================================
+    # DASHBOARD PAGE WITH NESTED TABS
+    # =========================================
+    def create_dashboard_page(self):
+        """Create dashboard page with permission-controlled nested tabs - FIXED DUPLICATION ISSUE"""
+        dashboard_page = QWidget()
+        dashboard_layout = QVBoxLayout(dashboard_page)
+        dashboard_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # Create tab widget FIRST
+        self.dashboard_tabs = QTabWidget()
+        self.dashboard_tabs.setDocumentMode(True)
+        self.dashboard_tabs.setTabPosition(QTabWidget.North)
+        
+        # Get visible nested tabs for Dashboard
+        dashboard_subtabs = self.visible_nested_tabs.get('Dashboard', [])
+        
+        # Track which tabs we've already added to prevent duplicates
+        added_tabs = set()
+        
+        # Add tabs based on visibility - NO DUPLICATES
+        for subtab_name in dashboard_subtabs:
+            if subtab_name in added_tabs:
+                continue  # Skip if already added
+                
+            if subtab_name == 'Overview':
+                overview_tab = self.create_dashboard_overview_tab()
+                self.dashboard_tabs.addTab(overview_tab, "Overview")
+                added_tabs.add(subtab_name)
+                
+            elif subtab_name == 'User Management':
+                if not hasattr(self, 'users_form') or self.users_form is None:
+                    self.users_form = UsersForm(parent=self, user_session=self.user_session)
+                self.dashboard_tabs.addTab(self.users_form, "User Management")
+                added_tabs.add(subtab_name)
+                
+            elif subtab_name == 'Permissions':
+                from ui.permissions_form import PermissionsForm
+                if not hasattr(self, 'permissions_form') or self.permissions_form is None:
+                    self.permissions_form = PermissionsForm(parent=self, user_session=self.user_session)
+                self.dashboard_tabs.addTab(self.permissions_form, "Permissions")
+                added_tabs.add(subtab_name)
+                
+            elif subtab_name == 'User Permissions':
+                from ui.user_permissions_form import UserPermissionsForm
+                if not hasattr(self, 'user_perms_tab') or self.user_perms_tab is None:
+                    self.user_perms_tab = UserPermissionsForm(parent=self, user_session=self.user_session)
+                self.dashboard_tabs.addTab(self.user_perms_tab, "User Permissions")
+                added_tabs.add(subtab_name)
+                
+            elif subtab_name == 'Tab Access Management':
+                if not hasattr(self, 'tab_access_form') or self.tab_access_form is None:
+                    self.tab_access_form = TabAccessManagementForm(parent=self, user_session=self.user_session)
+                    self.tab_access_form.access_changed.connect(self.refresh_user_tabs)
+                self.dashboard_tabs.addTab(self.tab_access_form, "Tab Access")
+                added_tabs.add(subtab_name)
+                
+            elif subtab_name == 'Login Activity':
+                login_logs_tab = QWidget()
+                login_logs_layout = QVBoxLayout(login_logs_tab)
+                if not hasattr(self, 'login_logs_form') or self.login_logs_form is None:
+                    self.login_logs_form = LoginLogsForm(user_session=self.user_session)
+                login_logs_layout.addWidget(self.login_logs_form)
+                self.dashboard_tabs.addTab(login_logs_tab, "Login Activity")
+                added_tabs.add(subtab_name)
+                
+            elif subtab_name == 'Audit Trail':
+                audit_logs_tab = QWidget()
+                audit_logs_layout = QVBoxLayout(audit_logs_tab)
+                if not hasattr(self, 'audit_logs_form') or self.audit_logs_form is None:
+                    self.audit_logs_form = AuditLogsForm(parent=audit_logs_tab, user_session=self.user_session)
+                audit_logs_layout.addWidget(self.audit_logs_form)
+                self.dashboard_tabs.addTab(audit_logs_tab, "Audit Trail")
+                added_tabs.add(subtab_name)
+        
+        dashboard_layout.addWidget(self.dashboard_tabs)
+        return dashboard_page
+    
+    def create_dashboard_overview_tab(self):
+        """Create the overview tab for dashboard"""
+        overview_tab = QWidget()
+        overview_layout = QVBoxLayout(overview_tab)
+        welcome_label = QLabel("Welcome to CBCentra School Management System")
+        welcome_label.setStyleSheet("""
+            font-size: 24px; font-weight: 600; color: #2c3e50;
+            padding: 20px; text-align: center;
+        """)
+        welcome_label.setAlignment(Qt.AlignCenter)
+        overview_layout.addWidget(welcome_label)
+        return overview_tab
+
+    # =========================================
+    # SCHOOLS PAGE WITH NESTED TABS  
+    # =========================================
+    def create_schools_page(self):
+        """Create schools page - SIMPLIFIED: Just add the form directly without nested tabs"""
+        schools_page = QWidget()
+        schools_layout = QVBoxLayout(schools_page)
+        schools_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # DIRECTLY ADD THE SCHOOLS FORM - NO NESTED TABS
+        if not hasattr(self, 'schools_form') or self.schools_form is None:
+            self.schools_form = SchoolsForm(self)
+        schools_layout.addWidget(self.schools_form)
+        
+        return schools_page
+
+    # =========================================
+    # STAFF/TEACHERS PAGE
+    # =========================================
+    def create_staff_page(self):
+        """Create staff page - SIMPLIFIED: Just add the form directly without nested tabs"""
+        staff_page = QWidget()
+        staff_layout = QVBoxLayout(staff_page)
+        staff_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # DIRECTLY ADD THE TEACHERS FORM - NO NESTED TABS
+        if not hasattr(self, 'staff_form') or self.staff_form is None:
+            self.staff_form = TeachersForm(parent=self, user_session=self.user_session)
+        staff_layout.addWidget(self.staff_form)
+        
+        return staff_page
+
+    # =========================================
+    # CLASSES PAGE
+    # =========================================
+    def create_classes_page(self):
+        """Create classes page - SIMPLIFIED: Just add the form directly without nested tabs"""
+        classes_page = QWidget()
+        classes_layout = QVBoxLayout(classes_page)
+        classes_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # DIRECTLY ADD THE CLASSES FORM - NO NESTED TABS
+        if not hasattr(self, 'classes_form') or self.classes_form is None:
+            self.classes_form = ClassesForm(parent=self, user_session=self.user_session)
+        classes_layout.addWidget(self.classes_form)
+        
+        return classes_page
+
+    # =========================================
+    # PARENTS PAGE
+    # =========================================
+    def create_parents_page(self):
+        """Create parents page - SIMPLIFIED: Just add the form directly without nested tabs"""
+        parents_page = QWidget()
+        parents_layout = QVBoxLayout(parents_page)
+        parents_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # DIRECTLY ADD THE PARENTS FORM - NO NESTED TABS
+        if not hasattr(self, 'parents_form') or self.parents_form is None:
+            self.parents_form = ParentsForm(parent=self, user_session=self.user_session)
+        parents_layout.addWidget(self.parents_form)
+        
+        return parents_page
+
+    # =========================================
+    # STUDENTS PAGE
+    # =========================================
+    def create_students_page(self):
+        """Create students page - SIMPLIFIED: Just add the form directly without nested tabs"""
+        students_page = QWidget()
+        students_layout = QVBoxLayout(students_page)
+        students_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # DIRECTLY ADD THE STUDENTS FORM - NO NESTED TABS
+        if not hasattr(self, 'students_form') or self.students_form is None:
+            self.students_form = StudentsForm(parent=self, user_session=self.user_session)
+        students_layout.addWidget(self.students_form)
+        
+        return students_page
+
+    def create_placeholder_page(self, tab_name):
+        """Create placeholder page for unimplemented tabs"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 20, 20, 20)
+        page_label = QLabel(f"{tab_name} - Coming Soon")
+        page_label.setStyleSheet("""
+            font-size: 18px;
+            color: #6c757d;
+            padding: 40px;
+            text-align: center;
+        """)
+        page_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(page_label)
+        return page
+
+    # ============================================
+    # TAB REFRESH FUNCTIONALITY (DATABASE-DRIVEN)
+    # ============================================
+    def refresh_user_tabs(self):
+        """Refresh tabs when permissions change - preserves spacer and profile section, auto-selects first tab."""
+        try:
+            # Get updated visible tabs
+            self.visible_main_tabs, self.visible_nested_tabs = self.get_visible_tabs_for_user()
+    
+            # Safely remove all existing tab buttons except the menu button
+            buttons_to_remove = []
+            for btn in self.tab_buttons[1:]:  # skip menu button at index 0
+                if btn and btn.parent():  # Check if button exists and has a parent
+                    buttons_to_remove.append(btn)
+    
+            # Remove buttons from toolbar
+            for btn in buttons_to_remove:
+                try:
+                    # Find the action associated with the widget
+                    for action in self.main_tabbar.actions():
+                        if self.main_tabbar.widgetForAction(action) == btn:
+                            self.main_tabbar.removeAction(action)
+                            break
+                    else:
+                        # If no action found, try direct widget removal
+                        self.main_tabbar.removeWidget(btn)
+                    
+                    # Set parent to None to properly delete the widget
+                    btn.setParent(None)
+                    btn.deleteLater()
+                except Exception as e:
+                    print(f"Warning: Could not remove button {btn.text() if hasattr(btn, 'text') else 'unknown'}: {e}")
+    
+            # Keep only menu button
+            self.tab_buttons = [self.tab_buttons[0]]  # menu button remains
+            self.tab_to_index = {}
+            current_index = 0
+    
+            # Find the position to insert new buttons (after menu button, before spacer and profile)
+            insert_index = 1  # After menu button
+    
+            # Recreate visible tab buttons
+            for tab_name in self.visible_main_tabs:
+                btn = QPushButton(tab_name)
+                btn.setObjectName("tabButton")
+                btn.setCheckable(True)
+                btn.clicked.connect(lambda _, t=tab_name: self.on_tab_clicked(t))
+    
+                # Insert button at the correct position
+                action = self.main_tabbar.insertWidget(
+                    self.main_tabbar.actions()[insert_index] if len(self.main_tabbar.actions()) > insert_index else None,
+                    btn
+                )
+                
+                self.tab_buttons.append(btn)
+                insert_index += 1
+    
+                # Map tab name to content index
+                self.tab_to_index[tab_name] = current_index
+                current_index += 1
+    
+            # Recreate content pages to match new tab structure
+            self.recreate_content_pages()
+    
+            # Auto-select the first visible tab
+            if len(self.tab_buttons) > 1:
+                first_tab = self.tab_buttons[1]
+                first_tab.setChecked(True)
+                self.on_tab_clicked(self.visible_main_tabs[0])
+    
+            QMessageBox.information(self, "Success", "Tab access updated! Changes are now active.")
+    
+        except Exception as e:
+            print(f"Error in refresh_user_tabs: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to refresh tabs: {str(e)}")
+    
+    def recreate_content_pages(self):
+        """Recreate content pages to match current visible tabs"""
+        try:
+            # Clear existing pages
+            while self.stacked_widget.count() > 0:
+                widget = self.stacked_widget.widget(0)
+                self.stacked_widget.removeWidget(widget)
+                if widget:
+                    widget.setParent(None)
+                    widget.deleteLater()
+    
+            # Recreate content pages for visible tabs
+            for tab_name in self.visible_main_tabs:
+                if tab_name == 'Dashboard':
+                    dashboard_page = self.create_dashboard_page()
+                    self.stacked_widget.addWidget(dashboard_page)
+                elif tab_name == 'Schools':
+                    schools_page = self.create_schools_page()
+                    self.stacked_widget.addWidget(schools_page)
+                elif tab_name == 'Staff':
+                    staff_page = self.create_staff_page()
+                    self.stacked_widget.addWidget(staff_page)
+                elif tab_name == 'Classes':
+                    classes_page = self.create_classes_page()
+                    self.stacked_widget.addWidget(classes_page)
+                elif tab_name == 'Parents':
+                    parents_page = self.create_parents_page()
+                    self.stacked_widget.addWidget(parents_page)
+                elif tab_name == 'Students':
+                    students_page = self.create_students_page()
+                    self.stacked_widget.addWidget(students_page)
+                else:
+                    # Placeholder for other tabs
+                    placeholder_page = self.create_placeholder_page(tab_name)
+                    self.stacked_widget.addWidget(placeholder_page)
+    
+        except Exception as e:
+            print(f"Error recreating content pages: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to recreate content pages: {str(e)}")
+
+
+    # =====================================
+    # TAB NAVIGATION HANDLING  
+    # =====================================
+    def on_tab_clicked(self, tab_name):
+        """Handle tab clicks with dynamic mapping"""
+        # Update tab visual state
+        for i, btn in enumerate(self.tab_buttons):
+            btn.setChecked(btn.text() == tab_name)
+        
+        # Update ribbon panel
+        self.update_ribbon_panel(tab_name)
+        
+        # Use dynamic mapping instead of hardcoded
+        if tab_name in self.tab_to_index:
+            page_index = self.tab_to_index[tab_name]
+            self.stacked_widget.setCurrentIndex(page_index)
+        
+        # Update status bar
+        self.statusBar().showMessage(f"Current Section: {tab_name}")
+        
+        # Special handling for specific tabs
+        if tab_name == "Staff" and hasattr(self, 'staff_form'):
+            self.staff_form.load_teachers()
+            self.staff_form.load_schools()
+
+    # =====================================
+    # RIBBON MANAGEMENT
+    # =====================================
     def toggle_ribbon(self):
         """Toggle ribbon visibility - now delegates to ribbon manager"""
         self.ribbon_manager.toggle_ribbon_visibility()
@@ -159,8 +700,9 @@ class MainWindow(QMainWindow):
         """Update ribbon panel - now delegates to ribbon manager"""
         self.ribbon_manager.update_ribbon_panel(main_tab)
 
-    # === DELEGATE RIBBON ACTIONS TO HANDLERS ===
-    # User Management Actions
+    # =====================================
+    # RIBBON ACTION DELEGATES
+    # =====================================
     def add_new_user(self):
         return self.ribbon_handlers.add_new_user()
     
@@ -170,7 +712,6 @@ class MainWindow(QMainWindow):
     def execute_user_export_dialog(self):
         return self.ribbon_handlers.execute_user_export_dialog()
 
-    # Staff/Teachers Actions  
     def show_teachers_form(self):
         return self.ribbon_handlers.show_teachers_form()
     
@@ -192,7 +733,6 @@ class MainWindow(QMainWindow):
     def generate_teacher_profile(self):
         return self.ribbon_handlers.generate_teacher_profile()
 
-    # Parents Actions
     def show_parents_form(self):
         return self.ribbon_handlers.show_parents_form()
     
@@ -226,7 +766,6 @@ class MainWindow(QMainWindow):
     def validate_parent_data(self):
         return self.ribbon_handlers.validate_parent_data()
 
-    # Security & Reports Actions
     def show_login_logs(self):
         return self.ribbon_handlers.show_login_logs()
     
@@ -236,7 +775,6 @@ class MainWindow(QMainWindow):
     def generate_security_report(self):
         return self.ribbon_handlers.generate_security_report()
 
-    # Global System Actions
     def refresh_all_data(self):
         return self.ribbon_handlers.refresh_all_data()
     
@@ -252,15 +790,15 @@ class MainWindow(QMainWindow):
     def print_action(self):
         return self.ribbon_handlers.print_action()
 
-
-     #methods in mainwindow
+    # =====================================
+    # USER SESSION MANAGEMENT
+    # =====================================
     def safe_disconnect(self, signal, slot):
         try:
             signal.disconnect(slot)
         except (RuntimeWarning, RuntimeError, TypeError):
             pass
 
-    # Add this method to your MainWindow class in ui/main_window.py
     def update_user_session(self, new_session_data):
         """Update user session data - CORRECTED METHOD"""
         if isinstance(new_session_data, dict):
@@ -303,217 +841,67 @@ class MainWindow(QMainWindow):
             
         if hasattr(self, 'user_role_label'):
             self.user_role_label.setText(self.user_session.get('role', 'User'))
-            
-    def update_profile_picture(self):
-        """Update profile picture when session changes"""
-        if not hasattr(self, 'profile_pic'):
-            return
-    
-        size = 36
-        profile_pixmap = None
-        profile_image_path = self.user_session.get('profile_image')
-    
-        if profile_image_path:
-            full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
-            if os.path.exists(full_path):
-                profile_pixmap = QPixmap(full_path)
-    
-        if not profile_pixmap or profile_pixmap.isNull():
-            fallback_path = "static/icons/profile.png"
-            if os.path.exists(fallback_path):
-                profile_pixmap = QPixmap(fallback_path)
-    
-        if profile_pixmap and not profile_pixmap.isNull():
-            circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
-            self.profile_pic.setPixmap(circular_pixmap)
-        else:
-            self.profile_pic.setPixmap(self.create_profile_placeholder(size))
-        
-    
+
     def on_logout(self):
         """Handle logout request"""
         reply = QMessageBox.question(
             self,
             "Confirm Logout", 
             "Are you sure you want to logout?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == QMessageBox.Yes:
             self.logout_requested.emit()
 
-    def toggle_sidebar(self):
-        self.safe_disconnect(self.overlay_animation.finished, self.sidebar_overlay.hide)
-        self.safe_disconnect(self.sidebar_animation.finished, self.sidebar_frame.hide)
-
-        if self.sidebar_visible:
-            self.sidebar_animation.setStartValue(QRect(0, 80, 300, self.sidebar_frame.height()))
-            self.sidebar_animation.setEndValue(QRect(-300, 80, 300, self.sidebar_frame.height()))
-            self.overlay_animation.setStartValue(1.0)
-            self.overlay_animation.setEndValue(0.0)
-            self.overlay_animation.finished.connect(lambda: self.sidebar_overlay.hide())
-            self.sidebar_animation.finished.connect(lambda: self.sidebar_frame.hide())
-            self.sidebar_visible = False
-            if self.tab_buttons:
-                self.tab_buttons[0].setChecked(False)
-        else:
-            self.sidebar_overlay.setGeometry(0, 0, self.width(), self.height())
-            self.sidebar_overlay.show()
-            self.sidebar_overlay.raise_()
-            self.overlay_animation.setStartValue(0.0)
-            self.overlay_animation.setEndValue(1.0)
-            self.sidebar_frame.show()
-            self.sidebar_frame.raise_()
-            for child in self.findChildren(QWidget):
-                if child not in [self.sidebar_frame, self.sidebar_overlay]:
-                    child.stackUnder(self.sidebar_overlay)
-            self.sidebar_animation.setStartValue(QRect(-300, 80, 300, self.sidebar_frame.height()))
-            self.sidebar_animation.setEndValue(QRect(0, 80, 300, self.sidebar_frame.height()))
-            self.sidebar_visible = True
-            if self.tab_buttons:
-                self.tab_buttons[0].setChecked(True)
-        self.sidebar_animation.start()
-        self.overlay_animation.start()
-
-    # In your MainWindow class, replace the PDF-related methods with these:
-    
-    def show_pdf_preview_dialog(self, pdf_bytes):
-        """Show PDF using the new viewer"""
-        try:
-            from utils.pdf_utils import view_pdf
-            view_pdf(pdf_bytes, parent=self)
-        except ImportError:
-            # Fallback if utils module is not available
-            QMessageBox.critical(self, "Error", "PDF viewer utilities not available")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to show PDF: {str(e)}")
-    
-    def preview_pdf_bytes(self, pdf_bytes):
-        """Preview PDF bytes - alias for show_pdf_preview_dialog"""
-        self.show_pdf_preview_dialog(pdf_bytes)
-    
-    # Update your file open methods to use the new viewer:
-    def open_preview_pdf(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select PDF file", "", "PDF Files (*.pdf)")
-        if file_path:
-            try:
-                with open(file_path, "rb") as f:
-                    pdf_bytes = f.read()
-                self.current_pdf_bytes = pdf_bytes
-                self.current_file_path = file_path
-                self.current_file_type = "pdf"
-                self.show_pdf_preview_dialog(pdf_bytes)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open PDF: {str(e)}")
-
-    def ask_page_range(self, max_pages):
-        """Ask user for page range to print"""
-        text, ok = QInputDialog.getText(
-            self, "Page Range",
-            f"Enter pages to print (1-{max_pages}), e.g., 1-{max_pages} or 1-3 or 2",
-            text=f"1-{max_pages}"
-        )
-        if ok:
-            try:
-                if '-' in text:
-                    start_str, end_str = text.split('-')
-                    start, end = int(start_str) - 1, int(end_str)
-                else:
-                    start = int(text) - 1
-                    end = start + 1
-                if start < 0 or end > max_pages or start >= end:
-                    raise ValueError("Invalid page range")
-                return start, end
-            except Exception:
-                QMessageBox.warning(self, "Invalid Input", "Please enter a valid page range (e.g. 1-3)")
-        return None, None
-
-    # --- your existing UI, ribbon, sidebar, main tabs, and other methods follow here -
-
+    # =====================================
+    # PROFILE SECTION
+    # =====================================
     def create_profile_section(self):
-        """Create a modern profile section with user name, profile pic, and ribbon toggle."""
-        size = 36  # profile pic size
+        """Create a modern, compact profile section."""
+        size = 32  # Reduced from 36 → 32px (compact but clear)
     
-        # --- Container for profile elements ---
+        # Container
         profile_container = QWidget()
         profile_container.setObjectName("profileContainer")
-        profile_container.setStyleSheet("""
-            QWidget#profileContainer {
-                background: transparent;
-                border: none;
-                margin: 0px;
-                padding: 0px;
-            }
-        """)
+        # Let global QSS handle styling
         profile_layout = QHBoxLayout(profile_container)
         profile_layout.setContentsMargins(0, 0, 0, 0)
-        profile_layout.setSpacing(8)
-        profile_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        profile_layout.setSpacing(6)  # Slightly tighter
+        profile_layout.setAlignment(Qt.AlignVCenter)
     
-        # --- User name label ---
+        # User name
         self.user_name_label = QLabel(self.user_session.get('full_name', 'User'))
         self.user_name_label.setObjectName("userName")
-        self.user_name_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.user_name_label.setStyleSheet("""
-            QLabel#userName {
-                color: white;
-                font-size: 13px;
-                font-weight: 500;
-                background: transparent;
-                border: none;
-                margin: 0px;
-                padding: 0px 4px;
-            }
-        """)
+        self.user_name_label.setAlignment(Qt.AlignVCenter)
         profile_layout.addWidget(self.user_name_label)
     
-        # --- Profile picture with enhanced styling ---
+        # Profile picture
         self.profile_pic = QLabel()
         self.profile_pic.setObjectName("profilePic")
         self.profile_pic.setFixedSize(size, size)
         self.profile_pic.setScaledContents(True)
-        self.profile_pic.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Enhanced profile picture styling
-        self.profile_pic.setStyleSheet(f"""
-            QLabel#profilePic {{
-                border: 2px solid rgba(255, 255, 255, 0.8);
-                border-radius: {size//2}px;
-                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
-                    stop: 0 #3498db, stop: 1 #2980b9);
-                margin: 0px;
-                padding: 0px;
-            }}
-            QLabel#profilePic:hover {{
-                border: 2px solid rgba(255, 255, 255, 1.0);
-                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
-                    stop: 0 #5dade2, stop: 1 #3498db);
-            }}
-        """)
-    
-        # Load profile image or create enhanced placeholder
-        profile_pixmap = self.load_profile_image(size)
-        self.profile_pic.setPixmap(profile_pixmap)
-        
-        # Make profile picture clickable with cursor change
+        self.profile_pic.setAlignment(Qt.AlignCenter)
         self.profile_pic.setCursor(Qt.PointingHandCursor)
         self.profile_pic.mousePressEvent = self.on_profile_clicked
-        
-        # Enhanced tooltip
+    
+        # Load image or placeholder
+        profile_pixmap = self.load_profile_image(size)
+        self.profile_pic.setPixmap(profile_pixmap)
         self.update_profile_tooltip()
-        
+    
         profile_layout.addWidget(self.profile_pic)
     
-        # --- Ribbon toggle button ---
+        # Ribbon toggle
         self.ribbon_toggle_btn = QPushButton("▴")
         self.ribbon_toggle_btn.setObjectName("ribbonToggle")
         self.ribbon_toggle_btn.setToolTip("Toggle Ribbon Visibility")
-        self.ribbon_toggle_btn.setFixedHeight(size)
+        self.ribbon_toggle_btn.setFixedHeight(size)  # Now 32px tall
         self.ribbon_toggle_btn.clicked.connect(self.toggle_ribbon)
         profile_layout.addWidget(self.ribbon_toggle_btn)
-            
-        # Add the profile container to toolbar
+    
+        # Add to toolbar
         self.main_tabbar.addWidget(profile_container)
 
     def load_profile_image(self, size):
@@ -552,7 +940,7 @@ class MainWindow(QMainWindow):
         
         # Create professional gradient background
         gradient = QLinearGradient(0, 0, size, size)
-        gradient.setColorAt(0, QColor("#ffffff"))  # Professional blue
+        gradient.setColorAt(0, QColor("#ffffff"))
         gradient.setColorAt(0.5, QColor("#357abd"))
         gradient.setColorAt(1, QColor("#2e6ba8"))
         
@@ -582,7 +970,7 @@ class MainWindow(QMainWindow):
         if full_name and full_name != 'User':
             initials = ''.join([word[0].upper() for word in full_name.split()[:2]])
             painter.setPen(QColor("white"))
-            painter.setFont(QFont("Arial", size//4, QFont.Weight.Bold))
+            painter.setFont(QFont("Arial", size//4, QFont.Bold))
             
             # Clear the center and draw initials
             painter.setBrush(QBrush(gradient))
@@ -594,6 +982,27 @@ class MainWindow(QMainWindow):
         
         painter.end()
         return pixmap
+
+    def create_circular_pixmap(self, pixmap, size):
+        """Create a circular version of the pixmap"""
+        # Scale the pixmap to the desired size
+        scaled_pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        
+        # Create a new pixmap with transparency
+        circular_pixmap = QPixmap(size, size)
+        circular_pixmap.fill(Qt.transparent)
+        
+        # Create a painter to draw the circular image
+        painter = QPainter(circular_pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Create a circular clipping path
+        painter.setBrush(QBrush(scaled_pixmap))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(0, 0, size, size)
+        painter.end()
+        
+        return circular_pixmap
 
     def on_profile_clicked(self, event):
         """Handle profile picture click - show user menu or profile options"""
@@ -630,7 +1039,7 @@ class MainWindow(QMainWindow):
         
         # Show menu at profile picture position
         menu.exec(self.profile_pic.mapToGlobal(self.profile_pic.rect().bottomLeft()))
-    
+
     def show_user_profile(self):
         """Show user profile dialog"""
         QMessageBox.information(self, "Profile", f"User Profile for: {self.user_session.get('full_name', 'User')}")
@@ -638,6 +1047,31 @@ class MainWindow(QMainWindow):
     def show_account_settings(self):
         """Show account settings dialog"""
         QMessageBox.information(self, "Settings", "Account settings will be available in the next update.")
+
+    def update_profile_picture(self):
+        """Update profile picture when session changes"""
+        if not hasattr(self, 'profile_pic'):
+            return
+    
+        size = 36
+        profile_pixmap = None
+        profile_image_path = self.user_session.get('profile_image')
+    
+        if profile_image_path:
+            full_path = os.path.join("static", profile_image_path.lstrip("/\\"))
+            if os.path.exists(full_path):
+                profile_pixmap = QPixmap(full_path)
+    
+        if not profile_pixmap or profile_pixmap.isNull():
+            fallback_path = "static/icons/profile.png"
+            if os.path.exists(fallback_path):
+                profile_pixmap = QPixmap(fallback_path)
+    
+        if profile_pixmap and not profile_pixmap.isNull():
+            circular_pixmap = self.create_circular_pixmap(profile_pixmap, size)
+            self.profile_pic.setPixmap(circular_pixmap)
+        else:
+            self.profile_pic.setPixmap(self.create_profile_placeholder(size))
 
     def update_profile_tooltip(self):
         """Update the profile picture tooltip when session changes"""
@@ -662,190 +1096,10 @@ class MainWindow(QMainWindow):
         """.strip()
     
         self.profile_pic.setToolTip(tooltip_text)
-    
-    def create_main_tabs(self):
-        """Create the main navigation tabs"""
-        self.main_tabbar = QToolBar("Main Tabs")
-        self.main_tabbar.setObjectName("mainTabs")
-        self.main_tabbar.setMovable(False)
-        self.addToolBar(Qt.TopToolBarArea, self.main_tabbar)
-        
-        # Add menu toggle button first
-        menu_btn = QPushButton("☰")
-        menu_btn.setObjectName("tabButton")
-        menu_btn.setToolTip("Toggle Menu")
-        menu_btn.setCheckable(True)
-        menu_btn.clicked.connect(self.toggle_sidebar)
-        self.main_tabbar.addWidget(menu_btn)
-        
-        self.tab_buttons = [menu_btn]
-        tabs = [
-            "Dashboard", "Schools", "Staff", "Parents", "Students",
-            "Exams", "Activities", "Finance", "Others"
-        ]
-        
-        for text in tabs:
-            btn = QPushButton(text)
-            btn.setObjectName("tabButton")
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda _, t=text: self.on_tab_clicked(t))
-            self.main_tabbar.addWidget(btn)
-            self.tab_buttons.append(btn)
-        
-        self.tab_buttons[1].setChecked(True)
-    
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        spacer.setStyleSheet("background: transparent;")
-        self.main_tabbar.addWidget(spacer)
-    
-        # Create profile section (now includes the toggle button)
-        self.create_profile_section()
 
-    def create_content_pages(self):
-        """Create all content pages for the application"""
-        # Initialize users_form early
-        self.users_form = UsersForm(parent=self, user_session=self.user_session)
-    
-        # Dashboard Page (now with tabs)
-        dashboard_page = self.create_dashboard_page()
-        self.stacked_widget.addWidget(dashboard_page)
-    
-        # Schools Page
-        self.schools_form = SchoolsForm(self)
-        self.stacked_widget.addWidget(self.schools_form)
-    
-        # Staff Page (TeachersForm)
-        self.staff_form = TeachersForm(parent=self, user_session=self.user_session)
-        self.stacked_widget.addWidget(self.staff_form)
-
-        # Parents Page (ParentsForm)
-        self.parents_form = ParentsForm(parent=self, user_session=self.user_session)
-        self.stacked_widget.addWidget(self.parents_form)
-
-        # Students Page (StudentsForm)
-        self.students_form = StudentsForm(parent=self, user_session=self.user_session)
-        self.stacked_widget.addWidget(self.students_form)
-
-    
-        # Other pages (exams to Others)
-        for i in range(5, 8):  # exams (3) to Others (7)
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(20, 20, 20, 20)
-            page_label = QLabel(f"Content for Module {i+1} - Coming Soon")
-            page_label.setStyleSheet("""
-                font-size: 18px;
-                color: #6c757d;
-                padding: 40px;
-                text-align: center;
-            """)
-            page_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(page_label)
-            self.stacked_widget.addWidget(page)
-
-    def create_dashboard_page(self):
-        """Create dashboard page with flat tabs: Overview, User Management, Permissions, Login Activity, Audit Trail"""
-        dashboard_page = QWidget()
-        dashboard_layout = QVBoxLayout(dashboard_page)
-        dashboard_layout.setContentsMargins(0, 10, 0, 0)
-    
-        # ✅ Create tab widget FIRST
-        self.dashboard_tabs = QTabWidget()
-        self.dashboard_tabs.setDocumentMode(True)
-        self.dashboard_tabs.setTabPosition(QTabWidget.North)
-    
-        # 1. Overview Tab
-        overview_tab = QWidget()
-        overview_layout = QVBoxLayout(overview_tab)
-        welcome_label = QLabel("Welcome to CBCentra School Management System")
-        welcome_label.setStyleSheet("""
-            font-size: 24px;
-            font-weight: 600;
-            color: #2c3e50;
-            padding: 20px;
-            text-align: center;
-        """)
-        welcome_label.setAlignment(Qt.AlignCenter)
-        overview_layout.addWidget(welcome_label)
-        self.dashboard_tabs.addTab(overview_tab, "Overview")
-        self.dashboard_tabs.setTabIcon(0, QIcon("static/icons/home.jpg"))
-    
-        # 2. User Management Tab
-        self.users_form = UsersForm(parent=self, user_session=self.user_session)
-        self.dashboard_tabs.addTab(self.users_form, "User Management")
-        self.dashboard_tabs.setTabIcon(1, QIcon("static/icons/users.png"))
-    
-        # 3. Permissions Tab (Admin & Headteacher Only)
-        if has_permission(self.user_session, "manage_system_settings"):
-            from ui.permissions_form import PermissionsForm
-            self.permissions_form = PermissionsForm(parent=self, user_session=self.user_session)
-            self.dashboard_tabs.addTab(self.permissions_form, "Permissions")
-            self.dashboard_tabs.setTabIcon(self.dashboard_tabs.count() - 1, QIcon("static/icons/lock.png"))
-    
-        # 4. User Permissions Tab (Admin Only)
-        if has_permission(self.user_session, "manage_system_settings"):
-            from ui.user_permissions_form import UserPermissionsForm
-            self.user_perms_tab = UserPermissionsForm(parent=self, user_session=self.user_session)
-            self.dashboard_tabs.addTab(self.user_perms_tab, "User Permissions")
-            self.dashboard_tabs.setTabIcon(self.dashboard_tabs.count() - 1, QIcon("static/icons/user-star.png"))
-    
-        # 5. Login Activity Tab
-        login_logs_tab = QWidget()
-        login_logs_layout = QVBoxLayout(login_logs_tab)
-        self.login_logs_form = LoginLogsForm(user_session=self.user_session)
-        login_logs_layout.addWidget(self.login_logs_form)
-        self.dashboard_tabs.addTab(login_logs_tab, "Login Activity")
-        self.dashboard_tabs.setTabIcon(3 if has_permission(self.user_session, "manage_system_settings") else 2, QIcon("static/icons/login.png"))
-    
-        # 6. Audit Trail Tab
-        audit_logs_tab = QWidget()
-        audit_logs_layout = QVBoxLayout(audit_logs_tab)
-        self.audit_logs_form = AuditLogsForm(parent=audit_logs_tab, user_session=self.user_session)
-        audit_logs_layout.addWidget(self.audit_logs_form)
-        self.dashboard_tabs.addTab(audit_logs_tab, "Audit Trail")
-        self.dashboard_tabs.setTabIcon(4 if has_permission(self.user_session, "manage_system_settings") else 3, QIcon("static/icons/audit.jpg"))
-    
-        # ✅ Add tabs to layout
-        dashboard_layout.addWidget(self.dashboard_tabs)
-    
-        return dashboard_page
-    
-    def toggle_ribbon(self):
-        """Toggle ribbon visibility with animation"""
-        if self.ribbon_visible:
-            # Hide ribbon
-            self.ribbon_toolbar.setFixedHeight(0)
-            self.ribbon_toggle_btn.setText("▾")
-            self.ribbon_visible = False
-        else:
-            # Show ribbon
-            self.ribbon_toolbar.setFixedHeight(90)
-            self.ribbon_toggle_btn.setText("▴")
-            self.ribbon_visible = True
-
-    def create_circular_pixmap(self, pixmap, size):
-        """Create a circular version of the pixmap"""
-        # Scale the pixmap to the desired size
-        scaled_pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        
-        # Create a new pixmap with transparency
-        circular_pixmap = QPixmap(size, size)
-        circular_pixmap.fill(Qt.transparent)
-        
-        # Create a painter to draw the circular image
-        painter = QPainter(circular_pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Create a circular clipping path
-        painter.setBrush(QBrush(scaled_pixmap))
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(0, 0, size, size)
-        painter.end()
-        
-        return circular_pixmap
-
-
+    # =====================================
+    # SIDEBAR CREATION AND MANAGEMENT  
+    # =====================================
     def create_sidebar(self):
         """Create modern floating sidebar with darker gradient background, full height, and animations"""
         # Create overlay background
@@ -860,7 +1114,7 @@ class MainWindow(QMainWindow):
         self.sidebar_frame.setObjectName("sideMenu")
         self.sidebar_frame.setFixedWidth(300)
     
-        # 🔥 Set full height: starts at y=80 (mainTabs + ribbon), goes to bottom
+        # Set full height: starts at y=80 (mainTabs + ribbon), goes to bottom
         self.sidebar_frame.setFixedHeight(self.height() - 80)
         self.sidebar_frame.move(-300, 80)  # Aligns with bottom of ribbon
     
@@ -876,7 +1130,7 @@ class MainWindow(QMainWindow):
         shadow.setOffset(6, 6)
         self.sidebar_frame.setGraphicsEffect(shadow)
     
-        # 🔥 Apply DARKER gradient background (deeper than main tabs)
+        # Apply DARKER gradient background (deeper than main tabs)
         self.sidebar_frame.setStyleSheet("""
             QFrame#sideMenu {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -893,12 +1147,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
     
-        # --- Menu Header ---
+        # Menu Header
         menu_header = QLabel(" MENU ")
         menu_header.setObjectName("menuHeader")
         menu_header.setStyleSheet(f"""
             QLabel#menuHeader {{
-                background-color: {self.colors['main_tab_gradient_start']};  /* Blue background */
+                background-color: {self.colors['main_tab_gradient_start']};
                 color: white;
                 font-size: 14px;
                 font-weight: bold;
@@ -911,7 +1165,7 @@ class MainWindow(QMainWindow):
         menu_header.setAlignment(Qt.AlignLeft)
         layout.addWidget(menu_header)
     
-        # --- Action Buttons ---
+        # Action Buttons
         actions = [
             ("Home", self.home_action, "home.png"),
             ("Dashboard", self.dashboard_action, "dashboard.png"),
@@ -927,7 +1181,7 @@ class MainWindow(QMainWindow):
         for name, func, icon in actions:
             btn = QPushButton(f"  {name}")
             btn.setObjectName("menuAction")
-            btn.setProperty("menuActionName", name.lower())  # For tracking
+            btn.setProperty("menuActionName", name.lower())
         
             icon_path = f"static/icons/{icon}"
             if os.path.exists(icon_path):
@@ -957,21 +1211,12 @@ class MainWindow(QMainWindow):
                 }}
             """)
         
-            btn.setCheckable(True)  # Allow checked state
+            btn.setCheckable(True)
             btn.clicked.connect(lambda checked, f=func: self.on_sidebar_button_clicked(f, btn))
             layout.addWidget(btn)
     
         layout.addStretch()
-    
-        # Sidebar animations
-        self.sidebar_animation = QPropertyAnimation(self.sidebar_frame, b"geometry")
-        self.sidebar_animation.setDuration(300)
-        self.sidebar_animation.setEasingCurve(QEasingCurve.OutCubic)
-    
-        # Overlay fade animation
-        self.overlay_animation = QPropertyAnimation(self.sidebar_overlay, b"windowOpacity")
-        self.overlay_animation.setDuration(300)
-    
+
     def toggle_sidebar(self):
         """Animate sidebar in and out with proper z-order management and overlay"""
         if self.sidebar_visible:
@@ -1057,86 +1302,21 @@ class MainWindow(QMainWindow):
         # Execute action
         func()
 
-    def on_tab_clicked(self, tab_name):
-        """Handle tab clicks"""
-        # Update tab visual state
-        for i, btn in enumerate(self.tab_buttons):
-            btn.setChecked(btn.text() == tab_name)
-        
-        # Update ribbon panel
-        self.update_ribbon_panel(tab_name)
-        
-        # Switch to appropriate page
-        tab_mapping = {
-            "Menu": 0,
-            "Dashboard": 0,
-            "Schools": 1,
-            "Staff": 2,  # This matches the index where we added TeachersForm
-            "Parents": 3,
-            "Students": 4,
-            "Exams": 5,
-            "Activities": 6,
-            "Finance": 7,
-            "Others": 8
-        }
-        
-        page_index = tab_mapping.get(tab_name, 0)
-        self.stacked_widget.setCurrentIndex(page_index)
-        
-        # Update status bar
-        self.statusBar().showMessage(f"Current Section: {tab_name}")
-        
-        # Special handling for Staff tab
-        if tab_name == "Staff" and hasattr(self, 'staff_form'):
-            self.staff_form.load_teachers()
-            self.staff_form.load_schools()
+    # =====================================
+    # PDF AND FILE HANDLING
+    # =====================================
+    def show_pdf_preview_dialog(self, pdf_bytes):
+        """Show PDF using the new viewer"""
+        try:
+            from utils.pdf_utils import view_pdf
+            view_pdf(pdf_bytes, parent=self)
+        except ImportError:
+            # Fallback if utils module is not available
+            QMessageBox.critical(self, "Error", "PDF viewer utilities not available")
 
-
-    def mousePressEvent(self, event):
-        """Handle clicks outside sidebar to close it"""
-        if self.sidebar_visible:
-            sidebar_rect = self.sidebar_frame.geometry()
-            # Use globalPosition() for Qt6 compatibility instead of deprecated pos()
-            if hasattr(event, 'globalPosition'):
-                click_pos = event.globalPosition().toPoint()
-                click_pos = self.mapFromGlobal(click_pos)
-            else:
-                click_pos = event.pos()  # Fallback for older Qt versions
-            
-            if not sidebar_rect.contains(click_pos):
-                self.toggle_sidebar()
-                self.tab_buttons[0].setChecked(False)
-        super().mousePressEvent(event)
-    
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, 'sidebar_frame'):
-            new_height = self.height() - 80  # Starts below ribbon
-            self.sidebar_frame.setFixedHeight(new_height)
-            if self.sidebar_visible:
-                self.sidebar_frame.move(0, 80)
-            else:
-                self.sidebar_frame.move(-300, 80)
-        if hasattr(self, 'sidebar_overlay'):
-            self.sidebar_overlay.setGeometry(0, 0, self.width(), self.height())
-    
-    def showEvent(self, event):
-        """Ensure sidebar is properly positioned when window is shown"""
-        super().showEvent(event)
-        if hasattr(self, 'sidebar_frame'):
-            # Make sure sidebar is properly layered
-            self.sidebar_frame.raise_()
-            if hasattr(self, 'sidebar_overlay'):
-                self.sidebar_overlay.stackUnder(self.sidebar_frame)
-    
-    def paintEvent(self, event):
-        """Ensure sidebar stays on top during paint events"""
-        super().paintEvent(event)
-        if hasattr(self, 'sidebar_frame') and self.sidebar_visible:
-            self.sidebar_overlay.raise_()
-            self.sidebar_frame.raise_()
-
-    # Action Methods
+    # =====================================
+    # SIDEBAR ACTIONS
+    # =====================================
     def home_action(self):
         self.stacked_widget.setCurrentIndex(0)
         self.update_ribbon_panel("Dashboard")
@@ -1151,22 +1331,10 @@ class MainWindow(QMainWindow):
             btn.setChecked(False)
         self.toggle_sidebar()
 
-    def new_action(self):
-        QMessageBox.information(self, "New", "Create new item")
-        self.toggle_sidebar()
-
-    def open_action(self):
-        QMessageBox.information(self, "Open", "Open existing item")
-        self.toggle_sidebar()
-
     def info_action(self):
         QMessageBox.about(self, "About CBCentra SMS", 
                          "CBCentra School Management System v1.0.0\n\n"
                          "A comprehensive solution for modern school management.")
-        self.toggle_sidebar()
-
-    def print_action(self):
-        QMessageBox.information(self, "Print", "Print current document")
         self.toggle_sidebar()
 
     def import_action(self):
@@ -1177,14 +1345,9 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Export", "Export data to external format")
         self.toggle_sidebar()
 
-    def settings_action(self):
-        QMessageBox.information(self, "Settings", "Open system settings")
-        self.toggle_sidebar()
-
     def options_action(self):
         QMessageBox.information(self, "Options", "Configure application options")
         self.toggle_sidebar()
-
 
     def closeEvent(self, event):
         reply = QMessageBox.question(

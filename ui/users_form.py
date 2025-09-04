@@ -1,20 +1,17 @@
 import sys
 import os
-import csv
 import traceback
-from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QMessageBox, QFileDialog, QScrollArea, QFrame, QSizePolicy,
-    QGroupBox, QGridLayout, QSpacerItem, QComboBox, QFormLayout, QMenu,
-    QApplication, QLineEdit
+    QGroupBox, QGridLayout, QSpacerItem, QComboBox, QFormLayout, 
+    QTabWidget, QMenu, QCheckBox, QDateEdit, QTextEdit, QApplication,
+    QSplitter, QListWidget, QListWidgetItem, QProgressDialog
 )
-from PySide6.QtGui import QFont, QPalette, QIcon
-from PySide6.QtCore import Qt, Signal, QSize
-
+from PySide6.QtGui import QFont, QPalette, QIcon, QPixmap, QPainter, QAction, QColor, QTextCursor
+from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer, QDateTime
 import mysql.connector
 from mysql.connector import Error
 
@@ -26,21 +23,68 @@ from utils.permissions import has_permission
 from ui.audit_base_form import AuditBaseForm
 
 
-# Change class definition
+class SearchableComboBox(QComboBox):
+    """Enhanced ComboBox with search functionality"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.original_data = []  # Store (display_text, value) pairs
+        self.lineEdit().textEdited.connect(self.filter_values)
+        self.lineEdit().returnPressed.connect(self.on_return_pressed)
+        self.setMaxVisibleItems(10)
+        
+    def setData(self, data_list):
+        """Set the data for the combobox - list of (display_text, value) tuples"""
+        self.original_data = data_list
+        self.clear()
+        for display, value in data_list:
+            self.addItem(display, value)
+        
+    def filter_values(self, text):
+        """Filter values based on typed text"""
+        if not text:
+            self.clear()
+            for display, value in self.original_data:
+                self.addItem(display, value)
+            self.showPopup()
+            return
+            
+        filtered_data = [
+            (display, value) for display, value in self.original_data 
+            if text.lower() in display.lower()
+        ]
+        
+        self.clear()
+        for display, value in filtered_data:
+            self.addItem(display, value)
+        
+        if filtered_data:
+            self.showPopup()
+        
+    def on_return_pressed(self):
+        """Handle return pressed to select the first item"""
+        if self.count() > 0:
+            self.setCurrentIndex(0)
+            self.hidePopup()
+
+    def getCurrentValue(self):
+        """Get the current selected value (not display text)"""
+        current_index = self.currentIndex()
+        if current_index >= 0:
+            return self.itemData(current_index)
+        return None
+
+
 class UsersForm(AuditBaseForm):
     user_selected = Signal(int)
-
+    
     def __init__(self, parent=None, user_session=None):
         super().__init__(parent, user_session)
-        self.user_session = user_session
         self.current_user_id = None
         self.current_teacher_id = None
         self.password_visible = False
         self.confirm_password_visible = False
         self.teacher_data = {}
-        
-        # Set up modern styling
-        self.setup_styling()
         
         # Database connection
         try:
@@ -51,12 +95,13 @@ class UsersForm(AuditBaseForm):
             return
         
         self.setup_ui()
-        self.load_users()
-
+        self.load_data()
+        self.apply_permissions()
+        
     def setup_ui(self):
         """Setup the main UI with side-by-side layout"""
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(15)
     
         # Left side - Form (40% width)
@@ -69,8 +114,8 @@ class UsersForm(AuditBaseForm):
                 border-radius: 8px;
             }}
         """)
-        left_frame.setMinimumWidth(490)  # Minimum width instead of fixed
-        left_frame.setMaximumWidth(500)  # Maximum width to prevent excessive growth
+        left_frame.setMinimumWidth(450)
+        left_frame.setMaximumWidth(500)
     
         # Right side - Table (60% width)
         right_frame = QFrame()
@@ -86,7 +131,7 @@ class UsersForm(AuditBaseForm):
         main_layout.addWidget(left_frame, 2)  # 40% of space
         main_layout.addWidget(right_frame, 3)  # 60% of space
         
-        # ADD THESE LINES TO ACTUALLY SET UP THE FORM AND TABLE:
+        # Setup form and table sections
         self.setup_form_section(left_frame)
         self.setup_table_section(right_frame)
 
@@ -114,13 +159,13 @@ class UsersForm(AuditBaseForm):
     
         # Header with gradient like table headers
         header_label = QLabel("User Management")
-        header_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        header_label.setFont(self.fonts['section'])
         header_label.setStyleSheet(f"""
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
             color: white;
             margin: 10px 0;
-            padding: 15px;
+            padding: 10px;
             border-radius: 8px;
             font-weight: bold;
             text-transform: uppercase;
@@ -133,22 +178,6 @@ class UsersForm(AuditBaseForm):
         # Form container
         form_group = QGroupBox("User Details")
         form_group.setFont(self.fonts['label'])
-        form_group.setStyleSheet(f"""
-            QGroupBox {{
-                font-weight: bold;
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-                color: {self.colors['primary']};
-            }}
-        """)
-        
         form_layout = QFormLayout(form_group)
         form_layout.setSpacing(12)
     
@@ -156,50 +185,43 @@ class UsersForm(AuditBaseForm):
         self.username_entry = QLineEdit()
         self.username_entry.setFont(self.fonts['entry'])
         self.username_entry.setPlaceholderText("Enter unique username")
-        self.username_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.username_entry)
-        form_layout.addRow(self.create_label("Username*:"), self.username_entry)
+        form_layout.addRow(self.create_styled_label("Username*:"), self.username_entry)
     
         # Full Name
         self.fullname_entry = QLineEdit()
         self.fullname_entry.setFont(self.fonts['entry'])
         self.fullname_entry.setPlaceholderText("Enter full name")
-        self.fullname_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.fullname_entry)
-        form_layout.addRow(self.create_label("Full Name*:"), self.fullname_entry)
+        form_layout.addRow(self.create_styled_label("Full Name*:"), self.fullname_entry)
     
         # Role
         self.role_combo = QComboBox()
         self.role_combo.addItems(["Admin", "Headteacher", "Teacher", "Finance", "Subject Head", "Staff"])
         self.role_combo.setCurrentText("Teacher")
         self.role_combo.setFont(self.fonts['entry'])
-        self.role_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_combo_style(self.role_combo)
         self.role_combo.currentTextChanged.connect(self.on_role_change)
-        form_layout.addRow(self.create_label("Role*:"), self.role_combo)
+        form_layout.addRow(self.create_styled_label("Role*:"), self.role_combo)
     
         # Teacher selection
-        self.teacher_combo = QComboBox()
+        self.teacher_combo = SearchableComboBox()
         self.teacher_combo.setFont(self.fonts['entry'])
         self.teacher_combo.setPlaceholderText("Select teacher to link")
-        self.teacher_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_combo_style(self.teacher_combo)
         self.teacher_combo.currentTextChanged.connect(self.on_teacher_select)
-        self.teacher_combo_row = form_layout.rowCount()
-        form_layout.addRow(self.create_label("Link to Teacher:"), self.teacher_combo)
+        form_layout.addRow(self.create_styled_label("Link to Teacher:"), self.teacher_combo)
     
         # Position
         self.position_entry = QLineEdit()
         self.position_entry.setFont(self.fonts['entry'])
         self.position_entry.setEnabled(False)
         self.position_entry.setPlaceholderText("Auto-filled from teacher record")
-        self.position_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.position_entry)
-        self.position_row = form_layout.rowCount()
-        form_layout.addRow(self.create_label("Position:"), self.position_entry)
+        form_layout.addRow(self.create_styled_label("Position:"), self.position_entry)
     
         # Password field with toggle
-        password_label = self.create_label("Password*:")
+        password_label = self.create_styled_label("Password*:")
         password_label.setToolTip("Password must be at least 8 characters long")
         
         password_container = QWidget()
@@ -210,11 +232,10 @@ class UsersForm(AuditBaseForm):
         self.password_entry.setFont(self.fonts['entry'])
         self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_entry.setPlaceholderText("Enter password (min 8 characters)")
-        self.password_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.password_entry)
         
         self.toggle_password_btn = QPushButton("👁")
-        self.toggle_password_btn.setFixedSize(25, 25)
+        self.toggle_password_btn.setFixedSize(30, 30)
         self.toggle_password_btn.setToolTip("Show/hide password")
         self.toggle_password_btn.clicked.connect(self.toggle_password_visibility)
         self.setup_icon_button_style(self.toggle_password_btn)
@@ -225,7 +246,7 @@ class UsersForm(AuditBaseForm):
         form_layout.addRow(password_label, password_container)
     
         # Confirm Password field with toggle
-        confirm_password_label = self.create_label("Confirm Password*:")
+        confirm_password_label = self.create_styled_label("Confirm Password*:")
         
         confirm_password_container = QWidget()
         confirm_password_layout = QHBoxLayout(confirm_password_container)
@@ -235,11 +256,10 @@ class UsersForm(AuditBaseForm):
         self.confirm_password_entry.setFont(self.fonts['entry'])
         self.confirm_password_entry.setEchoMode(QLineEdit.EchoMode.Password)
         self.confirm_password_entry.setPlaceholderText("Re-enter password to confirm")
-        self.confirm_password_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.confirm_password_entry)
         
         self.toggle_confirm_password_btn = QPushButton("👁")
-        self.toggle_confirm_password_btn.setFixedSize(25, 25)
+        self.toggle_confirm_password_btn.setFixedSize(30, 30)
         self.toggle_confirm_password_btn.setToolTip("Show/hide confirm password")
         self.toggle_confirm_password_btn.clicked.connect(self.toggle_confirm_password_visibility)
         self.setup_icon_button_style(self.toggle_confirm_password_btn)
@@ -253,18 +273,18 @@ class UsersForm(AuditBaseForm):
         self.status_label = QLabel("New User")
         self.status_label.setFont(self.fonts['entry'])
         self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
-        form_layout.addRow(self.create_label("Status:"), self.status_label)
+        form_layout.addRow(self.create_styled_label("Status:"), self.status_label)
     
-        # Security status (new fields)
+        # Security status
         self.failed_attempts_label = QLabel("0")
         self.failed_attempts_label.setFont(self.fonts['entry'])
         self.failed_attempts_label.setStyleSheet(f"color: {self.colors['text_primary']};")
-        form_layout.addRow(self.create_label("Failed Login Attempts:"), self.failed_attempts_label)
+        form_layout.addRow(self.create_styled_label("Failed Login Attempts:"), self.failed_attempts_label)
     
         self.lock_status_label = QLabel("Not Locked")
         self.lock_status_label.setFont(self.fonts['entry'])
         self.lock_status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
-        form_layout.addRow(self.create_label("Account Lock Status:"), self.lock_status_label)
+        form_layout.addRow(self.create_styled_label("Account Lock Status:"), self.lock_status_label)
     
         layout.addWidget(form_group)
     
@@ -273,12 +293,12 @@ class UsersForm(AuditBaseForm):
         self.on_role_change("Teacher")
     
         # Buttons
-        self.setup_buttons(layout)
+        self.setup_action_buttons(layout)
         
         # Add some stretch to ensure proper scrolling
         layout.addStretch()
 
-    def create_label(self, text):
+    def create_styled_label(self, text):
         """Create a styled label"""
         label = QLabel(text)
         label.setFont(self.fonts['label'])
@@ -286,22 +306,19 @@ class UsersForm(AuditBaseForm):
         return label
 
     def setup_entry_style(self, entry):
-        """Setup consistent entry styling matching TeachersForm"""
+        """Setup consistent entry styling"""
         entry.setStyleSheet(f"""
             QLineEdit {{
                 border: 2px solid {self.colors['input_border']};
                 border-radius: 6px;
-                padding: 12px 16px;
+                padding: 8px 12px;
                 font-size: 13px;
                 background-color: {self.colors['input_background']};
                 color: {self.colors['text_primary']};
-                min-height: 20px;
-                line-height: 1.4;
             }}
             QLineEdit:focus {{
                 border-color: {self.colors['input_focus']};
                 background-color: {self.colors['input_background']};
-                border-width: 2px;
             }}
             QLineEdit:disabled {{
                 background-color: #f1f5f9;
@@ -315,62 +332,29 @@ class UsersForm(AuditBaseForm):
         """)
 
     def setup_combo_style(self, combo):
-        """Setup consistent combobox styling matching TeachersForm"""
+        """Setup consistent combobox styling"""
         combo.setStyleSheet(f"""
             QComboBox {{
                 border: 2px solid {self.colors['input_border']};
                 border-radius: 6px;
-                padding: 12px 16px;
+                padding: 8px 12px;
                 font-size: 13px;
                 background-color: {self.colors['input_background']};
                 color: {self.colors['text_primary']};
-                min-height: 20px;
-                line-height: 1.4;
             }}
             QComboBox:focus {{
                 border-color: {self.colors['input_focus']};
                 background-color: {self.colors['input_background']};
-                border-width: 2px;
             }}
             QComboBox:disabled {{
                 background-color: #f1f5f9;
                 color: #64748b;
                 border-color: #cbd5e1;
             }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid {self.colors['text_secondary']};
-            }}
         """)
     
-    def setup_size_policies(self):
-        """Set consistent size policies for all widgets"""
-        # Form widgets
-        widgets_to_size = [
-            'username_entry', 'fullname_entry', 'role_combo', 'teacher_combo',
-            'position_entry', 'password_entry', 'confirm_password_entry'
-        ]
-        
-        for widget_name in widgets_to_size:
-            widget = getattr(self, widget_name, None)
-            if widget:
-                widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        
-        # Buttons - only apply to action buttons, not toggle buttons
-        action_buttons = []
-        for btn in self.findChildren(QPushButton):
-            if btn not in [self.toggle_password_btn, self.toggle_confirm_password_btn]:
-                btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                action_buttons.append(btn)
-                
     def setup_icon_button_style(self, button):
-        """Setup icon button styling matching TeachersForm"""
+        """Setup icon button styling"""
         button.setStyleSheet(f"""
             QPushButton {{
                 border: 2px solid {self.colors['border']};
@@ -378,8 +362,6 @@ class UsersForm(AuditBaseForm):
                 padding: 4px;
                 background-color: {self.colors['surface']};
                 color: {self.colors['text_primary']};
-                min-width: 25px;
-                min-height: 25px;
             }}
             QPushButton:hover {{
                 background-color: {self.colors['border']};
@@ -391,106 +373,108 @@ class UsersForm(AuditBaseForm):
             }}
         """)
 
-    def setup_buttons(self, layout):
-        """Setup buttons in organized rows with equal width"""
+    def setup_action_buttons(self, layout):
+        """Setup action buttons with icons using inherited styling"""
         buttons_group = QGroupBox("Actions")
         buttons_group.setFont(self.fonts['label'])
-        buttons_group.setStyleSheet(f"""
-            QGroupBox {{
-                font-weight: bold;
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-                color: {self.colors['primary']};
-            }}
-        """)
-        
         buttons_layout = QVBoxLayout(buttons_group)
     
         # Create all buttons
-        buttons = [
-            self.create_button("Add User", self.colors['success'], self.add_user),
-            self.create_button("Update", self.colors['primary'], self.update_user),
-            self.create_button("Clear", self.colors['secondary'], self.clear_form),
-            self.create_button("Deactivate", self.colors['danger'], self.deactivate_user),
-            self.create_button("Reactivate", self.colors['info'], self.reactivate_user),
-            self.create_button("Reset Pwd", self.colors['warning'], self.reset_password),
-            self.create_button("Unlock Account", self.colors['info'], self.unlock_account),
-            self.create_button("Delete", '#8B0000', self.delete_user)
-        ]
+        self.save_btn = QPushButton("Add User")
+        self.save_btn.setIcon(QIcon("static/icons/add.png"))
+        self.save_btn.setIconSize(QSize(20, 20))
+        self.save_btn.setProperty("class", "success")
+        self.save_btn.setFont(self.fonts['button'])
+        self.save_btn.clicked.connect(self.add_user)
+        
+        self.update_btn = QPushButton("Update")
+        self.update_btn.setIcon(QIcon("static/icons/update.png"))
+        self.update_btn.setIconSize(QSize(20, 20))
+        self.update_btn.setProperty("class", "primary")
+        self.update_btn.setFont(self.fonts['button'])
+        self.update_btn.clicked.connect(self.update_user)
+        
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setIcon(QIcon("static/icons/clear.png"))
+        self.clear_btn.setIconSize(QSize(20, 20))
+        self.clear_btn.setProperty("class", "secondary")
+        self.clear_btn.setFont(self.fonts['button'])
+        self.clear_btn.clicked.connect(self.clear_form)
+        
+        self.deactivate_btn = QPushButton("Deactivate")
+        self.deactivate_btn.setIcon(QIcon("static/icons/deactivate.png"))
+        self.deactivate_btn.setIconSize(QSize(20, 20))
+        self.deactivate_btn.setProperty("class", "warning")
+        self.deactivate_btn.setFont(self.fonts['button'])
+        self.deactivate_btn.clicked.connect(self.deactivate_user)
+        
+        self.reactivate_btn = QPushButton("Reactivate")
+        self.reactivate_btn.setIcon(QIcon("static/icons/reactivate.png"))
+        self.reactivate_btn.setIconSize(QSize(20, 20))
+        self.reactivate_btn.setProperty("class", "info")
+        self.reactivate_btn.setFont(self.fonts['button'])
+        self.reactivate_btn.clicked.connect(self.reactivate_user)
+        
+        self.reset_pwd_btn = QPushButton("Reset Pwd")
+        self.reset_pwd_btn.setIcon(QIcon("static/icons/reset.png"))
+        self.reset_pwd_btn.setIconSize(QSize(20, 20))
+        self.reset_pwd_btn.setProperty("class", "warning")
+        self.reset_pwd_btn.setFont(self.fonts['button'])
+        self.reset_pwd_btn.clicked.connect(self.reset_password)
+        
+        self.unlock_btn = QPushButton("Unlock")
+        self.unlock_btn.setIcon(QIcon("static/icons/unlock.png"))
+        self.unlock_btn.setIconSize(QSize(20, 20))
+        self.unlock_btn.setProperty("class", "info")
+        self.unlock_btn.setFont(self.fonts['button'])
+        self.unlock_btn.clicked.connect(self.unlock_account)
+        
+        self.delete_btn = QPushButton("Delete")
+        self.delete_btn.setIcon(QIcon("static/icons/delete.png"))
+        self.delete_btn.setIconSize(QSize(20, 20))
+        self.delete_btn.setProperty("class", "danger")
+        self.delete_btn.setFont(self.fonts['button'])
+        self.delete_btn.clicked.connect(self.delete_user)
+        
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
+        self.refresh_btn.setIconSize(QSize(20, 20))
+        self.refresh_btn.setProperty("class", "info")
+        self.refresh_btn.setFont(self.fonts['button'])
+        self.refresh_btn.clicked.connect(self.refresh_data)
+        
+        self.export_btn = QPushButton("Export")
+        self.export_btn.setIcon(QIcon("static/icons/export.png"))
+        self.export_btn.setIconSize(QSize(20, 20))
+        self.export_btn.setProperty("class", "primary")
+        self.export_btn.setFont(self.fonts['button'])
+        self.export_btn.clicked.connect(self.export_users)
     
         # Arrange in rows with equal width
         row1_layout = QHBoxLayout()
-        for btn in buttons[:3]:
+        for btn in [self.save_btn, self.update_btn, self.clear_btn]:
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             row1_layout.addWidget(btn)
         buttons_layout.addLayout(row1_layout)
     
         row2_layout = QHBoxLayout()
-        for btn in buttons[3:6]:
+        for btn in [self.deactivate_btn, self.reactivate_btn, self.reset_pwd_btn]:
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             row2_layout.addWidget(btn)
         buttons_layout.addLayout(row2_layout)
     
         row3_layout = QHBoxLayout()
-        for btn in buttons[6:]:
+        for btn in [self.unlock_btn, self.delete_btn, self.refresh_btn]:
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             row3_layout.addWidget(btn)
         buttons_layout.addLayout(row3_layout)
+        
+        row4_layout = QHBoxLayout()
+        self.export_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        row4_layout.addWidget(self.export_btn)
+        buttons_layout.addLayout(row4_layout)
     
         layout.addWidget(buttons_group)
-    
-    def create_button(self, text, color, callback):
-        """Create a styled button matching TeachersForm"""
-        button = QPushButton(text)
-        button.setFont(self.fonts['button'])
-        button.clicked.connect(callback)
-        button.setMinimumHeight(35)
-        button.setMinimumWidth(120)
-        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADD THIS LINE
-        button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {color};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 12px 20px;
-                font-weight: 600;
-                font-size: 13px;
-            }}
-            QPushButton:hover {{
-                background-color: {self.adjust_color_brightness(color, -20)};
-                border: 1px solid rgba(255, 255, 255, 0.3);
-            }}
-            QPushButton:pressed {{
-                background-color: {self.adjust_color_brightness(color, -40)};
-                padding: 13px 19px 11px 21px;
-            }}
-        """)
-        return button
-
-    def adjust_color_brightness(self, color, amount):
-        """Adjust color brightness by amount (positive = lighter, negative = darker)"""
-        if color.startswith('#'):
-            color = color[1:]
-        
-        # Convert hex to RGB
-        r = int(color[0:2], 16)
-        g = int(color[2:4], 16)
-        b = int(color[4:6], 16)
-        
-        # Adjust brightness
-        r = max(0, min(255, r + amount))
-        g = max(0, min(255, g + amount))
-        b = max(0, min(255, b + amount))
-        
-        return f"#{r:02x}{g:02x}{b:02x}"
 
     def setup_table_section(self, parent):
         """Setup the table section"""
@@ -505,19 +489,26 @@ class UsersForm(AuditBaseForm):
         search_label = QLabel("Search Users:")
         search_label.setFont(self.fonts['label'])
         search_label.setStyleSheet(f"color: {self.colors['text_primary']};")
-        search_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADDED
         
         self.search_entry = QLineEdit()
         self.search_entry.setFont(self.fonts['entry'])
         self.search_entry.setPlaceholderText("Enter username or full name...")
-        self.search_entry.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # ADDED
         self.setup_entry_style(self.search_entry)
+        self.search_entry.textChanged.connect(self.on_search_changed)
         
-        search_btn = self.create_button("Search", self.colors['primary'], self.search_users)
-        search_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADDED
+        search_btn = QPushButton("Search")
+        search_btn.setIcon(QIcon("static/icons/search.png"))
+        search_btn.setIconSize(QSize(16, 16))
+        search_btn.setProperty("class", "primary")
+        search_btn.setFont(self.fonts['button'])
+        search_btn.clicked.connect(self.search_users)
         
-        clear_search_btn = self.create_button("Clear", self.colors['secondary'], self.clear_search)
-        clear_search_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # ADDED
+        clear_search_btn = QPushButton("Clear")
+        clear_search_btn.setIcon(QIcon("static/icons/clear.png"))
+        clear_search_btn.setIconSize(QSize(16, 16))
+        clear_search_btn.setProperty("class", "secondary")
+        clear_search_btn.setFont(self.fonts['button'])
+        clear_search_btn.clicked.connect(self.clear_search)
         
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_entry)
@@ -528,12 +519,16 @@ class UsersForm(AuditBaseForm):
     
         # Table
         self.users_table = QTableWidget()
-        self.users_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setup_table()
         layout.addWidget(self.users_table)
+        
+        # Table info
+        self.table_info = QLabel("Total users: 0")
+        self.table_info.setStyleSheet(f"color: {self.colors['text_secondary']}; font-style: italic;")
+        layout.addWidget(self.table_info)
 
     def setup_table(self):
-        """Setup the users table matching TeachersForm styling"""
+        """Setup the users table"""
         headers = ["ID", "Username", "Full Name", "Role", "Position", "Status", "Failed Attempts", "Lock Status"]
         self.users_table.setColumnCount(len(headers))
         self.users_table.setHorizontalHeaderLabels(headers)
@@ -547,7 +542,7 @@ class UsersForm(AuditBaseForm):
         # Set fonts
         self.users_table.setFont(self.fonts['table'])
         
-        # Header styling with green headers
+        # Header styling
         header = self.users_table.horizontalHeader()
         header.setFont(self.fonts['table_header'])
         header.setStyleSheet(f"""
@@ -555,80 +550,66 @@ class UsersForm(AuditBaseForm):
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 {self.colors['table_header']}, stop:1 {self.colors['table_header_dark']});
                 color: white;
-                padding: 16px;
+                padding: 10px;
                 border: none;
-                font-weight: 700;
-                font-size: 13px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }}
-            QHeaderView::section:first {{
-                border-top-left-radius: 6px;
-            }}
-            QHeaderView::section:last {{
-                border-top-right-radius: 6px;
-            }}
-            QHeaderView::section:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0f766e, stop:1 #115e59);
-            }}
-        """)
-        
-        # Table styling
-        self.users_table.setStyleSheet(f"""
-            QTableWidget {{
-                border: 2px solid {self.colors['border']};
-                border-radius: 8px;
-                background-color: {self.colors['background']};
-                alternate-background-color: #f8fafc;
-                gridline-color: {self.colors['border']};
-                selection-background-color: rgba(13, 148, 136, 0.15);
-                selection-color: {self.colors['text_primary']};
-                font-size: 13px;
-            }}
-            QTableWidget::item {{
-                padding: 12px 16px;
-                border-bottom: 1px solid {self.colors['border']};
-                color: {self.colors['text_primary']};
-            }}
-            QTableWidget::item:selected {{
-                background-color: rgba(13, 148, 136, 0.2);
-                color: {self.colors['text_primary']};
-                border: 1px solid {self.colors['table_header']};
-                font-weight: 600;
-            }}
-            QTableWidget::item:hover {{
-                background-color: rgba(13, 148, 136, 0.1);
+                font-weight: bold;
             }}
         """)
         
         # Resize columns
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setStretchLastSection(True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.users_table.setColumnWidth(0, 60)
+        
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         
         # Connect selection signal
         self.users_table.itemSelectionChanged.connect(self.on_user_select)
 
+    
     def toggle_password_visibility(self):
         """Toggle password visibility"""
         self.password_visible = not self.password_visible
         if self.password_visible:
             self.password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.toggle_password_btn.setText("🔒")
+            self.toggle_password_btn.setIcon(QIcon("static/icons/view.png"))  # eye icon
+            self.toggle_password_btn.setIconSize(QSize(20, 20))
+            self.toggle_password_btn.setText("")  # remove text
         else:
             self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
-            self.toggle_password_btn.setText("👁")
-
+            self.toggle_password_btn.setIcon(QIcon("static/icons/lock.png"))  # lock icon
+            self.toggle_password_btn.setIconSize(QSize(20, 20))
+            self.toggle_password_btn.setText("")
+    
     def toggle_confirm_password_visibility(self):
         """Toggle confirm password visibility"""
         self.confirm_password_visible = not self.confirm_password_visible
         if self.confirm_password_visible:
             self.confirm_password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.toggle_confirm_password_btn.setText("🔒")
+            self.toggle_confirm_password_btn.setIcon(QIcon("static/icons/view.png"))
+            self.toggle_confirm_password_btn.setIconSize(QSize(20, 20))
+            self.toggle_confirm_password_btn.setText("")
         else:
             self.confirm_password_entry.setEchoMode(QLineEdit.EchoMode.Password)
-            self.toggle_confirm_password_btn.setText("👁")
+            self.toggle_confirm_password_btn.setIcon(QIcon("static/icons/lock.png"))
+            self.toggle_confirm_password_btn.setIconSize(QSize(20, 20))
+            self.toggle_confirm_password_btn.setText("")
 
+
+    def load_data(self):
+        """Load all necessary data"""
+        try:
+            self._ensure_connection()
+            self.load_teachers()
+            self.load_users()
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to load data: {e}")
+        
     def load_teachers(self):
         """Load available teachers for the dropdown"""
         try:
@@ -643,13 +624,13 @@ class UsersForm(AuditBaseForm):
             self.cursor.execute(query)
             available_teachers = self.cursor.fetchall()
             
-            teacher_options = ["None - Manual Entry"]
+            teacher_options = [("None - Manual Entry", None)]
             self.teacher_data = {}  # Store teacher data for lookup
             
             for teacher in available_teachers:
                 teacher_id, full_name, position, teacher_code = teacher
                 display_name = f"{full_name} ({teacher_code}) - {position or 'No Position'}"
-                teacher_options.append(display_name)
+                teacher_options.append((display_name, teacher_id))
                 self.teacher_data[display_name] = {
                     'id': teacher_id,
                     'full_name': full_name,
@@ -670,8 +651,8 @@ class UsersForm(AuditBaseForm):
             for teacher in linked_teachers:
                 teacher_id, full_name, position, teacher_code, user_id = teacher
                 display_name = f"{full_name} ({teacher_code}) - {position or 'No Position'} [LINKED]"
-                if display_name not in teacher_options:
-                    teacher_options.append(display_name)
+                if display_name not in self.teacher_data:
+                    teacher_options.append((display_name, teacher_id))
                     self.teacher_data[display_name] = {
                         'id': teacher_id,
                         'full_name': full_name,
@@ -679,8 +660,7 @@ class UsersForm(AuditBaseForm):
                         'user_id': user_id
                     }
             
-            self.teacher_combo.clear()
-            self.teacher_combo.addItems(teacher_options)
+            self.teacher_combo.setData(teacher_options)
             self.teacher_combo.setCurrentText("None - Manual Entry")
             
         except Error as e:
@@ -778,6 +758,51 @@ class UsersForm(AuditBaseForm):
                         item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['success'])
                 
                 self.users_table.setItem(row, col, item)
+                
+        # Update info label
+        total_users = len(users)
+        active_users = len([user for user in users if user[4]])
+        self.table_info.setText(f"Total users: {total_users} (Active: {active_users})")
+
+    def on_search_changed(self):
+        """Handle search text changes with delay"""
+        if hasattr(self, 'search_timer'):
+            self.search_timer.stop()
+        
+        self.search_timer = QTimer()
+        self.search_timer.timeout.connect(self.search_users)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.start(300)
+        
+    def search_users(self):
+        """Search users by username or full name"""
+        search_term = self.search_entry.text().strip()
+        if not search_term:
+            self.load_users()
+            return
+            
+        try:
+            query = '''
+                SELECT u.id, u.username, u.full_name, u.role, u.is_active,
+                       COALESCE(t.position, 'N/A') as position,
+                       u.failed_login_attempts,
+                       u.account_locked_until
+                FROM users u
+                LEFT JOIN teachers t ON t.full_name = u.full_name
+                WHERE u.username LIKE %s OR u.full_name LIKE %s
+                ORDER BY u.username
+            '''
+            search_pattern = f"%{search_term}%"
+            self.cursor.execute(query, (search_pattern, search_pattern))
+            users = self.cursor.fetchall()
+            self.update_user_table(users)
+        except Error as e:
+            QMessageBox.critical(self, "Error", f"Failed to search users: {e}")
+
+    def clear_search(self):
+        """Clear search and reload all users"""
+        self.search_entry.clear()
+        self.load_users()
 
     def on_user_select(self):
         """Handle user selection from table"""
@@ -860,330 +885,464 @@ class UsersForm(AuditBaseForm):
                 self.lock_status_label.setText(lock_status)
                 self.lock_status_label.setStyleSheet(f"color: {lock_color}; font-weight: bold;")
                 
-                # Show success notification
-                username = self.username_entry.text() or "User"
-                QMessageBox.information(self, "Selected", f"{username} is now ready for update/operations")
-                
         except Error as e:
             error_msg = f"Error selecting user: {str(e)}"
             print(error_msg)
             traceback.print_exc()
             QMessageBox.critical(self, "Error", error_msg)
 
-    def search_users(self):
-        """Search users by username or full name"""
-        search_term = self.search_entry.text().strip()
-        if not search_term:
-            self.load_users()
-            return
+    def validate_form(self):
+        """Validate form data before saving/updating"""
+        if not self.username_entry.text().strip():
+            QMessageBox.warning(self, "Validation Error", "Username is required.")
+            self.username_entry.setFocus()
+            return False
             
+        if not self.fullname_entry.text().strip():
+            QMessageBox.warning(self, "Validation Error", "Full name is required.")
+            self.fullname_entry.setFocus()
+            return False
+            
+        if not self.password_entry.text().strip() and not self.current_user_id:
+            QMessageBox.warning(self, "Validation Error", "Password is required for new users.")
+            self.password_entry.setFocus()
+            return False
+            
+        if self.password_entry.text() != self.confirm_password_entry.text():
+            QMessageBox.warning(self, "Validation Error", "Password and confirmation do not match.")
+            self.password_entry.setFocus()
+            return False
+            
+        if len(self.password_entry.text()) < 8 and not self.current_user_id:
+            QMessageBox.warning(self, "Validation Error", "Password must be at least 8 characters long.")
+            self.password_entry.setFocus()
+            return False
+            
+        return True
+        
+    def check_for_duplicates(self, exclude_id=None):
+        """Check if username already exists"""
         try:
-            query = '''
-                SELECT u.id, u.username, u.full_name, u.role, u.is_active,
-                       COALESCE(t.position, 'N/A') as position,
-                       u.failed_login_attempts,
-                       u.account_locked_until
-                FROM users u
-                LEFT JOIN teachers t ON t.full_name = u.full_name
-                WHERE u.username LIKE %s OR u.full_name LIKE %s
-                ORDER BY u.username
-            '''
-            search_pattern = f"%{search_term}%"
-            self.cursor.execute(query, (search_pattern, search_pattern))
-            users = self.cursor.fetchall()
-            self.update_user_table(users)
-        except Error as e:
-            QMessageBox.critical(self, "Error", f"Failed to search users: {e}")
-
-    def clear_search(self):
-        """Clear search and reload all users"""
-        self.search_entry.clear()
-        self.load_users()
+            self._ensure_connection()
+            username = self.username_entry.text().strip()
+            
+            query = "SELECT id, username FROM users WHERE username = %s"
+            params = [username]
+            
+            if exclude_id:
+                query += " AND id != %s"
+                params.append(exclude_id)
+                
+            self.cursor.execute(query, params)
+            existing = self.cursor.fetchone()
+            
+            if existing:
+                return True, f"Username '{existing[1]}' already exists (ID: {existing[0]})"
+                
+            return False, "No duplicates found"
+            
+        except Exception as e:
+            return True, f"Error checking duplicates: {e}"
 
     def add_user(self):
-        print(f"DEBUG: User session role = '{self.user_session.get('role')}'")
-        print(f"DEBUG: User session = {self.user_session}")
         """Add new user to database"""
-        # Check user permissions
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "create_user"):
+        if not has_permission(self.user_session, 'create_user'):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to create users.")
             return
             
-        username = self.username_entry.text().strip()
-        full_name = self.fullname_entry.text().strip()
-        role = self.role_combo.currentText().strip()
-        password = self.password_entry.text().strip()
-        confirm_password = self.confirm_password_entry.text().strip()
-
-        # Validate confirm password
-        if password != confirm_password:
-            QMessageBox.warning(self, "Error", "Password and Confirm Password do not match!")
+        if not self.validate_form():
             return
-
-        if not all([username, full_name, password]):
-            QMessageBox.warning(self, "Error", "Please fill in all required fields.")
-            return
-
+    
         try:
+            self._ensure_connection()
+            
+            # Check for duplicates
+            is_duplicate, duplicate_msg = self.check_for_duplicates()
+            if is_duplicate:
+                QMessageBox.warning(self, "Duplicate Username", duplicate_msg)
+                return
+    
+            username = self.username_entry.text().strip()
+            full_name = self.fullname_entry.text().strip()
+            role = self.role_combo.currentText().strip()
+            password = self.password_entry.text().strip()
+            school_id = self.user_session.get('school_id', 1) if self.user_session else 1
+            
             password_hash = hash_password(password)
             
-            query = """
-                INSERT INTO users (username, full_name, role, password_hash, is_active, failed_login_attempts)
-                VALUES (%s, %s, %s, %s, 1, 0)
-            """
-            self.cursor.execute(query, (username, full_name, role, password_hash))
+            # Insert new user
+            query = '''
+                INSERT INTO users (
+                    school_id, username, full_name, role, password_hash, is_active
+                ) VALUES (%s, %s, %s, %s, %s, 1)
+            '''
+            values = (
+                school_id,
+                username,
+                full_name,
+                role,
+                password_hash
+            )
+            
+            self.cursor.execute(query, values)
+            user_id = self.cursor.lastrowid
             self.db_connection.commit()
             
-            # Log the action
-            self.log_audit_action("CREATE", "users", self.cursor.lastrowid, 
-                                 f"Created user {username} with role {role}")
+            # Log audit action using inherited method
+            self.log_audit_action(
+                action="CREATE",
+                table_name="users",
+                record_id=user_id,
+                description=f"Created user '{username}' with role '{role}'"
+            )
             
             QMessageBox.information(self, "Success", "User added successfully!")
+            self.update_status("User added successfully!", "success")
+            
             self.clear_form()
             self.load_users()
-            
-        except mysql.connector.IntegrityError:
-            QMessageBox.critical(self, "Error", "Username already exists.")
+            self.load_teachers()
+    
         except Error as e:
-            QMessageBox.critical(self, "Error", f"Failed to add user: {e}")
-
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to add user: {e}")
+            self.update_status("Failed to add user", "danger")
+            
     def update_user(self):
         """Update existing user"""
+        if not has_permission(self.user_session, 'update_user'):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to update users.")
+            return
+            
         if not self.current_user_id:
             QMessageBox.warning(self, "Error", "No user selected for update")
             return
-            
-        # Check user permissions
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "update_user"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to update users.")
+    
+        if not self.validate_form():
             return
-
-        username = self.username_entry.text().strip()
-        full_name = self.fullname_entry.text().strip()
-        role = self.role_combo.currentText().strip()
-
-        if not all([username, full_name]):
-            QMessageBox.warning(self, "Error", "Please fill in all required fields.")
-            return
-
+    
         try:
+            self._ensure_connection()
+            
+            # Check for duplicates
+            is_duplicate, duplicate_msg = self.check_for_duplicates(exclude_id=self.current_user_id)
+            if is_duplicate:
+                QMessageBox.warning(self, "Duplicate Username", duplicate_msg)
+                return
+    
+            username = self.username_entry.text().strip()
+            full_name = self.fullname_entry.text().strip()
+            role = self.role_combo.currentText().strip()
+            
             # Get old values for audit log
             old_query = "SELECT username, full_name, role FROM users WHERE id = %s"
             self.cursor.execute(old_query, (self.current_user_id,))
             old_values = self.cursor.fetchone()
             
-            query = """
-                UPDATE users SET username=%s, full_name=%s, role=%s
-                WHERE id=%s
-            """
-            self.cursor.execute(query, (username, full_name, role, self.current_user_id))
+            # Update user
+            query = '''
+                UPDATE users SET
+                    username = %s, full_name = %s, role = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            '''
+            values = (
+                username,
+                full_name,
+                role,
+                self.current_user_id
+            )
+            
+            self.cursor.execute(query, values)
             self.db_connection.commit()
             
-            # Log the action
-            self.log_audit_action("UPDATE", "users", self.current_user_id, 
-                                 f"Updated user {username}. Old: {old_values[0]}/{old_values[1]}/{old_values[2]}, New: {username}/{full_name}/{role}")
+            # Log audit action using inherited method
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="users",
+                record_id=self.current_user_id,
+                description=f"Updated user '{username}'. Old: {old_values[0]}/{old_values[1]}/{old_values[2]}, New: {username}/{full_name}/{role}"
+            )
             
             QMessageBox.information(self, "Success", "User updated successfully!")
+            self.update_status("User updated successfully!", "success")
+            
             self.clear_form()
             self.load_users()
-            self.load_teachers()  # Refresh teacher dropdown
-            
-        except mysql.connector.IntegrityError:
-            QMessageBox.critical(self, "Error", "Username already exists.")
-        except Error as e:
-            QMessageBox.critical(self, "Error", f"Failed to update user: {e}")
+            self.load_teachers()
 
+        except Error as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to update user: {e}")
+            self.update_status("Failed to update user", "danger")
+            
     def reset_password(self):
         """Reset user password"""
-        if not self.current_user_id:
-            QMessageBox.warning(self, "Warning", "Please select a user to reset password.")
-            return
-            
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "reset_password"):
+        if not has_permission(self.user_session, 'reset_password'):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to reset passwords.")
             return
-
+            
+        if not self.current_user_id:
+            QMessageBox.warning(self, "Error", "No user selected for password reset")
+            return
+            
         password = self.password_entry.text().strip()
         confirm_password = self.confirm_password_entry.text().strip()
 
-        # Validate confirm password
-        if password != confirm_password:
-            QMessageBox.warning(self, "Error", "Password and Confirm Password do not match!")
-            return
-
+        # Validate password
         if not password:
-            QMessageBox.warning(self, "Warning", "Please enter a new password.")
+            QMessageBox.warning(self, "Validation Error", "Please enter a new password.")
+            self.password_entry.setFocus()
             return
-
+            
+        if len(password) < 8:
+            QMessageBox.warning(self, "Validation Error", "Password must be at least 8 characters long.")
+            self.password_entry.setFocus()
+            return
+            
+        if password != confirm_password:
+            QMessageBox.warning(self, "Validation Error", "Password and confirmation do not match.")
+            self.password_entry.setFocus()
+            return
+            
         try:
-            hashed = hash_password(password)
-            query = "UPDATE users SET password_hash=%s WHERE id=%s"
-            self.cursor.execute(query, (hashed, self.current_user_id))
+            self._ensure_connection()
+            password_hash = hash_password(password)
+            
+            query = "UPDATE users SET password_hash = %s WHERE id = %s"
+            self.cursor.execute(query, (password_hash, self.current_user_id))
             self.db_connection.commit()
             
-            # Log the action
-            self.log_audit_action("UPDATE", "users", self.current_user_id, 
-                                 "Password reset by administrator")
+            # Log audit action using inherited method
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="users",
+                record_id=self.current_user_id,
+                description="Password reset by administrator"
+            )
             
             QMessageBox.information(self, "Success", "Password reset successfully!")
+            self.update_status("Password reset successfully!", "success")
+            
             self.password_entry.clear()
             self.confirm_password_entry.clear()
+            
         except Error as e:
-            QMessageBox.critical(self, "Error", f"Failed to reset password: {e}")
-
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to reset password: {e}")
+            self.update_status("Failed to reset password", "danger")
+            
     def deactivate_user(self):
         """Deactivate user"""
-        if not self.current_user_id:
-            QMessageBox.warning(self, "Warning", "Please select a user to deactivate.")
+        if not has_permission(self.user_session, 'deactivate_user'):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to deactivate users.")
             return
             
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "deactivate_user"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to deactivate user.")
-            return
-
-        reply = QMessageBox.question(
-            self, 
-            "Confirm", 
-            "Are you sure you want to deactivate this user?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                query = "UPDATE users SET is_active=0 WHERE id=%s"
-                self.cursor.execute(query, (self.current_user_id,))
-                self.db_connection.commit()
-                
-                # Log the action
-                self.log_audit_action("UPDATE", "users", self.current_user_id, 
-                                     "User deactivated by administrator")
-                
-                QMessageBox.information(self, "Success", "User deactivated successfully!")
-                self.clear_form()
-                self.load_users()
-            except Error as e:
-                QMessageBox.critical(self, "Error", f"Failed to deactivate user: {e}")
-
-    def reactivate_user(self):
-        """Reactivate user"""
         if not self.current_user_id:
-            QMessageBox.warning(self, "Warning", "Please select a user to reactivate.")
+            QMessageBox.warning(self, "Error", "No user selected for deactivation")
             return
             
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "reactivate_user"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to reactivate user.")
-            return
-
-        reply = QMessageBox.question(
-            self, 
-            "Confirm", 
-            "Are you sure you want to reactivate this user?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                query = "UPDATE users SET is_active=1 WHERE id=%s"
-                self.cursor.execute(query, (self.current_user_id,))
-                self.db_connection.commit()
-                
-                # Log the action
-                self.log_audit_action("UPDATE", "users", self.current_user_id, 
-                                     "User reactivated by administrator")
-                
-                QMessageBox.information(self, "Success", "User reactivated successfully!")
-                self.clear_form()
-                self.load_users()
-            except Error as e:
-                QMessageBox.critical(self, "Error", f"Failed to reactivate user: {e}")
-
-    def unlock_account(self):
-        """Unlock user account"""
-        if not self.current_user_id:
-            QMessageBox.warning(self, "Warning", "Please select a user to unlock.")
-            return
-            
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "unlock_user"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to unlock user.")
-            return
-        
-        reply = QMessageBox.question(
-            self, 
-            "Confirm Unlock", 
-            "Are you sure you want to unlock this user account and reset failed login attempts?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                query = "UPDATE users SET failed_login_attempts=0, account_locked_until=NULL WHERE id=%s"
-                self.cursor.execute(query, (self.current_user_id,))
-                self.db_connection.commit()
-                
-                # Log the action
-                self.log_audit_action("UPDATE", "users", self.current_user_id, 
-                                     "Account unlocked and failed attempts reset by administrator")
-                
-                QMessageBox.information(self, "Success", "Account unlocked successfully!")
-                self.clear_form()
-                self.load_users()
-            except Error as e:
-                QMessageBox.critical(self, "Error", f"Failed to unlock account: {e}")
-
-    def delete_user(self):
-        """Delete user permanently"""
-        if not self.current_user_id:
-            QMessageBox.warning(self, "Warning", "Please select a user to delete.")
-            return
-            
-        # Check user permissions - FIXED
-        if not has_permission(self.user_session, "delete_user"):
-            QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete user.")
-            return
-
         # Get username for confirmation
         username = self.username_entry.text() or "this user"
 
         reply = QMessageBox.question(
-            self, 
-            "Confirm Delete", 
-            f"Are you sure you want to permanently delete {username}?\n\nThis action cannot be undone!",
+            self,
+            "Confirm Deactivation", 
+            f"Are you sure you want to deactivate user '{username}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                # Get user info for audit log before deletion
-                user_query = "SELECT username, full_name, role FROM users WHERE id = %s"
-                self.cursor.execute(user_query, (self.current_user_id,))
-                user_info = self.cursor.fetchone()
-                
-                query = "DELETE FROM users WHERE id=%s"
-                self.cursor.execute(query, (self.current_user_id,))
-                self.db_connection.commit()
-                
-                # Log the action
-                if user_info:
-                    self.log_audit_action("DELETE", "users", self.current_user_id, 
-                                         f"Deleted user {user_info[0]} ({user_info[1]}) with role {user_info[2]}")
-                
-                QMessageBox.information(self, "Success", "User deleted successfully!")
-                self.clear_form()
-                self.load_users()
-                self.load_teachers()  # Refresh teacher dropdown
-            except Error as e:
-                QMessageBox.critical(self, "Error", f"Failed to delete user: {e}")
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        try:
+            self._ensure_connection()
+            
+            # Deactivate the user
+            query = "UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+            self.cursor.execute(query, (self.current_user_id,))
+            self.db_connection.commit()
+            
+            # Log audit action using inherited method
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="users",
+                record_id=self.current_user_id,
+                description=f"Deactivated user '{username}'"
+            )
+            
+            QMessageBox.information(self, "Success", "User deactivated successfully!")
+            self.update_status("User deactivated successfully!", "success")
+            
+            self.clear_form()
+            self.load_users()
+            
+        except Error as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to deactivate user: {e}")
+            self.update_status("Failed to deactivate user", "danger")
+            
+    def reactivate_user(self):
+        """Reactivate user"""
+        if not has_permission(self.user_session, 'reactivate_user'):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to reactivate users.")
+            return
+            
+        if not self.current_user_id:
+            QMessageBox.warning(self, "Error", "No user selected for reactivation")
+            return
+            
+        # Get username for confirmation
+        username = self.username_entry.text() or "this user"
 
+        reply = QMessageBox.question(
+            self,
+            "Confirm Reactivation", 
+            f"Are you sure you want to reactivate user '{username}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        try:
+            self._ensure_connection()
+            
+            # Reactivate the user
+            query = "UPDATE users SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+            self.cursor.execute(query, (self.current_user_id,))
+            self.db_connection.commit()
+            
+            # Log audit action using inherited method
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="users",
+                record_id=self.current_user_id,
+                description=f"Reactivated user '{username}'"
+            )
+            
+            QMessageBox.information(self, "Success", "User reactivated successfully!")
+            self.update_status("User reactivated successfully!", "success")
+            
+            self.clear_form()
+            self.load_users()
+            
+        except Error as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to reactivate user: {e}")
+            self.update_status("Failed to reactivate user", "danger")
+            
+    def unlock_account(self):
+        """Unlock user account"""
+        if not has_permission(self.user_session, 'unlock_user'):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to unlock user accounts.")
+            return
+            
+        if not self.current_user_id:
+            QMessageBox.warning(self, "Error", "No user selected for unlocking")
+            return
+            
+        # Get username for confirmation
+        username = self.username_entry.text() or "this user"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Unlock", 
+            f"Are you sure you want to unlock user account '{username}' and reset failed login attempts?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        try:
+            self._ensure_connection()
+            
+            # Unlock the account
+            query = "UPDATE users SET failed_login_attempts = 0, account_locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+            self.cursor.execute(query, (self.current_user_id,))
+            self.db_connection.commit()
+            
+            # Log audit action using inherited method
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="users",
+                record_id=self.current_user_id,
+                description=f"Unlocked user account '{username}' and reset failed login attempts"
+            )
+            
+            QMessageBox.information(self, "Success", "User account unlocked successfully!")
+            self.update_status("User account unlocked successfully!", "success")
+            
+            self.clear_form()
+            self.load_users()
+            
+        except Error as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to unlock user account: {e}")
+            self.update_status("Failed to unlock user account", "danger")
+            
+    def delete_user(self):
+        """Delete user permanently"""
+        if not has_permission(self.user_session, 'delete_user'):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete users.")
+            return
+            
+        if not self.current_user_id:
+            QMessageBox.warning(self, "Error", "No user selected for deletion")
+            return
+            
+        # Get username for confirmation
+        username = self.username_entry.text() or "this user"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete", 
+            f"Are you sure you want to permanently delete user '{username}'?\n\nThis action cannot be undone!",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        try:
+            self._ensure_connection()
+            
+            # Get user info for audit log before deletion
+            user_query = "SELECT username, full_name, role FROM users WHERE id = %s"
+            self.cursor.execute(user_query, (self.current_user_id,))
+            user_info = self.cursor.fetchone()
+            
+            # Delete the user
+            query = "DELETE FROM users WHERE id = %s"
+            self.cursor.execute(query, (self.current_user_id,))
+            self.db_connection.commit()
+            
+            # Log audit action using inherited method
+            if user_info:
+                self.log_audit_action(
+                    action="DELETE",
+                    table_name="users",
+                    record_id=self.current_user_id,
+                    description=f"Deleted user '{user_info[0]}' ({user_info[1]}) with role {user_info[2]}"
+                )
+            
+            QMessageBox.information(self, "Success", "User deleted successfully!")
+            self.update_status("User deleted successfully!", "success")
+            
+            self.clear_form()
+            self.load_users()
+            self.load_teachers()
+            
+        except Error as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Database Error", f"Failed to delete user: {e}")
+            self.update_status("Failed to delete user", "danger")
+                
     def clear_form(self):
         """Clear all form fields"""
         self.username_entry.clear()
@@ -1221,161 +1380,132 @@ class UsersForm(AuditBaseForm):
         
         # Handle role change to show/hide teacher fields
         self.on_role_change("Teacher")
-    
-    def refresh_data(self):
-        """Refresh all data in the form with progress indication"""
-        try:
-            # Show loading state
-            self.status_label.setText("Refreshing...")
-            self.status_label.setStyleSheet(f"color: {self.colors['info']}; font-weight: bold;")
-            
-            # Process events to update UI
-            QApplication.processEvents()
-            
-            # Clear current selection
-            self.current_user_id = None
-            self.current_teacher_id = None
-            
-            # Reload users data
-            self.load_users()
-            
-            # Reload teachers for dropdown
-            self.load_teachers()
-            
-            # Clear form fields
-            self.username_entry.clear()
-            self.fullname_entry.clear()
-            self.fullname_entry.setEnabled(True)
-            self.password_entry.clear()
-            self.confirm_password_entry.clear()
-            self.position_entry.clear()
-            self.role_combo.setCurrentText("Teacher")
-            self.teacher_combo.setCurrentText("None - Manual Entry")
-            
-            # Reset security status
-            self.failed_attempts_label.setText("0")
-            self.lock_status_label.setText("Not Locked")
-            self.lock_status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
-            
-            # Clear search
-            self.search_entry.clear()
-            
-            # Update status message
-            self.status_label.setText("Data Refreshed")
-            self.status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
-            
-            # Show brief success message (optional)
-            # QMessageBox.information(self, "Success", "User data refreshed successfully!")
-            
-        except Error as e:
-            QMessageBox.critical(self, "Error", f"Failed to refresh data: {e}")
-            self.status_label.setText("Refresh Failed")
-            self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Unexpected error during refresh: {e}")
-            self.status_label.setText("Refresh Failed")
-            self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
-
-    
-    def get_user_stats(self):
-        """Get user statistics for display"""
-        try:
-            # Total users
-            self.cursor.execute("SELECT COUNT(*) FROM users")
-            total_users = self.cursor.fetchone()[0]
-            
-            # Active users
-            self.cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
-            active_users = self.cursor.fetchone()[0]
-            
-            # Locked users
-            self.cursor.execute("SELECT COUNT(*) FROM users WHERE account_locked_until > NOW()")
-            locked_users = self.cursor.fetchone()[0]
-            
-            # Users by role
-            self.cursor.execute("SELECT role, COUNT(*) FROM users GROUP BY role")
-            role_stats = dict(self.cursor.fetchall())
-            
-            return {
-                'total': total_users,
-                'active': active_users,
-                'inactive': total_users - active_users,
-                'locked': locked_users,
-                'roles': role_stats
-            }
-        except Error as e:
-            print(f"Error getting user stats: {e}")
-            return {'total': 0, 'active': 0, 'inactive': 0, 'locked': 0, 'roles': {}}
-
-    def export_users(self, checked=False):
-        """
-        Export users to Excel with green header
-        :param checked: Ignored. Supplied by Qt when used as direct slot
-        """
-        try:
-            query = '''
-                SELECT 
-                    u.id,
-                    u.username,
-                    u.full_name,
-                    u.role,
-                    CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END AS status,
-                    COALESCE(t.position, 'N/A') AS position,
-                    CASE 
-                        WHEN u.account_locked_until IS NULL THEN 'Unlocked'
-                        WHEN u.account_locked_until > NOW() THEN 'Locked'
-                        ELSE 'Unlocked'
-                    END AS lock_status
-                FROM users u
-                LEFT JOIN teachers t ON TRIM(UPPER(t.full_name)) = TRIM(UPPER(u.full_name))
-                ORDER BY u.role, u.full_name
-            '''
-            self.cursor.execute(query)
-            users = self.cursor.fetchall()
-    
-            if not users:
-                QMessageBox.information(self, "No Data", "No users found to export.")
-                return
-    
-            school_info = self.get_school_info()
-            title = f"{school_info['name']} - Users Export"
-    
-            self.export_with_green_header(
-                data=users,
-                headers=["ID", "Username", "Full Name", "Role", "Status", "Position", "Lock Status"],
-                filename_prefix="users",
-                title=title
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export users: {str(e)}")
+        
+    def update_status(self, message, status_type="info"):
+        """Update status label with inherited colors"""
+        color_map = {
+            "success": self.colors['success'],
+            "danger": self.colors['danger'],
+            "warning": self.colors['warning'],
+            "info": self.colors['info']
+        }
+        
+        color = color_map.get(status_type, self.colors['info'])
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet(f"color: {color}; font-weight: bold;")
         
     def refresh_data(self):
         """Refresh all data"""
         try:
-            self.load_users()
+            self._ensure_connection()
+            
             self.load_teachers()
-            QMessageBox.information(self, "Success", "Data refreshed successfully!")
-        except Exception as e:  # or mysql.connector.Error if using MySQL
+            self.load_users()
+            
+            self.update_status("All data refreshed successfully", "success")
+            
+        except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to refresh data: {e}")
+            self.update_status("Failed to refresh data", "danger")
+            
+    def export_users(self):
+        """Export users to Excel using inherited export method"""
+        try:
+            self._ensure_connection()
+            
+            # Get data for export
+            query = '''
+                SELECT 
+                    u.username,
+                    u.full_name,
+                    u.role,
+                    COALESCE(t.position, 'N/A') as position,
+                    CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END as status,
+                    u.failed_login_attempts,
+                    CASE 
+                        WHEN u.account_locked_until IS NULL THEN 'Not Locked'
+                        WHEN u.account_locked_until > NOW() THEN CONCAT('Locked until ', DATE_FORMAT(u.account_locked_until, '%Y-%m-%d %H:%i'))
+                        ELSE 'Lock Expired'
+                    END as lock_status,
+                    u.created_at
+                FROM users u
+                LEFT JOIN teachers t ON t.full_name = u.full_name
+                ORDER BY u.role, u.username
+            '''
+            self.cursor.execute(query)
+            users = self.cursor.fetchall()
+            
+            if not users:
+                QMessageBox.information(self, "No Data", "No users to export.")
+                return
 
+            headers = [
+                'Username', 'Full Name', 'Role', 'Position', 'Status', 
+                'Failed Attempts', 'Lock Status', 'Created Date'
+            ]
+            
+            # Convert to proper format for export
+            data = []
+            for user in users:
+                row = []
+                for i, value in enumerate(user):
+                    if i == 7 and value:  # created_at date
+                        row.append(value.strftime('%Y-%m-%d %H:%M:%S'))
+                    else:
+                        row.append(str(value) if value is not None else '')
+                data.append(row)
+
+            # Use inherited school info method
+            school_info = self.get_school_info()
+            title = f"{school_info['name']} - Users Export"
+
+            # Use inherited export method
+            self.export_with_green_header(
+                data=data,
+                headers=headers,
+                filename_prefix="users_export",
+                title=title
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export users: {str(e)}")
+            
+    def apply_permissions(self):
+        """Apply permissions to form controls using inherited user_session"""
+        if not self.user_session:
+            # Disable buttons if no session
+            for btn in [self.save_btn, self.update_btn, self.delete_btn, 
+                       self.deactivate_btn, self.reactivate_btn, self.reset_pwd_btn, 
+                       self.unlock_btn]:
+                btn.setEnabled(False)
+            return
+            
+        # Set button states based on permissions
+        self.save_btn.setEnabled(has_permission(self.user_session, 'create_user'))
+        self.update_btn.setEnabled(has_permission(self.user_session, 'update_user'))
+        self.delete_btn.setEnabled(has_permission(self.user_session, 'delete_user'))
+        self.deactivate_btn.setEnabled(has_permission(self.user_session, 'deactivate_user'))
+        self.reactivate_btn.setEnabled(has_permission(self.user_session, 'reactivate_user'))
+        self.reset_pwd_btn.setEnabled(has_permission(self.user_session, 'reset_password'))
+        self.unlock_btn.setEnabled(has_permission(self.user_session, 'unlock_user'))
+        
+        # Set tooltips
+        self.save_btn.setToolTip("Add new user" if self.save_btn.isEnabled() else "Permission required: create_user")
+        self.update_btn.setToolTip("Update selected user" if self.update_btn.isEnabled() else "Permission required: update_user")
+        self.delete_btn.setToolTip("Delete selected user" if self.delete_btn.isEnabled() else "Permission required: delete_user")
+        self.deactivate_btn.setToolTip("Deactivate selected user" if self.deactivate_btn.isEnabled() else "Permission required: deactivate_user")
+        self.reactivate_btn.setToolTip("Reactivate selected user" if self.reactivate_btn.isEnabled() else "Permission required: reactivate_user")
+        self.reset_pwd_btn.setToolTip("Reset password for selected user" if self.reset_pwd_btn.isEnabled() else "Permission required: reset_password")
+        self.unlock_btn.setToolTip("Unlock selected user account" if self.unlock_btn.isEnabled() else "Permission required: unlock_user")
 
     def closeEvent(self, event):
-        """Handle close event to clean up database connection"""
+        """Cleanup when the form is closed"""
         try:
-            if hasattr(self, 'cursor'):
+            if hasattr(self, 'cursor') and self.cursor:
                 self.cursor.close()
-            if hasattr(self, 'db_connection'):
+            if hasattr(self, 'db_connection') and self.db_connection:
                 self.db_connection.close()
-        except:
-            pass
+        except Exception as e:
+            print(f"Error closing database connection: {e}")
+        
         event.accept()
-
-    def __del__(self):
-        """Close database connection when object is destroyed"""
-        try:
-            if hasattr(self, 'cursor'):
-                self.cursor.close()
-            if hasattr(self, 'db_connection'):
-                self.db_connection.close()
-        except:
-            pass

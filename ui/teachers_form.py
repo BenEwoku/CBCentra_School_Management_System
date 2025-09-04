@@ -26,9 +26,6 @@ from utils.pdf_utils import view_pdf
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
-# Add parent directory to path to import models
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.models import get_db_connection
 
 

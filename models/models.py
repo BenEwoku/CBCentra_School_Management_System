@@ -172,6 +172,53 @@ def initialize_tables(conn, force=False):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS role_permissions (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              role_id INT NOT NULL,
+              permission VARCHAR(100) NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_permissions (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              user_id INT NOT NULL,
+              permission VARCHAR(100) NOT NULL,
+              granted_by INT,
+              granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              expires_at TIMESTAMP
+            )
+        """)        
+        # Role-based tab permissions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS role_tab_permissions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                role_name VARCHAR(50) NOT NULL,
+                tab_name VARCHAR(50) NOT NULL,
+                can_access BOOLEAN DEFAULT TRUE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_role_tab (role_name, tab_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
+       # User-specific tab overrides
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_tab_overrides (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                tab_name VARCHAR(50) NOT NULL,
+                access_type ENUM('grant', 'deny') NOT NULL,
+                granted_by INT,
+                granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                reason TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (granted_by) REFERENCES users(id),
+                UNIQUE KEY unique_user_tab (user_id, tab_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
         # === 3. Academic Years ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS academic_years (

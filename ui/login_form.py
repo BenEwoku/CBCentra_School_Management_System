@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QFrame, QApplication
+    QMessageBox, QFrame, QApplication, QDialog
 )
 from PySide6.QtGui import QFont, QPixmap
 from PySide6.QtCore import Qt, Signal
@@ -20,7 +20,7 @@ from utils.auth import verify_password
 from utils.permissions import has_permission
 
 
-class LoginForm(QWidget):
+class LoginForm(QDialog):
     login_successful = Signal(dict)  # Signal emitted with user session data
 
     def __init__(self, parent=None):
@@ -283,17 +283,20 @@ class LoginForm(QWidget):
         """Handle login attempt"""
         username = self.username_entry.text().strip()
         password = self.password_entry.text().strip()
-
+    
         if not username or not password:
             QMessageBox.warning(self, "Login Failed", "Please enter both username and password")
             return
-
+    
+        connection = None
+        cursor = None
+    
         try:
             connection = get_db_connection()
             if not connection:
                 QMessageBox.critical(self, "Database Error", "Cannot connect to database")
                 return
-
+    
             cursor = connection.cursor(dictionary=True)
             query = """
                 SELECT u.*, s.school_name 
@@ -303,10 +306,11 @@ class LoginForm(QWidget):
             """
             cursor.execute(query, (username,))
             user = cursor.fetchone()
-
-            # Add: Get the teacher's photo_path
+    
+            # Get teacher photo and position if available
+            photo_path = None
+            position = 'N/A'
             if user:
-                # Get teacher photo if this user is a teacher
                 teacher_query = """
                     SELECT position, photo_path 
                     FROM teachers 
@@ -314,61 +318,58 @@ class LoginForm(QWidget):
                 """
                 cursor.execute(teacher_query, (user.get('full_name'), user.get('username')))
                 teacher = cursor.fetchone()
-                
-                photo_path = None
-                if teacher and teacher['photo_path']:
-                    # Convert to relative path (e.g., "uploads/teachers/1.jpg")
+                if teacher:
                     photo_path = teacher['photo_path']
-
+                    position = teacher['position']
+    
             if not user:
                 try:
                     self.log_login_attempt(username, "failed", "User not found")
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Failed to log login attempt: {e}")
                 QMessageBox.warning(self, "Login Failed", "Invalid username")
-                cursor.close()
-                connection.close()
                 return
-
+    
             if user.get('is_active') is not None and not user['is_active']:
                 QMessageBox.warning(self, "Login Failed", "Account is disabled")
-                cursor.close()
-                connection.close()
                 return
-
+    
+            # Verify password
             stored_password = user.get('password_hash', user.get('password', ''))
             password_valid = False
             try:
                 password_valid = verify_password(password, stored_password)
-            except:
+            except Exception as e:
+                print(f"Password verification error: {e}")
                 password_valid = (password == stored_password)
-
+    
             if not password_valid:
                 try:
                     self.update_failed_attempts(user['id'])
                     self.log_login_attempt(user['id'], "failed", "Wrong password")
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Failed to update login attempts: {e}")
                 QMessageBox.warning(self, "Login Failed", "Invalid password")
-                cursor.close()
-                connection.close()
                 return
-
+    
+            # Check if account is locked
             if user.get('account_locked_until') and user['account_locked_until'] > datetime.now():
                 lock_time = user['account_locked_until'].strftime("%Y-%m-%d %H:%M:%S")
-                QMessageBox.warning(self, "Account Locked",
-                                  f"Account is locked until {lock_time}. Please contact administrator.")
-                cursor.close()
-                connection.close()
+                QMessageBox.warning(
+                    self, "Account Locked",
+                    f"Account is locked until {lock_time}. Please contact administrator."
+                )
                 return
-
+    
+            # Reset failed attempts and update login info
             try:
                 self.reset_failed_attempts(user['id'])
                 self.update_last_login(user['id'])
                 self.log_login_attempt(user['id'], "success", "Login successful")
-            except:
-                pass
-
+            except Exception as e:
+                print(f"Failed to update login metadata: {e}")
+    
+            # ✅ Build user session
             user_session = {
                 'user_id': int(user['id']) if user['id'] is not None else None,
                 'username': str(user['username']) if user['username'] else '',
@@ -379,34 +380,48 @@ class LoginForm(QWidget):
                 'permissions': self.get_user_permissions(user.get('role', 'user')),
                 'login_time': datetime.now().isoformat(),
                 'ip_address': str(self.get_client_ip()),
-                'position': teacher['position'] if teacher and teacher['position'] else 'N/A',
-                'profile_image': photo_path  # Add this!
+                'position': position,
+                'profile_image': photo_path
             }
-
+    
             print(f"✅ Login successful for user: {user_session['username']}")
-
+    
+            # ✅ Emit session
             try:
                 self.login_successful.emit(user_session)
             except Exception as e:
                 print(f"Signal emission error: {e}")
-                simple_session = {
+                # Fallback minimal session
+                fallback_session = {
                     'user_id': user['id'],
                     'username': user['username'],
                     'full_name': user.get('full_name', user['username']),
                     'role': user.get('role', 'user')
                 }
-                self.login_successful.emit(simple_session)
-
-            cursor.close()
-            connection.close()
-
+                self.login_successful.emit(fallback_session)
+    
+            # ✅ Close dialog — this returns 1 from exec()
+            self.accept()
+    
         except Error as e:
             print(f"❌ Database error: {e}")
             QMessageBox.critical(self, "Database Error", f"Login failed: {str(e)}")
         except Exception as e:
             print(f"❌ Unexpected error: {e}")
             QMessageBox.critical(self, "Unexpected Error", f"An unexpected error occurred: {str(e)}")
-
+        finally:
+            # Clean up DB resources
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if connection and connection.is_connected():
+                try:
+                    connection.close()
+                except:
+                    pass
+                
     def get_user_permissions(self, role):
         try:
             from utils.permissions import get_role_permissions
