@@ -319,7 +319,7 @@ class LoginLogsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Failed to export logs: {e}")
 
     def delete_old_logs(self):
-        if not has_permission(self.user_session.get('role'), 'delete_login_logs'):
+        if not has_permission(self.user_session, 'delete_login_logs'):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete login logs.")
             return
 
@@ -355,8 +355,21 @@ class LoginLogsForm(AuditBaseForm):
                 QMessageBox.critical(self, "Error", f"Failed to delete old logs: {e}")
 
     def refresh_data(self):
-        self.load_login_logs()
-        QMessageBox.information(self, "Success", "Data refreshed successfully!")
+        """Refresh data from database"""
+        try:
+            # Ensure connection is alive
+            self._ensure_connection()
+            self.db_connection.commit()
+            
+            # Reload the logs
+            self.load_login_logs()
+            
+            # Show success message
+            QMessageBox.information(self, "Success", "Data refreshed successfully!")
+            
+        except Exception as e:
+            # Handle any error during refresh
+            QMessageBox.critical(self, "Error", f"Failed to refresh data: {str(e)}")
 
     def closeEvent(self, event):
         try:

@@ -25,6 +25,7 @@ from mysql.connector import Error
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from utils.permissions import has_permission
 
 
 class DatabaseWorker(QThread):
@@ -231,6 +232,7 @@ class ParentDetailsPopup(QDialog):
         
         layout.addLayout(button_layout)
 
+
     def load_parent_details(self):
         try:
             self.db_connection = get_db_connection()
@@ -429,6 +431,7 @@ class ParentsForm(AuditBaseForm):
         # Update stats periodically and load data without message
         self.update_statistics()
         self.load_parents()  # No success message on startup
+        self.setup_permissions_ui()  # 👈 Add this line
     
     # 2. Create a separate method to initialize the refresh menu
     def create_refresh_menu(self):
@@ -780,7 +783,45 @@ class ParentsForm(AuditBaseForm):
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Filter failed: {str(e)}")
-            
+
+    def setup_permissions_ui(self):
+        """Set tooltips and enable/disable buttons based on user permissions"""
+        can_create = has_permission(self.user_session, "create_parent")
+        can_edit = has_permission(self.user_session, "edit_parent")
+        can_delete = has_permission(self.user_session, "delete_parent")
+    
+        # ✅ Only apply to actual existing QPushButton attributes
+        self.save_btn.setEnabled(can_create)
+        self.update_btn.setEnabled(can_edit)
+        self.delete_btn.setEnabled(can_delete)
+    
+        # ✅ Set tooltips for real buttons
+        self.save_btn.setToolTip(
+            "Add a new parent" if can_create else "Permission required: create_parent"
+        )
+        self.update_btn.setToolTip(
+            "Update current parent" if can_edit else "Permission required: edit_parent"
+        )
+        self.delete_btn.setToolTip(
+            "Delete selected parent" if can_delete else "Permission required: delete_parent"
+        )
+    
+        # ⚠️ DO NOT include:
+        # self.edit_selected_btn.setEnabled(...) → ❌ doesn't exist
+        # self.edit_selected_btn.setToolTip(...) → ❌ doesn't exist
+    
+        # Optional: tooltips for other known buttons (if they exist)
+        button_tooltips = {
+            'view_details_btn': "View full parent details",
+            'export_btn': "Export parent list to Excel",
+            'pdf_btn': "Generate PDF report of parents",
+            'integrity_check_btn': "Check for data inconsistencies in parent-student links"
+        }
+    
+        for attr_name, tooltip in button_tooltips.items():
+            if hasattr(self, attr_name):
+                getattr(self, attr_name).setToolTip(tooltip)
+    
     def load_parents(self, show_success_message=False):
         """Load all parents with enhanced information and proper count calculation"""
         try:
@@ -825,6 +866,7 @@ class ParentsForm(AuditBaseForm):
     def refresh_all_data(self):
         """Manually refresh all data with success message"""
         self.load_parents(show_success_message=True)
+        self.setup_permissions_ui()  # Keep UI in sync
 
     def populate_parents_table(self, parents):
         """Populate the parents table with data"""
@@ -905,7 +947,12 @@ class ParentsForm(AuditBaseForm):
             self.delete_btn.setEnabled(True)
 
     def new_parent(self):
-        """Create new parent"""
+        """Create new parent - permission checked"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "create_parent"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to create parents.")
+            return
+    
         self.tabs.setCurrentWidget(self.form_tab)
         self.clear_form()
 
@@ -918,16 +965,28 @@ class ParentsForm(AuditBaseForm):
         
         try:
             dialog = ParentDetailsPopup(self, pid, self.user_session)
-            dialog.exec()
+            if dialog.exec() == QDialog.Accepted:
+                # Optional: log view event if desired
+                self.log_audit_action(
+                    action="VIEW",
+                    table_name="parents",
+                    record_id=pid,
+                    description=f"User viewed parent details (ID: {pid})"
+                )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open details: {str(e)}")
 
     def edit_selected_parent(self):
-        """Edit selected parent"""
+        """Edit selected parent - permission checked"""
         if not self.current_parent_id:
             QMessageBox.warning(self, "Select", "Please select a parent to edit.")
             return
-        
+    
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "edit_parent"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to edit parents.")
+            return
+    
         self.tabs.setCurrentWidget(self.form_tab)
         self.load_parent_details(self.current_parent_id)
 
@@ -969,15 +1028,20 @@ class ParentsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Failed to load parent: {str(e)}")
 
     def save_parent(self):
-        """Save new parent"""
+        """Save new parent with permission and audit"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "create_parent"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to add parents.")
+            return
+    
         if not self.validate_form():
             return
-
+    
         first = self.first_name_entry.text().strip()
         last = self.surname_entry.text().strip()
         phone = self.phone_entry.text().strip()
         full_name = f"{first} {last}".strip()
-
+    
         try:
             self.show_loading(True)
             
@@ -990,7 +1054,7 @@ class ParentsForm(AuditBaseForm):
                 QMessageBox.warning(self, "Duplicate", "A parent with this phone number already exists.")
                 self.show_loading(False)
                 return
-
+    
             query = """
                 INSERT INTO parents (
                     school_id, first_name, surname, full_name, relation,
@@ -1010,9 +1074,17 @@ class ParentsForm(AuditBaseForm):
             )
             
             self.cursor.execute(query, values)
-            self.current_parent_id = self.cursor.lastrowid
+            parent_id = self.cursor.lastrowid
             self.db_connection.commit()
             
+            # ✅ Log audit: Parent created
+            self.log_audit_action(
+                action="CREATE",
+                table_name="parents",
+                record_id=parent_id,
+                description=f"Created parent: {full_name}, Phone: {phone}"
+            )
+    
             QMessageBox.information(self, "Success", "Parent saved successfully!")
             self.load_parents()
             self.clear_form()
@@ -1022,29 +1094,34 @@ class ParentsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Save failed: {str(e)}")
         finally:
             self.show_loading(False)
-
+        
     def update_parent(self):
-        """Update existing parent"""
+        """Update existing parent with permission and audit"""
         if not self.current_parent_id:
             QMessageBox.warning(self, "Error", "No parent selected for update.")
             return
-
+    
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "edit_parent"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to edit parents.")
+            return
+    
         if not self.validate_form():
             return
-
+    
         first = self.first_name_entry.text().strip()
         last = self.surname_entry.text().strip()
         full_name = f"{first} {last}".strip()
-
+    
         try:
             self.show_loading(True)
             
             query = """
                 UPDATE parents SET
-                first_name=%s, surname=%s, full_name=%s, relation=%s,
-                email=%s, phone=%s, address1=%s, address2=%s,
-                is_payer=%s, is_emergency_contact=%s, is_active=%s,
-                updated_at=CURRENT_TIMESTAMP
+                    first_name=%s, surname=%s, full_name=%s, relation=%s,
+                    email=%s, phone=%s, address1=%s, address2=%s,
+                    is_payer=%s, is_emergency_contact=%s, is_active=%s,
+                    updated_at=CURRENT_TIMESTAMP
                 WHERE id=%s
             """
             values = (
@@ -1061,6 +1138,14 @@ class ParentsForm(AuditBaseForm):
             self.cursor.execute(query, values)
             self.db_connection.commit()
             
+            # ✅ Log audit: Parent updated
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="parents",
+                record_id=self.current_parent_id,
+                description=f"Updated parent: {full_name} (ID: {self.current_parent_id})"
+            )
+    
             QMessageBox.information(self, "Success", "Parent updated successfully!")
             self.load_parents()
             
@@ -1116,13 +1201,23 @@ class ParentsForm(AuditBaseForm):
         self.save_btn.setText("Save Parent")
 
     def delete_parent(self):
-        """Delete selected parent with confirmation"""
+        """Delete selected parent with confirmation and audit"""
         if not self.current_parent_id:
             QMessageBox.warning(self, "Select", "Please select a parent to delete.")
             return
-
+    
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "delete_parent"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete parents.")
+            return
+    
         try:
-            # Check if parent has linked students
+            # Get parent name before deletion
+            self.cursor.execute("SELECT full_name FROM parents WHERE id = %s", (self.current_parent_id,))
+            result = self.cursor.fetchone()
+            full_name = result[0] if result else "Unknown"
+    
+            # Check if linked to students
             self.cursor.execute(
                 "SELECT COUNT(*) FROM student_parent WHERE parent_id = %s", 
                 (self.current_parent_id,)
@@ -1139,7 +1234,7 @@ class ParentsForm(AuditBaseForm):
                 )
                 if reply != QMessageBox.Yes:
                     return
-
+    
             # Final confirmation
             reply = QMessageBox.question(
                 self, "Confirm Delete",
@@ -1151,13 +1246,22 @@ class ParentsForm(AuditBaseForm):
             if reply == QMessageBox.Yes:
                 self.show_loading(True)
                 
-                # Soft delete (set is_active = FALSE)
+                # Soft delete
                 self.cursor.execute(
                     "UPDATE parents SET is_active = FALSE WHERE id = %s", 
                     (self.current_parent_id,)
                 )
                 self.db_connection.commit()
                 
+                # ✅ Log audit: Parent soft-deleted
+                self.log_audit_action(
+                    action="DELETE",
+                    table_name="parents",
+                    record_id=self.current_parent_id,
+                    description=f"Soft-deleted parent: {full_name} (ID: {self.current_parent_id}), "
+                                f"had {student_count} student links"
+                )
+    
                 QMessageBox.information(self, "Success", "Parent deleted successfully.")
                 self.load_parents()
                 self.clear_form()
