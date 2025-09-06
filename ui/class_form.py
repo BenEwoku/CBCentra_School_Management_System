@@ -25,56 +25,145 @@ from ui.student_class_assignment_form import StudentClassAssignmentForm
 from utils.permissions import has_permission
 
 
+
 class SearchableComboBox(QComboBox):
-    """Enhanced ComboBox with search functionality"""
+    """Enhanced ComboBox with real-time search functionality"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setEditable(True)
         self.original_data = []  # Store (display_text, value) pairs
-        self.lineEdit().textEdited.connect(self.filter_values)
-        self.lineEdit().returnPressed.connect(self.on_return_pressed)
+        self.filtered_data = []  # Store currently filtered data
+        
+        # Configure line edit for better UX
+        line_edit = self.lineEdit()
+        line_edit.textEdited.connect(self.filter_values)
+        line_edit.returnPressed.connect(self.on_return_pressed)
+        line_edit.setPlaceholderText("Type to search...")
+        
+        # Set properties for better dropdown behavior
         self.setMaxVisibleItems(10)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        
+        # Connect signals for better interaction
+        self.activated.connect(self.on_item_selected)
         
     def setData(self, data_list):
         """Set the data for the combobox - list of (display_text, value) tuples"""
-        self.original_data = data_list
+        self.original_data = data_list.copy()
+        self.filtered_data = data_list.copy()
+        self.refresh_items()
+        
+    def refresh_items(self):
+        """Refresh combobox items from filtered data"""
+        current_text = self.lineEdit().text()
         self.clear()
-        for display, value in data_list:
+        
+        for display, value in self.filtered_data:
             self.addItem(display, value)
+        
+        # Restore the text without triggering signals
+        self.blockSignals(True)
+        self.lineEdit().setText(current_text)
+        self.blockSignals(False)
         
     def filter_values(self, text):
-        """Filter values based on typed text"""
-        if not text:
-            self.clear()
-            for display, value in self.original_data:
-                self.addItem(display, value)
-            self.showPopup()
+        """Filter values based on typed text with real-time updates"""
+        if not text.strip():
+            # Show all items when text is empty
+            self.filtered_data = self.original_data.copy()
+            self.refresh_items()
+            if not self.view().isVisible():
+                self.showPopup()
             return
             
-        filtered_data = [
+        # Filter data based on search text
+        search_text = text.lower().strip()
+        self.filtered_data = [
             (display, value) for display, value in self.original_data 
-            if text.lower() in display.lower()
+            if search_text in display.lower()
         ]
         
-        self.clear()
-        for display, value in filtered_data:
-            self.addItem(display, value)
+        # Update dropdown items
+        self.refresh_items()
         
-        if filtered_data:
+        # Show dropdown if we have matches
+        if self.filtered_data and not self.view().isVisible():
             self.showPopup()
+        elif not self.filtered_data and self.view().isVisible():
+            self.hidePopup()
         
     def on_return_pressed(self):
-        """Handle return pressed to select the first item"""
+        """Handle return pressed to select the first matching item"""
         if self.count() > 0:
             self.setCurrentIndex(0)
+            self.on_item_selected(0)
             self.hidePopup()
-
+        
+    def on_item_selected(self, index):
+        """Handle item selection"""
+        if index >= 0:
+            selected_text = self.itemText(index)
+            self.lineEdit().setText(selected_text)
+            self.hidePopup()
+    
     def getCurrentValue(self):
         """Get the current selected value (not display text)"""
+        current_text = self.lineEdit().text()
+        
+        # First try to find exact match in filtered data
+        for display, value in self.filtered_data:
+            if display == current_text:
+                return value
+        
+        # Then try to find exact match in original data
+        for display, value in self.original_data:
+            if display == current_text:
+                return value
+                
+        # If no exact match and we have a current index, use that
         current_index = self.currentIndex()
-        if current_index >= 0:
+        if current_index >= 0 and current_index < self.count():
             return self.itemData(current_index)
+            
         return None
+    
+    def setCurrentValue(self, value):
+        """Set current selection by value"""
+        for i in range(self.count()):
+            if self.itemData(i) == value:
+                self.setCurrentIndex(i)
+                return True
+        return False
+    
+    def setCurrentTextValue(self, text):
+        """Set current selection by display text"""
+        for display, value in self.original_data:
+            if display == text:
+                self.lineEdit().setText(text)
+                self.setCurrentValue(value)
+                return True
+        return False
+    
+    def keyPressEvent(self, event):
+        """Handle key press events for better navigation"""
+        if event.key() == Qt.Key.Key_Down and not self.view().isVisible():
+            self.showPopup()
+        elif event.key() == Qt.Key.Key_Escape:
+            self.hidePopup()
+        else:
+            super().keyPressEvent(event)
+    
+    def focusInEvent(self, event):
+        """Handle focus in event"""
+        super().focusInEvent(event)
+        # Select all text when focused for easy replacement
+        self.lineEdit().selectAll()
+    
+    def showPopup(self):
+        """Override to ensure proper popup behavior"""
+        if self.count() > 0:
+            super().showPopup()
+
 
 
 class ClassesForm(AuditBaseForm):
@@ -217,23 +306,27 @@ class ClassesForm(AuditBaseForm):
     
         # Class Teacher (Searchable)
         teacher_container = QHBoxLayout()
-        
+
+        # Create enhanced searchable combobox
         self.class_teacher = SearchableComboBox()
         self.class_teacher.setFont(self.fonts['entry'])
+        self.class_teacher.setMinimumHeight(35)  # Better height for visibility
         teacher_container.addWidget(self.class_teacher)
         
-        # Refresh teachers button with inherited styling
+        # Refresh button
         refresh_teacher_btn = QPushButton()
         refresh_teacher_btn.setIcon(QIcon("static/icons/refresh.png"))
-        refresh_teacher_btn.setIconSize(QSize(20, 20))  # Adjust icon size to fit nicely
+        refresh_teacher_btn.setIconSize(QSize(20, 20))
         refresh_teacher_btn.setFixedSize(45, 45)
         refresh_teacher_btn.setToolTip("Refresh teacher list")
         refresh_teacher_btn.clicked.connect(self.refresh_teachers)
-        refresh_teacher_btn.setProperty("class", "info")  # Use inherited button class
+        refresh_teacher_btn.setProperty("class", "info")
         teacher_container.addWidget(refresh_teacher_btn)
-
         
         form_layout_inner.addRow(self.create_styled_label("Class Teacher:"), teacher_container)
+        
+        # Load teachers data
+        self.load_teachers()
     
         # Term
         self.term = QComboBox()
@@ -510,12 +603,13 @@ class ClassesForm(AuditBaseForm):
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to load data: {e}")
         
+    # Additional improvements to the load_teachers method in ClassesForm:
     def load_teachers(self):
-        """Load teachers for dropdown"""
+        """Load teachers for dropdown with enhanced formatting"""
         try:
             self._ensure_connection()
             query = '''
-                SELECT id, full_name, position, teacher_id_code
+                SELECT id, full_name, position, teacher_id_code, email, day_phone
                 FROM teachers 
                 WHERE is_active = 1 
                 ORDER BY full_name
@@ -523,18 +617,29 @@ class ClassesForm(AuditBaseForm):
             self.cursor.execute(query)
             teachers = self.cursor.fetchall()
             
-            # Prepare data for searchable combo box
+            # Prepare data for searchable combo box with better formatting
             teacher_data = [("-- Select Teacher --", None)]
-            for teacher_id, full_name, position, teacher_code in teachers:
-                display_text = f"{full_name} ({teacher_code})"
+            for teacher_id, full_name, position, teacher_code, email, day_phone in teachers:
+                # Create rich display text for better searchability
+                display_parts = [full_name]
+                
+                if teacher_code:
+                    display_parts.append(f"({teacher_code})")
+                
                 if position:
-                    display_text += f" - {position}"
+                    display_parts.append(f"- {position}")
+                    
+                display_text = " ".join(display_parts)
                 teacher_data.append((display_text, teacher_id))
             
             self.class_teacher.setData(teacher_data)
             
+            # Set placeholder text for better UX
+            self.class_teacher.lineEdit().setPlaceholderText("Type teacher name or code...")
+            
         except Error as e:
             QMessageBox.critical(self, "Database Error", f"Failed to load teachers: {e}")
+
             
     def load_terms(self):
         """Load terms for dropdown"""
@@ -1031,25 +1136,33 @@ class ClassesForm(AuditBaseForm):
         self.status_label.setText(message)
         self.status_label.setStyleSheet(f"color: {color}; font-weight: bold;")
         
+    # Enhanced refresh_teachers method:
     def refresh_teachers(self):
-        """Refresh the teacher dropdown"""
+        """Enhanced refresh method that preserves user selection"""
         try:
-            #force
+            # Force database commit
             self.db_connection.commit()
             
-            current_teacher = self.class_teacher.currentText()
+            # Save current selection details
+            current_text = self.class_teacher.lineEdit().text()
+            current_value = self.class_teacher.getCurrentValue()
+            
+            # Reload teacher data
             self.load_teachers()
             
-            # Try to restore selection
-            if current_teacher and current_teacher != "-- Select Teacher --":
-                self.class_teacher.setCurrentText(current_teacher)
-            else:
-                self.class_teacher.setCurrentText("-- Select Teacher --")
-                
+            # Try to restore selection by value first, then by text
+            if current_value:
+                if not self.class_teacher.setCurrentValue(current_value):
+                    self.class_teacher.setCurrentTextValue(current_text)
+            elif current_text and current_text != "-- Select Teacher --":
+                if not self.class_teacher.setCurrentTextValue(current_text):
+                    self.class_teacher.lineEdit().setText(current_text)
+            
             self.update_status("Teacher list refreshed", "info")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to refresh teachers: {e}")
+
             
     def refresh_all_data(self):
         """Refresh all data using inherited methods"""

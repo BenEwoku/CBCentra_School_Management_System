@@ -1,11 +1,16 @@
 # ui/audit_base_form.py
-from PySide6.QtWidgets import QWidget, QLineEdit, QMessageBox, QFileDialog
-from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QWidget, QLineEdit, QMessageBox, QFileDialog, QPushButton
+from PySide6.QtGui import QFont, QCursor
+from PySide6.QtCore import Qt
 from typing import Optional, Dict, Any
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import MergedCell  # For checking merged cells
+from datetime import datetime
+import os
+import platform
+import subprocess
 from models.models import get_db_connection
 
 
@@ -20,6 +25,8 @@ class AuditBaseForm(QWidget):
         self.user_session = user_session
         self.colors = {}
         self.fonts = {}
+        self.db_connection = None
+        self.cursor = None
         self.setup_styling()
 
     def _ensure_connection(self):
@@ -43,6 +50,16 @@ class AuditBaseForm(QWidget):
     
         except Exception as e:
             raise Exception(f"Failed to ensure database connection: {e}")
+
+    def setup_hand_cursor(self, widget):
+        """Set hand cursor for interactive elements like buttons"""
+        if isinstance(widget, QPushButton):
+            widget.setCursor(QCursor(Qt.PointingHandCursor))
+        
+    def apply_hand_cursor_to_buttons(self):
+        """Apply hand cursor to all buttons in the form"""
+        for button in self.findChildren(QPushButton):
+            self.setup_hand_cursor(button)
 
     def setup_styling(self):
         """Set up shared colors, fonts, and QSS styling"""
@@ -93,7 +110,7 @@ class AuditBaseForm(QWidget):
         self.setStyleSheet(self.get_global_stylesheet())
 
     def get_global_stylesheet(self):
-        """Get the complete global stylesheet with only ribbon/sidebar buttons changed to white/gray"""
+        """Get the complete global stylesheet"""
         return f"""
             /* === GLOBAL BASE STYLES === */
             QWidget {{
@@ -137,12 +154,6 @@ class AuditBaseForm(QWidget):
                 border: 1px solid rgba(255, 255, 255, 0.4);
             }}
             
-            QPushButton#menuToggle:checked {{
-                background: {self.colors['tab_checked']};
-                border: 1px solid rgba(255, 255, 255, 0.5);
-                font-weight: bold;
-            }}
-
             QPushButton#menuToggle:checked {{
                 background: {self.colors['tab_checked']};
                 border: 1px solid rgba(255, 255, 255, 0.5);
@@ -735,6 +746,44 @@ class AuditBaseForm(QWidget):
                 outline: none;
             }}
         """
+
+    def create_button(self, text, callback=None, button_class="primary", parent=None):
+        """Create a button with hand cursor and optional styling class"""
+        button = QPushButton(text, parent)
+        
+        # Set hand cursor
+        button.setCursor(QCursor(Qt.PointingHandCursor))
+        
+        # Apply CSS class if specified
+        if button_class:
+            button.setProperty("class", button_class)
+        
+        # Connect callback if provided
+        if callback:
+            button.clicked.connect(callback)
+            
+        return button
+
+    def create_ribbon_button(self, text, callback=None, parent=None):
+        """Create a ribbon-style button with hand cursor"""
+        button = QPushButton(text, parent)
+        button.setObjectName("ribbonButton")
+        
+        # Set hand cursor
+        button.setCursor(QCursor(Qt.PointingHandCursor))
+        
+        # Connect callback if provided
+        if callback:
+            button.clicked.connect(callback)
+            
+        return button
+
+    def showEvent(self, event):
+        """Override showEvent to apply hand cursors after the widget is fully constructed"""
+        super().showEvent(event)
+        # Apply hand cursor to all existing buttons
+        self.apply_hand_cursor_to_buttons()
+        
         
     def log_audit_action(self, action: str, table_name: str, record_id: int, description: str):
         """Log an audit action to the audit_log table."""
