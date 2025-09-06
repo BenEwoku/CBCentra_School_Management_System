@@ -941,7 +941,7 @@ class AuditBaseForm(QWidget):
                 }
             else:
                 return {
-                    'name': 'CBCentra School',
+                    'name': 'CBCentra School Manangement System',
                     'address': 'N/A',
                     'phone': 'N/A',
                     'email': 'info@cbcentra.edu'
@@ -949,7 +949,7 @@ class AuditBaseForm(QWidget):
         except Exception as e:
             print(f"Error fetching school info: {e}")
             return {
-                'name': 'CBCentra School',
+                'name': 'CBCentra School Manangement System',
                 'address': 'N/A',
                 'phone': 'N/A',
                 'email': 'info@cbcentra.edu'

@@ -175,16 +175,33 @@ class AuditLogsForm(AuditBaseForm):
                    "IP Address", "User Agent"]
         self.logs_table.setColumnCount(len(headers))
         self.logs_table.setHorizontalHeaderLabels(headers)
-
         self.logs_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.logs_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.logs_table.setAlternatingRowColors(True)
         self.logs_table.setSortingEnabled(True)
         self.logs_table.setFont(self.fonts['table'])
-
+        
         header = self.logs_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setStretchLastSection(True)
+        
+        # Set fixed widths for columns that don't need much space
+        self.logs_table.setColumnWidth(0, 70)   # ID
+        self.logs_table.setColumnWidth(6, 90)   # Record ID
+        
+        # Set reasonable widths for other columns
+        self.logs_table.setColumnWidth(1, 180)  # Timestamp
+        self.logs_table.setColumnWidth(2, 160)  # Username
+        self.logs_table.setColumnWidth(3, 130)  # Action
+        self.logs_table.setColumnWidth(5, 120)  # Table
+        self.logs_table.setColumnWidth(7, 130)  # IP Address
+        self.logs_table.setColumnWidth(8, 230)  # User Agent
+        
+        # Make Description column stretch to fill remaining space
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        
+        # Allow user to manually resize all columns
+        for i in range(len(headers)):
+            if i != 4:  # Don't override stretch mode for Description
+                header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
 
     def create_button(self, text, color, callback):
         button = QPushButton(text)
@@ -279,26 +296,39 @@ class AuditLogsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Failed to load audit logs: {e}")
 
     def update_logs_table(self, logs):
-        """Update the audit logs table with new data"""
-        # 🔁 Clear existing content
-        self.logs_table.clearContents()  # ✅ Keeps headers, clears data
+        """Update the audit logs table with new data and tooltips"""
+        # Clear existing content
+        self.logs_table.clearContents()  # Keeps headers, clears data
         self.logs_table.setRowCount(len(logs))
     
         for row, log in enumerate(logs):
+            # Store original values for tooltips
+            original_description = log['description'] or 'N/A'
+            original_user_agent = log['user_agent'] or 'N/A'
+            original_username = log['username'] or 'System'
+            
             row_data = [
                 str(log['id']),
                 log['created_at'].strftime('%Y-%m-%d %H:%M:%S') if log['created_at'] else 'N/A',
-                log['username'] or 'System',
+                original_username,
                 log['action'] or 'N/A',
-                (log['description'] or 'N/A')[:60] + '...' if log['description'] and len(log['description']) > 60 else (log['description'] or 'N/A'),
+                original_description[:60] + '...' if len(original_description) > 60 else original_description,
                 log['table_name'] or 'N/A',
                 str(log['record_id']) if log['record_id'] else 'N/A',
                 log['ip_address'] or 'N/A',
-                (log['user_agent'] or 'N/A')[:50] + '...' if log['user_agent'] and len(log['user_agent']) > 50 else (log['user_agent'] or 'N/A')
+                original_user_agent[:50] + '...' if len(original_user_agent) > 50 else original_user_agent
             ]
+            
             for col, data in enumerate(row_data):
                 item = QTableWidgetItem(str(data))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                
+                # Add comprehensive tooltips for all columns
+                tooltip = self.create_tooltip_for_column(col, log, original_description, original_user_agent, original_username)
+                if tooltip:
+                    item.setToolTip(tooltip)
+                
+                # Color coding for Action column
                 if col == 3:  # Action column
                     if data == 'CREATE':
                         item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['success'])
@@ -306,10 +336,73 @@ class AuditLogsForm(AuditBaseForm):
                         item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['info'])
                     elif data == 'DELETE':
                         item.setData(Qt.ItemDataRole.ForegroundRole, self.colors['danger'])
+                
                 self.logs_table.setItem(row, col, item)
     
         # Optional: Resize columns to fit content after update
         self.logs_table.resizeColumnsToContents()
+    
+    def create_tooltip_for_column(self, col, log, original_description, original_user_agent, original_username):
+        """Create detailed tooltips for each column"""
+        if col == 0:  # ID
+            return f"Audit Log ID: {log['id']}"
+        
+        elif col == 1:  # Timestamp
+            if log['created_at']:
+                return log['created_at'].strftime('%A, %B %d, %Y at %I:%M:%S %p')
+            return "No timestamp available"
+        
+        elif col == 2:  # Username
+            tooltip_parts = [f"User: {original_username}"]
+            if log.get('user_id'):
+                tooltip_parts.append(f"User ID: {log['user_id']}")
+            return "\n".join(tooltip_parts)
+        
+        elif col == 3:  # Action
+            action_descriptions = {
+                'CREATE': 'Created a new record',
+                'UPDATE': 'Modified an existing record', 
+                'DELETE': 'Deleted a record',
+                'READ': 'Accessed/viewed data',
+                'LOGIN': 'User logged into system',
+                'LOGOUT': 'User logged out of system'
+            }
+            action = log['action'] or 'N/A'
+            base_tip = f"Action: {action}"
+            if action in action_descriptions:
+                base_tip += f"\n{action_descriptions[action]}"
+            return base_tip
+        
+        elif col == 4:  # Description - Most important for your use case
+            if original_description and original_description != 'N/A':
+                # Add formatting for better readability
+                formatted_desc = original_description.replace(';', '\n•').replace(':', ':\n  ')
+                return f"Full Description:\n{formatted_desc}"
+            return "No description available"
+        
+        elif col == 5:  # Table
+            return f"Database Table: {log['table_name'] or 'N/A'}"
+        
+        elif col == 6:  # Record ID  
+            return f"Record ID: {log['record_id'] or 'N/A'}"
+        
+        elif col == 7:  # IP Address
+            ip = log['ip_address'] or 'N/A'
+            tooltip_parts = [f"IP Address: {ip}"]
+            # You could add geolocation info here if available
+            if ip and ip != 'N/A' and ip != '127.0.0.1':
+                tooltip_parts.append("(External IP)")
+            elif ip == '127.0.0.1':
+                tooltip_parts.append("(Local/System)")
+            return "\n".join(tooltip_parts)
+        
+        elif col == 8:  # User Agent
+            if original_user_agent and original_user_agent != 'N/A':
+                # Parse user agent for better display
+                return f"Full User Agent:\n{original_user_agent}"
+            return "No user agent information"
+        
+        return None
 
     def update_statistics(self, logs):
         total = len(logs)
@@ -334,26 +427,95 @@ class AuditLogsForm(AuditBaseForm):
         self.load_audit_logs()
 
     def export_logs(self):
+        """Export audit logs with the green header style"""
         try:
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                "Export Audit Logs to CSV",
-                f"audit_logs_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "CSV files (*.csv);;All files (*)"
+            # Get the full data
+            query = '''
+                SELECT al.id, al.created_at, u.username, al.action, al.description,
+                       al.table_name, al.record_id,
+                       al.ip_address, al.user_agent
+                FROM audit_log al
+                LEFT JOIN users u ON al.user_id = u.id
+                WHERE 1=1
+            '''
+            params = []
+            
+            # Apply the same filters
+            from_date = self.from_date.date().toString("yyyy-MM-dd")
+            to_date = self.to_date.date().addDays(1).toString("yyyy-MM-dd")
+            query += " AND al.created_at >= %s AND al.created_at < %s"
+            params.extend([from_date, to_date])
+    
+            action = self.action_combo.currentText()
+            if action != "All":
+                query += " AND al.action = %s"
+                params.append(action)
+    
+            table = self.table_combo.currentText()
+            if table != "All":
+                query += " AND al.table_name = %s"
+                params.append(table)
+    
+            username_filter = self.user_filter.text().strip()
+            if username_filter:
+                query += " AND u.username LIKE %s"
+                params.append(f"%{username_filter}%")
+    
+            desc_filter = self.description_filter.text().strip()
+            if desc_filter:
+                query += " AND al.description LIKE %s"
+                params.append(f"%{desc_filter}%")
+    
+            query += " ORDER BY al.created_at DESC"
+    
+            self.cursor.execute(query, params)
+            logs = self.cursor.fetchall()
+    
+            if not logs:
+                QMessageBox.information(self, "No Data", "No audit logs found to export.")
+                return
+    
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for log in logs:
+                row_data = [
+                    log['id'],
+                    log['created_at'].strftime('%Y-%m-%d %H:%M:%S') if log['created_at'] else 'N/A',
+                    log['username'] or 'System',
+                    log['action'] or 'N/A',
+                    log['description'] or 'N/A',
+                    log['table_name'] or 'N/A',
+                    str(log['record_id']) if log['record_id'] else 'N/A',
+                    log['ip_address'] or 'N/A',
+                    log['user_agent'] or 'N/A'
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                "ID", "Timestamp", "Username", "Action", "Description", 
+                "Table", "Record ID", "IP Address", "User Agent"
+            ]
+    
+            # Get school name for title
+            school_info = self.get_school_info()
+            
+            # Include date range in the title
+            title = (f"{school_info['name']} - AUDIT LOGS\n"
+                     f"Date Range: {self.from_date.date().toString('yyyy-MM-dd')} "
+                     f"to {self.to_date.date().toString('yyyy-MM-dd')}")
+    
+            # Use shared export method
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="audit_logs_export",
+                title=title
             )
-            if filename:
-                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(['ID', 'Timestamp', 'Username', 'Action', 'Description', 'Table',
-                                   'Record ID', 'IP Address', 'User Agent'])
-                    for row in range(self.logs_table.rowCount()):
-                        row_data = [self.logs_table.item(row, col).text() if self.logs_table.item(row, col) else ''
-                                    for col in range(self.logs_table.columnCount())]
-                        writer.writerow(row_data)
-                QMessageBox.information(self, "Success", f"Audit logs exported successfully to {filename}")
+    
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to export logs: {e}")
-
+            QMessageBox.critical(self, "Export Error", f"Failed to export audit logs:\n{str(e)}")
+        
     def delete_old_logs(self):
         if not has_permission(self.user_session, 'delete_audit_logs'):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete audit logs.")

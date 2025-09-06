@@ -13,8 +13,8 @@ from PySide6.QtWidgets import (
     QMessageBox, QFileDialog, QScrollArea, QGroupBox, QFormLayout,
     QTabWidget, QCheckBox, QDateEdit, QComboBox, QTextEdit, QDialog, QApplication
 )
-from PySide6.QtCore import Qt, QDate, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QDate, Signal, QSize
+from PySide6.QtGui import QFont, QIcon
 
 from utils.permissions import has_permission
 from ui.audit_base_form import AuditBaseForm
@@ -163,96 +163,114 @@ class AcademicYearsForm(AuditBaseForm):
         layout.addRow("", self.is_current_checkbox)
 
         parent_layout.addWidget(group)
-
+    
     def create_action_buttons(self, parent_layout):
         """Create action buttons with permission-aware styling"""
         button_layout = QHBoxLayout()
-
+    
+        # Add Year
         self.add_btn = QPushButton("Add Year")
         self.add_btn.setProperty("class", "success")
-        self.add_btn.setMinimumSize(140, 40)
+        self.add_btn.setMinimumSize(150, 40)
+        self.add_btn.setIcon(QIcon("static/icons/add.png"))
+        self.add_btn.setIconSize(QSize(20, 20))
         self.add_btn.clicked.connect(self.add_academic_year)
         self.add_btn.setToolTip("Add a new academic year")
-
+    
+        # Update Year
         self.update_btn = QPushButton("Update Year")
         self.update_btn.setProperty("class", "primary")
-        self.update_btn.setMinimumSize(140, 40)
+        self.update_btn.setMinimumSize(150, 40)
+        self.update_btn.setIcon(QIcon("static/icons/update.png"))
+        self.update_btn.setIconSize(QSize(20, 20))
         self.update_btn.clicked.connect(self.update_academic_year)
         self.update_btn.setToolTip("Update selected year")
-
+    
+        # Delete Year
         self.delete_btn = QPushButton("Delete Year")
         self.delete_btn.setProperty("class", "danger")
-        self.delete_btn.setMinimumSize(140, 40)
+        self.delete_btn.setMinimumSize(150, 40)
+        self.delete_btn.setIcon(QIcon("static/icons/delete.png"))
+        self.delete_btn.setIconSize(QSize(20, 20))
         self.delete_btn.clicked.connect(self.delete_academic_year)
         self.delete_btn.setToolTip("Delete selected year")
-
+    
+        # Clear
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setProperty("class", "secondary")
-        self.clear_btn.setMinimumSize(100, 40)
+        self.clear_btn.setMinimumSize(120, 40)
+        self.clear_btn.setIcon(QIcon("static/icons/clear.png"))
+        self.clear_btn.setIconSize(QSize(20, 20))
         self.clear_btn.clicked.connect(self.clear_fields)
-
+        self.clear_btn.setToolTip("Clear form fields")
+    
+        # Layout arrangement
         button_layout.addStretch()
         button_layout.addWidget(self.add_btn)
         button_layout.addWidget(self.update_btn)
         button_layout.addWidget(self.delete_btn)
         button_layout.addWidget(self.clear_btn)
         button_layout.addStretch()
-
+    
         parent_layout.addLayout(button_layout)
-
+    
     def setup_year_data_tab(self):
         """Set up data display tab"""
         layout = QVBoxLayout(self.year_data_tab)
         layout.setSpacing(15)
-
+    
         # === SEARCH & ACTIONS BAR ===
         actions_group = QGroupBox("Manage Academic Years")
         actions_group.setFont(self.fonts['section'])
         actions_layout = QHBoxLayout(actions_group)
-
-        # Search
+    
+        # Search box
         self.search_entry = QLineEdit()
         self.search_entry.setPlaceholderText("Search by year name...")
         self.search_entry.setFixedWidth(250)
         actions_layout.addWidget(self.search_entry)
-
+    
+        # Search button
         search_btn = QPushButton("Search")
         search_btn.setProperty("class", "primary")
-        search_btn.setFixedWidth(100)
+        search_btn.setFixedWidth(120)
+        search_btn.setIcon(QIcon("static/icons/search.png"))
+        search_btn.setIconSize(QSize(20, 20))
         search_btn.clicked.connect(self.search_academic_years_action)
         actions_layout.addWidget(search_btn)
-
+    
+        # Clear button
         clear_btn = QPushButton("Clear")
         clear_btn.setProperty("class", "secondary")
-        clear_btn.setFixedWidth(100)
+        clear_btn.setFixedWidth(120)
+        clear_btn.setIcon(QIcon("static/icons/clear.png"))
+        clear_btn.setIconSize(QSize(20, 20))
         clear_btn.clicked.connect(self.clear_search)
         actions_layout.addWidget(clear_btn)
-
+    
         actions_layout.addSpacing(20)
-
-        # Export
+    
+        # Export button
         export_btn = QPushButton("Export")
         export_btn.setProperty("class", "info")
-        export_btn.setFixedWidth(100)
+        export_btn.setFixedWidth(120)
+        export_btn.setIcon(QIcon("static/icons/export.png"))
+        export_btn.setIconSize(QSize(20, 20))
         export_btn.clicked.connect(self.export_years_data)
         actions_layout.addWidget(export_btn)
-
-        # Report
-        report_btn = QPushButton("Report")
-        report_btn.setProperty("class", "primary")
-        report_btn.setFixedWidth(100)
-        report_btn.clicked.connect(self.generate_year_report)
-        actions_layout.addWidget(report_btn)
-
-        # Refresh
+    
+        # Refresh button
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setProperty("class", "secondary")
-        refresh_btn.setFixedWidth(100)
+        refresh_btn.setFixedWidth(120)
+        refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
+        refresh_btn.setIconSize(QSize(20, 20))
         refresh_btn.clicked.connect(self.refresh_data)
         actions_layout.addWidget(refresh_btn)
-
+    
         actions_layout.addStretch()
         layout.addWidget(actions_group)
+
 
         # === TABLE ===
         table_group = QGroupBox("All Academic Years")
@@ -557,20 +575,42 @@ class AcademicYearsForm(AuditBaseForm):
         self.load_academic_years()
 
     def refresh_data(self):
-        """Refresh data from database"""
+        """Refresh data from database with user feedback"""
         try:
             self._ensure_connection()
             self.status_label.setText("Refreshing...")
-            QApplication.processEvents()
+            self.status_label.setStyleSheet(f"color: {self.colors['warning']}; font-weight: bold;")
+            QApplication.processEvents()  # Ensure UI updates immediately
+    
+            # Perform refresh operations
             self.load_academic_years()
             self.clear_fields()
             self.apply_button_permissions()
-            self.status_label.setText("Data refreshed")
+    
+            # Success feedback
+            self.status_label.setText("✅ Data refreshed successfully")
             self.status_label.setStyleSheet(f"color: {self.colors['success']}; font-weight: bold;")
+    
+            # 👇 ADD THIS: Show success message box
+            QMessageBox.information(
+                self,
+                "Success",
+                "Data has been refreshed successfully!",
+                QMessageBox.Ok
+            )
+    
         except Exception as e:
-            self.status_label.setText("Refresh failed")
+            # Error feedback
+            self.status_label.setText("❌ Refresh failed")
             self.status_label.setStyleSheet(f"color: {self.colors['danger']}; font-weight: bold;")
-            QMessageBox.critical(self, "Error", f"Refresh failed: {str(e)}")
+    
+            # 👇 ADD THIS: Show error message box
+            QMessageBox.critical(
+                self,
+                "Refresh Failed",
+                f"An error occurred while refreshing data:\n\n{str(e)}",
+                QMessageBox.Ok
+            )
 
     def export_years_data(self):
         """Export to Excel with green header"""
@@ -599,47 +639,6 @@ class AcademicYearsForm(AuditBaseForm):
             )
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export: {str(e)}")
-
-    def generate_year_report(self):
-        """Generate summary report"""
-        try:
-            self.cursor.execute("SELECT COUNT(*) FROM academic_years")
-            year_count = self.cursor.fetchone()[0]
-
-            self.cursor.execute("SELECT year_name FROM academic_years WHERE is_current = TRUE")
-            current_year = self.cursor.fetchone()
-            current_name = current_year[0] if current_year else "None"
-
-            self.cursor.execute("""
-                SELECT ay.year_name, COUNT(t.id)
-                FROM academic_years ay
-                LEFT JOIN terms t ON ay.id = t.academic_year_id
-                GROUP BY ay.id
-            """)
-            term_stats = self.cursor.fetchall()
-
-            data = [
-                ["ACADEMIC YEARS SUMMARY", "", "", ""],
-                [f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "", "", ""],
-                ["", "", "", ""],
-                ["Overview", "", "", ""],
-                ["Total Years", str(year_count), "", ""],
-                ["Current Year", current_name, "", ""],
-                ["", "", "", ""],
-                ["Terms by Year", "", "", ""]
-            ]
-            for year_name, count in term_stats:
-                data.append([f"{year_name}", f"{count} term(s)", "", ""])
-
-            headers = ["Field", "Value", "", ""]
-            self.export_with_green_header(
-                data=data,
-                headers=headers,
-                filename_prefix="academic_years_summary",
-                title="Academic Years Summary Report"
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Report Error", f"Failed to generate report: {str(e)}")
 
     def apply_button_permissions(self):
         """Enable/disable buttons based on user permissions"""

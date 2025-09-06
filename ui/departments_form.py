@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QCheckBox, QMenu, QGridLayout
 )
 from PySide6.QtGui import QFont, QPalette, QIcon, QAction
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
 
 from utils.permissions import has_permission
 from ui.audit_base_form import AuditBaseForm
@@ -80,141 +80,172 @@ class DepartmentsForm(AuditBaseForm):
         self.setup_department_form_tab()
         self.setup_department_data_tab()
 
+    
     def setup_department_form_tab(self):
         """Form tab: Add/Edit Department"""
         layout = QVBoxLayout(self.department_form_tab)
         layout.setSpacing(10)
-
+    
+        # Title
         title = QLabel("Department Management")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; padding: 10px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setFont(self.fonts['section'])
         layout.addWidget(title)
-
+    
+        # === FORM GROUP ===
         form_group = QGroupBox("Department Details")
         form_layout = QGridLayout(form_group)
-
+    
         # Department Name
         form_layout.addWidget(QLabel("Department Name:"), 0, 0)
         self.name_entry = QLineEdit()
         form_layout.addWidget(self.name_entry, 0, 1)
-
+    
         # School
         form_layout.addWidget(QLabel("School:"), 0, 2)
         self.school_combo = QComboBox()
         self.school_combo.currentTextChanged.connect(self.on_school_selected)
         form_layout.addWidget(self.school_combo, 0, 3)
-
-        # Head - FIXED VERSION
+    
+        # Head
         form_layout.addWidget(QLabel("Department Head:"), 1, 0)
         self.head_combo = QComboBox()
         self.head_combo.setEditable(True)
         self.head_combo.setPlaceholderText("Search teacher...")
-        
-        # Connect signals properly
         self.head_combo.editTextChanged.connect(self.on_head_search)
         self.head_combo.currentTextChanged.connect(self.on_head_selection_changed)
-        
         form_layout.addWidget(self.head_combo, 1, 1)
-
+    
         # Description
         form_layout.addWidget(QLabel("Description:"), 1, 2)
         self.description_box = QTextEdit()
         self.description_box.setMaximumHeight(60)
         form_layout.addWidget(self.description_box, 1, 3)
-
+    
         layout.addWidget(form_group)
-
-        # Buttons
+    
+        # === ACTION BUTTONS ===
         btn_layout = QHBoxLayout()
-        
+    
         self.add_btn = QPushButton("Add Department")
+        self.add_btn.setProperty("class", "success")
+        self.add_btn.setIcon(QIcon("static/icons/add.png"))
+        self.add_btn.setIconSize(QSize(18, 18))
         self.add_btn.clicked.connect(self.add_department)
         btn_layout.addWidget(self.add_btn)
-
+    
         self.update_btn = QPushButton("Update")
+        self.update_btn.setProperty("class", "primary")
+        self.update_btn.setIcon(QIcon("static/icons/update.png"))
+        self.update_btn.setIconSize(QSize(18, 18))
         self.update_btn.clicked.connect(self.update_department)
         btn_layout.addWidget(self.update_btn)
-
+    
         self.delete_btn = QPushButton("Delete")
+        self.delete_btn.setProperty("class", "danger")
+        self.delete_btn.setIcon(QIcon("static/icons/delete.png"))
+        self.delete_btn.setIconSize(QSize(18, 18))
         self.delete_btn.clicked.connect(self.delete_department)
         btn_layout.addWidget(self.delete_btn)
-
+    
         self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setProperty("class", "secondary")
+        self.clear_btn.setIcon(QIcon("static/icons/clear.png"))
+        self.clear_btn.setIconSize(QSize(18, 18))
         self.clear_btn.clicked.connect(self.clear_fields)
         btn_layout.addWidget(self.clear_btn)
-
+    
         layout.addLayout(btn_layout)
 
+    
     def setup_department_data_tab(self):
-        """Data tab: View/Search Departments - UPDATED with enhanced exports"""
+        """Data tab: View/Search Departments - with styled actions"""
         layout = QVBoxLayout(self.department_data_tab)
         layout.setSpacing(10)
     
-        # Filters (keep existing code)
+        # ---------------- Filters Section ----------------
         filter_group = QGroupBox("Filters")
         filter_layout = QGridLayout(filter_group)
     
-        filter_layout.addWidget(QLabel("Search:"), 0, 0)
+        # Search input
+        search_label = QLabel("Search:")
+        search_label.setProperty("class", "field-label")
+        filter_layout.addWidget(search_label, 0, 0)
+    
         self.search_entry = QLineEdit()
         self.search_entry.setPlaceholderText("Search by name...")
         self.search_entry.textChanged.connect(self.load_departments)
         filter_layout.addWidget(self.search_entry, 0, 1)
     
+        # Active/Inactive toggle
         self.active_filter = QCheckBox("Show Inactive Departments")
         self.active_filter.stateChanged.connect(self.load_departments)
         filter_layout.addWidget(self.active_filter, 0, 2)
     
+        # Filter button with icon
         self.filter_btn = QPushButton("Filter")
+        self.filter_btn.setProperty("class", "primary")
+        self.filter_btn.setIcon(QIcon("static/icons/filter.png"))
+        self.filter_btn.setIconSize(QSize(18, 18))
         self.filter_btn.clicked.connect(self.load_departments)
         filter_layout.addWidget(self.filter_btn, 0, 3)
     
         layout.addWidget(filter_group)
-    
-        # ENHANCED Action Buttons
+
+        # === ACTION BUTTONS ===
         action_layout = QHBoxLayout()
-        
-        # Export buttons with styling
-        self.export_csv_btn = QPushButton("📊 Export to Excel")
+    
+        self.export_csv_btn = QPushButton("Export to Excel")
         self.export_csv_btn.setProperty("class", "success")
+        self.export_csv_btn.setIcon(QIcon("static/icons/export.png"))
+        self.export_csv_btn.setIconSize(QSize(18, 18))
         self.export_csv_btn.clicked.connect(self.export_to_csv)
         action_layout.addWidget(self.export_csv_btn)
     
-        self.export_pdf_btn = QPushButton("📄 Export to PDF")
+        self.export_pdf_btn = QPushButton("Export to PDF")
         self.export_pdf_btn.setProperty("class", "info")
+        self.export_pdf_btn.setIcon(QIcon("static/icons/export.png"))
+        self.export_pdf_btn.setIconSize(QSize(18, 18))
         self.export_pdf_btn.clicked.connect(self.export_to_pdf)
         action_layout.addWidget(self.export_pdf_btn)
-        
-        # NEW: Summary export button
-        self.export_summary_btn = QPushButton("📈 Export Summary")
+    
+        self.export_summary_btn = QPushButton("Export Summary")
         self.export_summary_btn.setProperty("class", "warning")
+        self.export_summary_btn.setIcon(QIcon("static/icons/summary.png"))
+        self.export_summary_btn.setIconSize(QSize(18, 18))
         self.export_summary_btn.clicked.connect(self.export_department_summary)
         action_layout.addWidget(self.export_summary_btn)
     
-        self.refresh_btn = QPushButton("🔄 Refresh")
-        self.refresh_btn.setProperty("class", "primary")
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.setProperty("class", "secondary")
+        self.refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
+        self.refresh_btn.setIconSize(QSize(18, 18))
         self.refresh_btn.clicked.connect(self.force_refresh_data)
         action_layout.addWidget(self.refresh_btn)
     
+        action_layout.addStretch()
         layout.addLayout(action_layout)
     
-        # Table (keep existing table setup code)
+        # === TABLE ===
         table_group = QGroupBox("Departments List")
         table_layout = QVBoxLayout(table_group)
     
         self.departments_table = QTableWidget()
         self.departments_table.setColumnCount(8)
         self.departments_table.setHorizontalHeaderLabels([
-            "ID", "School", "Department Name", "Head", "Staff Count", "Description", "Created At", "Active"
+            "ID", "School", "Department Name", "Head", "Staff Count",
+            "Description", "Created At", "Active"
         ])
-        self.departments_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.departments_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.departments_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.departments_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.departments_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.departments_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.departments_table.setSortingEnabled(True)
         self.departments_table.itemSelectionChanged.connect(self.on_department_select)
         self.departments_table.itemDoubleClicked.connect(self.edit_selected_department)
     
         table_layout.addWidget(self.departments_table)
         layout.addWidget(table_group)
+
 
     def on_school_selected(self):
         """Reload teachers when school changes"""

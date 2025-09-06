@@ -20,6 +20,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.models import get_db_connection
 from ui.audit_base_form import AuditBaseForm
+from utils.permissions import has_permission
 
 
 # Change class definition
@@ -32,12 +33,19 @@ class SchoolsForm(AuditBaseForm):
         self.current_school_id = None
         self.logo_path = None
         
+        # Debug: Print user session to see what we have
+        print(f"SchoolsForm initialized with user_session: {user_session}")
+        
         # Set up modern styling
         self.setup_styling()
         
         # Database connection
-        self.db_connection = get_db_connection()
-        self.cursor = self.db_connection.cursor()
+        try:
+            self.db_connection = get_db_connection()
+            self.cursor = self.db_connection.cursor(dictionary=True)
+        except Error as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to connect to database: {e}")
+            return
         
         # Ensure logos directory exists
         os.makedirs(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
@@ -45,6 +53,7 @@ class SchoolsForm(AuditBaseForm):
         
         self.setup_ui()
         self.load_schools()
+        #self.apply_permissions()
 
     def setup_ui(self):
         self.setWindowTitle("School Management System")
@@ -71,156 +80,153 @@ class SchoolsForm(AuditBaseForm):
         self.setup_school_data_tab()
 
     def setup_school_form_tab(self):
+        """Setup the School Form Tab with full fields, actions, and logo section"""
         # Create scroll area for the form
         scroll_area = QScrollArea(self.school_form_tab)
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        
+    
         # Main layout for scroll area
         main_layout = QVBoxLayout(self.school_form_tab)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll_area)
-        
+    
         # Content widget inside scroll area
         content_widget = QWidget()
         scroll_area.setWidget(content_widget)
-        
-        # Main layout for form tab with better spacing
+    
+        # Main layout for form tab with spacing
         form_layout = QHBoxLayout(content_widget)
         form_layout.setContentsMargins(20, 20, 20, 20)
         form_layout.setSpacing(20)
-        
-        # Left side - Form fields (70% width)
+    
+        # ---------------- Left side - Form fields (70% width) ----------------
         form_container = QWidget()
         form_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_fields_layout = QVBoxLayout(form_container)
         form_fields_layout.setSpacing(20)
-        
+    
         # School Information Group
-        info_group = QGroupBox("🏛️ School Information")
+        info_group = QGroupBox("School Information")
         info_layout = QGridLayout(info_group)
         info_layout.setSpacing(16)
         info_layout.setContentsMargins(16, 24, 16, 16)
-        
-        # School Name (full width)
+    
+        # School Name
         name_label = QLabel("School Name *")
         name_label.setProperty("class", "field-label")
         self.school_name_entry = QLineEdit()
         self.school_name_entry.setPlaceholderText("Enter the full school name...")
         info_layout.addWidget(name_label, 0, 0, 1, 2)
         info_layout.addWidget(self.school_name_entry, 1, 0, 1, 2)
-        
-        # Add vertical spacing
-        info_layout.addItem(QSpacerItem(0, 8), 2, 0)
-        
-        # Address (full width)
+    
+        # Address
         address_label = QLabel("Address")
         address_label.setProperty("class", "field-label")
         self.address_entry = QLineEdit()
         self.address_entry.setPlaceholderText("Enter complete address...")
-        info_layout.addWidget(address_label, 3, 0, 1, 2)
-        info_layout.addWidget(self.address_entry, 4, 0, 1, 2)
-        
-        # Add vertical spacing
-        info_layout.addItem(QSpacerItem(0, 8), 5, 0)
-        
-        # Phone and Email (side by side)
+        info_layout.addWidget(address_label, 2, 0, 1, 2)
+        info_layout.addWidget(self.address_entry, 3, 0, 1, 2)
+    
+        # Phone and Email
         phone_label = QLabel("Phone Number")
         phone_label.setProperty("class", "field-label")
         self.phone_entry = QLineEdit()
         self.phone_entry.setPlaceholderText("e.g., +256 700 123 456")
-        
+    
         email_label = QLabel("Email Address")
         email_label.setProperty("class", "field-label")
         self.email_entry = QLineEdit()
         self.email_entry.setPlaceholderText("school@example.com")
-        
-        info_layout.addWidget(phone_label, 6, 0)
-        info_layout.addWidget(email_label, 6, 1)
-        info_layout.addWidget(self.phone_entry, 7, 0)
-        info_layout.addWidget(self.email_entry, 7, 1)
-        
-        # Add vertical spacing
-        info_layout.addItem(QSpacerItem(0, 8), 8, 0)
-        
-        # Website and Year (side by side)
+    
+        info_layout.addWidget(phone_label, 4, 0)
+        info_layout.addWidget(email_label, 4, 1)
+        info_layout.addWidget(self.phone_entry, 5, 0)
+        info_layout.addWidget(self.email_entry, 5, 1)
+    
+        # Website and Year
         website_label = QLabel("Website")
         website_label.setProperty("class", "field-label")
         self.website_entry = QLineEdit()
         self.website_entry.setPlaceholderText("https://www.school.com")
-        
+    
         year_label = QLabel("Established Year")
         year_label.setProperty("class", "field-label")
         self.year_entry = QLineEdit()
         self.year_entry.setPlaceholderText("e.g., 1995")
-        
-        info_layout.addWidget(website_label, 9, 0)
-        info_layout.addWidget(year_label, 9, 1)
-        info_layout.addWidget(self.website_entry, 10, 0)
-        info_layout.addWidget(self.year_entry, 10, 1)
-        
-        # Add vertical spacing
-        info_layout.addItem(QSpacerItem(0, 8), 11, 0)
-        
-        # Motto (full width)
+    
+        info_layout.addWidget(website_label, 6, 0)
+        info_layout.addWidget(year_label, 6, 1)
+        info_layout.addWidget(self.website_entry, 7, 0)
+        info_layout.addWidget(self.year_entry, 7, 1)
+    
+        # Motto
         motto_label = QLabel("School Motto")
         motto_label.setProperty("class", "field-label")
         self.motto_entry = QLineEdit()
         self.motto_entry.setPlaceholderText("Enter school motto or slogan...")
-        info_layout.addWidget(motto_label, 12, 0, 1, 2)
-        info_layout.addWidget(self.motto_entry, 13, 0, 1, 2)
-        
+        info_layout.addWidget(motto_label, 8, 0, 1, 2)
+        info_layout.addWidget(self.motto_entry, 9, 0, 1, 2)
+    
         form_fields_layout.addWidget(info_group)
-        
-        # Action buttons group
-        actions_group = QGroupBox("⚡ Actions")
+    
+        # ---------------- Action Buttons ----------------
+        actions_group = QGroupBox("Actions")
         actions_layout = QHBoxLayout(actions_group)
         actions_layout.setSpacing(12)
-        actions_layout.setContentsMargins(16, 24, 16, 16)
-        
-        self.add_btn = QPushButton("➕ Add School")
-        self.add_btn.setProperty("class", "btn-success")
+        actions_layout.setContentsMargins(16, 16, 16, 16)
+    
+        self.add_btn = QPushButton("Add School")
+        self.add_btn.setProperty("class", "success")
+        self.add_btn.setIcon(QIcon("static/icons/add.png"))
+        self.add_btn.setIconSize(QSize(18, 18))
         self.add_btn.clicked.connect(self.add_school)
-        
-        self.update_btn = QPushButton("✏️ Update School")
-        self.update_btn.setProperty("class", "btn-primary")
+    
+        self.update_btn = QPushButton("Update School")
+        self.update_btn.setProperty("class", "primary")
+        self.update_btn.setIcon(QIcon("static/icons/update.png"))
+        self.update_btn.setIconSize(QSize(18, 18))
         self.update_btn.clicked.connect(self.update_school)
-        
-        self.delete_btn = QPushButton("🗑️ Delete School")
-        self.delete_btn.setProperty("class", "btn-danger")
+    
+        self.delete_btn = QPushButton("Delete School")
+        self.delete_btn.setProperty("class", "danger")
+        self.delete_btn.setIcon(QIcon("static/icons/delete.png"))
+        self.delete_btn.setIconSize(QSize(18, 18))
         self.delete_btn.clicked.connect(self.delete_school)
-        
-        self.clear_btn = QPushButton("🔄 Clear Fields")
-        self.clear_btn.setProperty("class", "btn-secondary")
+    
+        self.clear_btn = QPushButton("Clear Fields")
+        self.clear_btn.setProperty("class", "secondary")
+        self.clear_btn.setIcon(QIcon("static/icons/clear.png"))
+        self.clear_btn.setIconSize(QSize(18, 18))
         self.clear_btn.clicked.connect(self.clear_fields)
-        
+    
         actions_layout.addWidget(self.add_btn)
         actions_layout.addWidget(self.update_btn)
         actions_layout.addWidget(self.delete_btn)
         actions_layout.addWidget(self.clear_btn)
-        
+    
         form_fields_layout.addWidget(actions_group)
         form_fields_layout.addStretch()
-        
-        # Right side - Logo section (30% width)
+    
+        # ---------------- Right side - Logo section (30% width) ----------------
         logo_container = QWidget()
         logo_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         logo_container.setFixedWidth(350)
         logo_layout = QVBoxLayout(logo_container)
         logo_layout.setSpacing(16)
-        
-        logo_group = QGroupBox("🖼️ School Logo")
+    
+        logo_group = QGroupBox("School Logo")
         logo_group_layout = QVBoxLayout(logo_group)
         logo_group_layout.setContentsMargins(16, 24, 16, 16)
         logo_group_layout.setSpacing(12)
-        
-        # Logo display with better styling
+    
+        # Logo display
         self.logo_label = QLabel()
         self.logo_label.setAlignment(Qt.AlignCenter)
         self.logo_label.setProperty("class", "logo-container")
         self.logo_label.setFixedSize(300, 300)
-        self.logo_label.setText("📷\n\nClick 'Select Logo' to\nupload school logo\n\n(Max 5MB)")
+        self.logo_label.setText("Click 'Select Logo' to upload school logo\n(Max 5MB)")
         self.logo_label.setStyleSheet(f"""
             QLabel {{
                 border: 2px dashed {self.colors['border']};
@@ -233,87 +239,107 @@ class SchoolsForm(AuditBaseForm):
             }}
         """)
         logo_group_layout.addWidget(self.logo_label, 0, Qt.AlignCenter)
-        
-        # Logo buttons with better spacing
+    
+        # Logo buttons
         logo_buttons_layout = QHBoxLayout()
         logo_buttons_layout.setSpacing(8)
-        
-        self.select_logo_btn = QPushButton("📁 Select Logo")
-        self.select_logo_btn.setProperty("class", "btn-info")
+    
+        self.select_logo_btn = QPushButton("Select Logo")
+        self.select_logo_btn.setProperty("class", "info")
+        self.select_logo_btn.setIcon(QIcon("static/icons/upload.png"))
+        self.select_logo_btn.setIconSize(QSize(18, 18))
         self.select_logo_btn.clicked.connect(self.select_logo)
-        
-        self.remove_logo_btn = QPushButton("❌ Remove")
-        self.remove_logo_btn.setProperty("class", "btn-warning")
+    
+        self.remove_logo_btn = QPushButton("Remove")
+        self.remove_logo_btn.setProperty("class", "warning")
+        self.remove_logo_btn.setIcon(QIcon("static/icons/remove.png"))
+        self.remove_logo_btn.setIconSize(QSize(18, 18))
         self.remove_logo_btn.clicked.connect(self.remove_logo)
-        
+    
         logo_buttons_layout.addWidget(self.select_logo_btn)
         logo_buttons_layout.addWidget(self.remove_logo_btn)
         logo_group_layout.addLayout(logo_buttons_layout)
-        
+    
         logo_layout.addWidget(logo_group)
         logo_layout.addStretch()
-        
-        # Add both sides to main form layout
+    
+        # ---------------- Add left and right sides to main layout ----------------
         form_layout.addWidget(form_container)
         form_layout.addWidget(logo_container)
 
+
     def setup_school_data_tab(self):
-        # Main layout for data tab
+        """Setup the Schools Data Tab with search, actions, and table"""
+        # Main layout for the data tab
         data_layout = QVBoxLayout(self.school_data_tab)
         data_layout.setContentsMargins(20, 20, 20, 20)
-        data_layout.setSpacing(8)
-        
-        # Compact single-row search and actions section
-        search_group = QGroupBox("🔍 Search & Actions")
+        data_layout.setSpacing(10)
+    
+        # ---------------- Search & Actions Section ----------------
+        search_group = QGroupBox("Search & Actions")
         search_group.setProperty("class", "search-section")
         search_layout = QVBoxLayout(search_group)
         search_layout.setContentsMargins(12, 16, 12, 8)
         search_layout.setSpacing(6)
-        
-        # Single row with all controls
+    
+        # Single row with search and action buttons
         controls_row = QHBoxLayout()
         controls_row.setSpacing(8)
-        
-        # Search section
+    
+        # Search label and entry
         search_label = QLabel("Search:")
         search_label.setProperty("class", "field-label")
         search_label.setFixedWidth(50)
-        
+    
         self.search_entry = QLineEdit()
-        self.search_entry.setPlaceholderText("🔍 Search by name, address, phone, or email...")
-        self.search_entry.setFixedHeight(32)  # Compact height
-        
-        search_btn = QPushButton("🔍 Search")
-        search_btn.setProperty("class", "btn-primary")
+        self.search_entry.setPlaceholderText("Search by name, address, phone, or email...")
+        self.search_entry.setFixedHeight(32)
+    
+        # Search button with icon
+        search_btn = QPushButton("Search")
+        search_btn.setProperty("class", "primary")
+        search_btn.setIcon(QIcon("static/icons/search.png"))
+        search_btn.setIconSize(QSize(18, 18))
         search_btn.setFixedHeight(32)
         search_btn.clicked.connect(self.search_schools_action)
-        
+    
+        # Clear search button with icon
         clear_search_btn = QPushButton("Clear")
-        clear_search_btn.setProperty("class", "btn-secondary")
+        clear_search_btn.setProperty("class", "secondary")
+        clear_search_btn.setIcon(QIcon("static/icons/clear.png"))
+        clear_search_btn.setIconSize(QSize(18, 18))
         clear_search_btn.setFixedHeight(32)
         clear_search_btn.clicked.connect(self.clear_search)
-        
-        # Add separator
+    
+        # Separator
         separator1 = QLabel("|")
         separator1.setStyleSheet(f"color: {self.colors['border']}; font-weight: bold; margin: 0 4px;")
-        
-        # Action buttons
-        export_btn = QPushButton("📤 Export")
-        export_btn.setProperty("class", "btn-info")
+    
+        # Export button with icon
+        export_btn = QPushButton("Export")
+        export_btn.setProperty("class", "info")
+        export_btn.setIcon(QIcon("static/icons/export.png"))
+        export_btn.setIconSize(QSize(18, 18))
         export_btn.setFixedHeight(32)
         export_btn.clicked.connect(self.export_schools_data)
-        
-        report_btn = QPushButton("📊 Report")
-        report_btn.setProperty("class", "btn-success")
+    
+        # Report button with icon
+        report_btn = QPushButton("Report")
+        report_btn.setProperty("class", "success")
+        report_btn.setIcon(QIcon("static/icons/report.png"))
+        report_btn.setIconSize(QSize(18, 18))
         report_btn.setFixedHeight(32)
         report_btn.clicked.connect(self.generate_school_report)
-        
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.setProperty("class", "btn-primary")
+    
+        # Refresh button with icon
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setProperty("class", "primary")
+        refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
+        refresh_btn.setIconSize(QSize(18, 18))
         refresh_btn.setFixedHeight(32)
         refresh_btn.clicked.connect(self.load_schools)
-        
-        # Add all controls to the single row
+    
+        # Add all controls to the row
         controls_row.addWidget(search_label)
         controls_row.addWidget(self.search_entry)
         controls_row.addWidget(search_btn)
@@ -323,22 +349,18 @@ class SchoolsForm(AuditBaseForm):
         controls_row.addWidget(report_btn)
         controls_row.addWidget(refresh_btn)
         controls_row.addStretch()  # Push everything to the left
-        
+    
         search_layout.addLayout(controls_row)
         data_layout.addWidget(search_group)
-        
-        # Status label for showing record counts
-        self.status_label = QLabel("📋 Total Schools: 0")
-        self.status_label.setStyleSheet(f"""
-            font-size: 12px;
-            color: {self.colors['text_secondary']};
-            font-weight: 500;
-            padding: 4px 0px;
-        """)
+    
+        # ---------------- Status Label ----------------
+        self.status_label = QLabel("Total Schools: 0")
+        self.status_label.setProperty("class", "status-label")
         data_layout.addWidget(self.status_label)
-        
-        # Schools table with enhanced styling - takes remaining space
-        self.create_schools_table(data_layout)
+    
+        # ---------------- Schools Table ----------------
+        self.create_schools_table(data_layout)  # Use existing method for table setup
+
 
     def create_schools_table(self, parent_layout):
         self.schools_table = QTableWidget()
@@ -382,20 +404,42 @@ class SchoolsForm(AuditBaseForm):
         
         parent_layout.addWidget(self.schools_table, 1)  # Give it stretch factor of 1
 
+    #def apply_permissions(self):
+        #"""Apply UI permissions to buttons"""
+        #if not hasattr(self, 'add_btn') or not hasattr(self, 'update_btn') or not hasattr(self, 'delete_btn'):
+            #print("Warning: UI buttons not fully initialized, skipping permissions")
+            #return
+            
+        #can_create = has_permission(self.user_session, "create_school")
+        #can_edit = has_permission(self.user_session, "edit_school")
+        #can_delete = has_permission(self.user_session, "delete_school")
+
+        #self.add_btn.setEnabled(can_create)
+        #self.update_btn.setEnabled(can_edit)
+        #self.delete_btn.setEnabled(can_delete)
+
+        #self.add_btn.setToolTip("Add School" if can_create else "Permission required")
+        #self.update_btn.setToolTip("Update School" if can_edit else "Permission required")
+        #self.delete_btn.setToolTip("Delete School" if can_delete else "Permission required")
+
     # ======================
     # CRUD Operations Methods (Enhanced)
     # ======================
 
     def add_school(self):
-        """Add new school to database with enhanced fields"""
+        """Add new school to database with permission and audit"""
+        if not has_permission(self.user_session, "create_school"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to add schools.")
+            return
+    
         if not self.validate_fields():
             return
-        
+    
         try:
-            # Insert school record with all fields
+            # Insert school record
             self.cursor.execute('''
                 INSERT INTO schools (
-                    school_name, address, phone, email, website, 
+                    school_name, address, phone, email, website,
                     established_year, motto, logo_path
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
@@ -404,105 +448,172 @@ class SchoolsForm(AuditBaseForm):
                 self.phone_entry.text().strip(),
                 self.email_entry.text().strip(),
                 self.website_entry.text().strip(),
-                self.year_entry.text().strip() if self.year_entry.text().strip() else None,
+                self.year_entry.text().strip() or None,
                 self.motto_entry.text().strip(),
-                None  # Will be updated if logo is saved
+                None  # Will be updated after logo save
             ))
-            
             school_id = self.cursor.lastrowid
-            
+    
             # Save logo if selected
             if self.logo_path:
                 logo_path = self.save_logo(school_id)
                 if logo_path:
-                    self.cursor.execute("UPDATE schools SET logo_path = %s WHERE id = %s", 
-                                      (logo_path, school_id))
-            
+                    self.cursor.execute("UPDATE schools SET logo_path = %s WHERE id = %s", (logo_path, school_id))
+    
             self.db_connection.commit()
+    
+            # ✅ Log audit action
+            school_name = self.school_name_entry.text().strip()
+            self.log_audit_action(
+                action="CREATE",
+                table_name="schools",
+                record_id=school_id,
+                description=f"Created school '{school_name}' (ID: {school_id}) at {self.address_entry.text().strip()}"
+            )
+    
             QMessageBox.information(self, "✅ Success", "School added successfully!")
-            
             self.clear_fields()
             self.load_schools()
-            
+    
         except Exception as e:
+            self.db_connection.rollback()
             QMessageBox.critical(self, "❌ Error", f"Error adding school: {str(e)}")
 
     def update_school(self):
-        """Update existing school record with enhanced fields"""
+        """Update existing school record with permission and audit"""
         if not self.current_school_id:
             QMessageBox.warning(self, "⚠️ Warning", "Please select a school to update!")
             return
-        
+    
+        if not has_permission(self.user_session, "edit_school"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to edit schools.")
+            return
+    
         if not self.validate_fields():
             return
-        
+    
         try:
-            # Update school record with all fields
+            school_name = self.school_name_entry.text().strip()
+    
+            # Get old values before update
+            self.cursor.execute(
+                "SELECT school_name, address, phone, email FROM schools WHERE id = %s",
+                (self.current_school_id,)
+            )
+            result = self.cursor.fetchone()
+            if not result:
+                QMessageBox.warning(self, "Error", "School not found.")
+                return
+            old_name, old_address, old_phone, old_email = result['school_name'], result['address'], result['phone'], result['email']
+    
+            # Update school record
             self.cursor.execute('''
-                UPDATE schools SET 
-                    school_name = %s, 
-                    address = %s, 
-                    phone = %s, 
-                    email = %s,
-                    website = %s,
-                    established_year = %s,
-                    motto = %s
+                UPDATE schools SET
+                    school_name = %s, address = %s, phone = %s, email = %s,
+                    website = %s, established_year = %s, motto = %s
                 WHERE id = %s
             ''', (
-                self.school_name_entry.text().strip(),
+                school_name,
                 self.address_entry.text().strip(),
                 self.phone_entry.text().strip(),
                 self.email_entry.text().strip(),
                 self.website_entry.text().strip(),
-                self.year_entry.text().strip() if self.year_entry.text().strip() else None,
+                self.year_entry.text().strip() or None,
                 self.motto_entry.text().strip(),
                 self.current_school_id
             ))
-            
-            # Save logo if new one was selected
+    
+            # Save new logo if selected
             if self.logo_path:
                 logo_path = self.save_logo(self.current_school_id)
                 if logo_path:
-                    self.cursor.execute("UPDATE schools SET logo_path = %s WHERE id = %s", 
-                                      (logo_path, self.current_school_id))
-            
+                    self.cursor.execute("UPDATE schools SET logo_path = %s WHERE id = %s", (logo_path, self.current_school_id))
+    
             self.db_connection.commit()
+    
+            # ✅ Build change description
+            changes = []
+            if old_name != school_name: changes.append(f"name '{old_name}' → '{school_name}'")
+            if old_address != self.address_entry.text().strip(): changes.append("address updated")
+            if old_phone != self.phone_entry.text().strip(): changes.append("phone updated")
+            if old_email != self.email_entry.text().strip(): changes.append("email updated")
+    
+            change_desc = "; ".join(changes) if changes else "basic info updated"
+    
+            # ✅ Log audit action
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="schools",
+                record_id=self.current_school_id,
+                description=f"Updated school '{school_name}' (ID: {self.current_school_id}): {change_desc}"
+            )
+    
             QMessageBox.information(self, "✅ Success", "School updated successfully!")
-            
-            self.clear_fields()
             self.load_schools()
-            
+    
         except Exception as e:
+            self.db_connection.rollback()
             QMessageBox.critical(self, "❌ Error", f"Error updating school: {str(e)}")
-
+        
     def delete_school(self):
-        """Delete selected school with enhanced validation"""
+        """Delete selected school with enhanced validation, permission check, and audit logging"""
         if not self.current_school_id:
             QMessageBox.warning(self, "⚠️ Warning", "Please select a school to delete!")
             return
-        
+    
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "delete_school"):
+            QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete schools.")
+            return
+    
         # Get school name for confirmation
-        school_name = self.school_name_entry.text()
-        
+        school_name = self.school_name_entry.text().strip() or "Unknown School"
+    
         # Enhanced confirmation dialog
         reply = QMessageBox.question(
-            self, '🗑️ Confirm Delete', 
-            f'Are you sure you want to delete "{school_name}"?\n\nThis action cannot be undone!',
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        
+            self, '🗑️ Confirm Delete',
+            f'Are you sure you want to permanently delete "{school_name}"?\n\n'
+            '⚠️ This action cannot be undone.\n'
+            '📌 All related data may be affected if foreign keys exist.',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+    
         if reply == QMessageBox.Yes:
             try:
-                # Delete school
+                # 🔍 Optional: Check for dependencies (e.g., teachers linked to this school)
+                self.cursor.execute("SELECT COUNT(*) as count FROM teachers WHERE school_id = %s", (self.current_school_id,))
+                teacher_count = self.cursor.fetchone()['count']
+    
+                if teacher_count > 0:
+                    confirm = QMessageBox.question(
+                        self, "Linked Data",
+                        f"This school has {teacher_count} linked teacher(s). Deleting may break references.\n\n"
+                        "Continue anyway?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    if confirm != QMessageBox.Yes:
+                        return
+    
+                # Perform deletion
                 self.cursor.execute("DELETE FROM schools WHERE id = %s", (self.current_school_id,))
                 self.db_connection.commit()
-                
-                QMessageBox.information(self, "✅ Success", "School deleted successfully!")
-                
+    
+                # ✅ Log audit action
+                self.log_audit_action(
+                    action="DELETE",
+                    table_name="schools",
+                    record_id=self.current_school_id,
+                    description=f"Permanently deleted school '{school_name}' (ID: {self.current_school_id})"
+                )
+    
+                QMessageBox.information(self, "✅ Success", f"School '{school_name}' was deleted successfully!")
                 self.clear_fields()
                 self.load_schools()
-                
+    
             except Exception as e:
-                QMessageBox.critical(self, "❌ Error", f"Error deleting school: {str(e)}")
+                self.db_connection.rollback()
+                QMessageBox.critical(self, "❌ Error", f"Failed to delete school: {str(e)}")
 
     # ======================
     # Helper Methods (Enhanced)
@@ -588,22 +699,25 @@ class SchoolsForm(AuditBaseForm):
             for row_num, school in enumerate(schools):
                 self.schools_table.insertRow(row_num)
                 
-                for col_num, data in enumerate(school):
-                    # Format data for better display
-                    if data is None:
-                        display_text = ""
-                    elif col_num == 6 and data:  # Year column
-                        display_text = str(int(data))
-                    else:
-                        display_text = str(data)
-                    
-                    item = QTableWidgetItem(display_text)
+                # Use dictionary keys instead of numeric indices
+                items = [
+                    str(school['id']),
+                    school['school_name'] or '',
+                    school['address'] or '',
+                    school['phone'] or '',
+                    school['email'] or '',
+                    school['website'] or '',
+                    str(school['established_year']) if school['established_year'] else ''
+                ]
+                
+                for col_num, item in enumerate(items):
+                    table_item = QTableWidgetItem(item)
                     
                     # Style ID column differently
                     if col_num == 0:
-                        item.setTextAlignment(Qt.AlignCenter)
+                        table_item.setTextAlignment(Qt.AlignCenter)
                     
-                    self.schools_table.setItem(row_num, col_num, item)
+                    self.schools_table.setItem(row_num, col_num, table_item)
             
             # Re-enable sorting and maintain column widths
             self.schools_table.setSortingEnabled(True)
@@ -644,17 +758,17 @@ class SchoolsForm(AuditBaseForm):
             
             if school:
                 # Populate form fields with all data
-                self.school_name_entry.setText(school[1] or "")
-                self.address_entry.setText(school[2] or "")
-                self.phone_entry.setText(school[3] or "")
-                self.email_entry.setText(school[4] or "")
-                self.website_entry.setText(school[5] or "")
-                self.year_entry.setText(str(school[6]) if school[6] else "")
-                self.motto_entry.setText(school[7] or "")
+                self.school_name_entry.setText(school['school_name'] or "")
+                self.address_entry.setText(school['address'] or "")
+                self.phone_entry.setText(school['phone'] or "")
+                self.email_entry.setText(school['email'] or "")
+                self.website_entry.setText(school['website'] or "")
+                self.year_entry.setText(str(school['established_year']) if school['established_year'] else "")
+                self.motto_entry.setText(school['motto'] or "")
                 
                 # Load logo if available
-                if school[8]:
-                    self.load_logo(school[8])
+                if school['logo_path']:
+                    self.load_logo(school['logo_path'])
                 else:
                     self.load_logo()
                 
@@ -859,19 +973,23 @@ class SchoolsForm(AuditBaseForm):
             for row_num, school in enumerate(schools):
                 self.schools_table.insertRow(row_num)
                 
-                for col_num, data in enumerate(school):
-                    if data is None:
-                        display_text = ""
-                    elif col_num == 6 and data:  # Year column
-                        display_text = str(int(data))
-                    else:
-                        display_text = str(data)
-                    
-                    item = QTableWidgetItem(display_text)
+                # Use dictionary keys instead of numeric indices
+                items = [
+                    str(school['id']),
+                    school['school_name'] or '',
+                    school['address'] or '',
+                    school['phone'] or '',
+                    school['email'] or '',
+                    school['website'] or '',
+                    str(school['established_year']) if school['established_year'] else ''
+                ]
+                
+                for col_num, item in enumerate(items):
+                    table_item = QTableWidgetItem(item)
                     if col_num == 0:
-                        item.setTextAlignment(Qt.AlignCenter)
+                        table_item.setTextAlignment(Qt.AlignCenter)
                     
-                    self.schools_table.setItem(row_num, col_num, item)
+                    self.schools_table.setItem(row_num, col_num, table_item)
             
             # Re-enable sorting and maintain column widths
             self.schools_table.setSortingEnabled(True)
@@ -940,14 +1058,14 @@ class SchoolsForm(AuditBaseForm):
                 for school in schools:
                     # Format the data nicely
                     row = [
-                        school[0] or '',  # name
-                        school[1] or '',  # address
-                        school[2] or '',  # phone
-                        school[3] or '',  # email
-                        school[4] or '',  # website
-                        str(school[5]) if school[5] else '',  # year
-                        school[6] or '',  # motto
-                        school[7].strftime('%Y-%m-%d') if school[7] else ''  # created_at
+                        school['school_name'] or '',  # name
+                        school['address'] or '',  # address
+                        school['phone'] or '',  # phone
+                        school['email'] or '',  # email
+                        school['website'] or '',  # website
+                        str(school['established_year']) if school['established_year'] else '',  # year
+                        school['motto'] or '',  # motto
+                        school['created_at'].strftime('%Y-%m-%d') if school['created_at'] else ''  # created_at
                     ]
                     writer.writerow(row)
             
@@ -972,8 +1090,8 @@ class SchoolsForm(AuditBaseForm):
             QApplication.processEvents()
             
             # Get comprehensive statistics
-            self.cursor.execute("SELECT COUNT(*) FROM schools WHERE is_active = TRUE")
-            school_count = self.cursor.fetchone()[0]
+            self.cursor.execute("SELECT COUNT(*) as count FROM schools WHERE is_active = TRUE")
+            school_count = self.cursor.fetchone()['count']
             
             # Schools by establishment decade
             self.cursor.execute('''
@@ -1018,17 +1136,17 @@ Total Active Schools: {school_count}
 
 📞 CONTACT INFORMATION COVERAGE
 {'─' * 35}
-Schools with Phone Numbers: {info_stats[0]} ({info_stats[0]/school_count*100:.1f}% of total)
-Schools with Email Addresses: {info_stats[1]} ({info_stats[1]/school_count*100:.1f}% of total)
-Schools with Websites: {info_stats[2]} ({info_stats[2]/school_count*100:.1f}% of total)
-Schools with Logos: {info_stats[3]} ({info_stats[3]/school_count*100:.1f}% of total)
+Schools with Phone Numbers: {info_stats['with_phone']} ({info_stats['with_phone']/school_count*100:.1f}% of total)
+Schools with Email Addresses: {info_stats['with_email']} ({info_stats['with_email']/school_count*100:.1f}% of total)
+Schools with Websites: {info_stats['with_website']} ({info_stats['with_website']/school_count*100:.1f}% of total)
+Schools with Logos: {info_stats['with_logo']} ({info_stats['with_logo']/school_count*100:.1f}% of total)
 
 🏛️ SCHOOLS BY ESTABLISHMENT PERIOD
 {'─' * 38}"""
             
-            for decade, count in decade_stats:
-                percentage = count / school_count * 100
-                report += f"\n{decade}: {count} schools ({percentage:.1f}%)"
+            for decade in decade_stats:
+                percentage = decade['count'] / school_count * 100
+                report += f"\n{decade['decade']}: {decade['count']} schools ({percentage:.1f}%)"
             
             report += f"""
 
@@ -1036,13 +1154,13 @@ Schools with Logos: {info_stats[3]} ({info_stats[3]/school_count*100:.1f}% of to
 {'─' * 35}"""
             
             # Add recommendations
-            if info_stats[0] / school_count < 0.8:
+            if info_stats['with_phone'] / school_count < 0.8:
                 report += "\n• Consider collecting phone numbers for more schools"
-            if info_stats[1] / school_count < 0.7:
+            if info_stats['with_email'] / school_count < 0.7:
                 report += "\n• Email addresses are missing for many schools"
-            if info_stats[2] / school_count < 0.5:
+            if info_stats['with_website'] / school_count < 0.5:
                 report += "\n• Many schools don't have website information"
-            if info_stats[3] / school_count < 0.6:
+            if info_stats['with_logo'] / school_count < 0.6:
                 report += "\n• Consider uploading logos for better visual identification"
             
             # Update status

@@ -282,7 +282,7 @@ class ClassesForm(AuditBaseForm):
         # Update
         self.update_btn = QPushButton("Update Class")
         self.update_btn.setIcon(QIcon("static/icons/update.png"))
-        self.update_btn.setIconSize(QSize(24, 24))
+        self.update_btn.setIconSize(QSize(20, 20))
         self.update_btn.setProperty("class", "primary")
         self.update_btn.setFont(self.fonts['button'])
         self.update_btn.clicked.connect(self.update_class)
@@ -290,7 +290,7 @@ class ClassesForm(AuditBaseForm):
         # Clear
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setIcon(QIcon("static/icons/clear.png"))
-        self.clear_btn.setIconSize(QSize(24, 24))
+        self.clear_btn.setIconSize(QSize(20, 20))
         self.clear_btn.setProperty("class", "secondary")
         self.clear_btn.setFont(self.fonts['button'])
         self.clear_btn.clicked.connect(self.clear_form)
@@ -306,7 +306,7 @@ class ClassesForm(AuditBaseForm):
         # Refresh
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
-        self.refresh_btn.setIconSize(QSize(24, 24))
+        self.refresh_btn.setIconSize(QSize(20, 20))
         self.refresh_btn.setProperty("class", "info")
         self.refresh_btn.setFont(self.fonts['button'])
         self.refresh_btn.clicked.connect(self.refresh_all_data)
@@ -314,7 +314,7 @@ class ClassesForm(AuditBaseForm):
         # Export
         self.export_btn = QPushButton("Export")
         self.export_btn.setIcon(QIcon("static/icons/export.png"))
-        self.export_btn.setIconSize(QSize(24, 24))
+        self.export_btn.setIconSize(QSize(20, 20))
         self.export_btn.setProperty("class", "warning")
         self.export_btn.setFont(self.fonts['button'])
         self.export_btn.clicked.connect(self.export_classes)

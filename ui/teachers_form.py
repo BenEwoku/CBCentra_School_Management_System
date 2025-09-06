@@ -310,104 +310,141 @@ class TeachersForm(AuditBaseForm):
         """Create photo section"""
         photo_group = QGroupBox("Staff Photo")
         photo_layout = QVBoxLayout(photo_group)
-        
+    
         # Photo display
         self.photo_label = QLabel("No Photo\nSelected")
         self.photo_label.setProperty("class", "photo")
-        self.photo_label.setAlignment(Qt.AlignCenter)
+        self.photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.photo_label.setScaledContents(False)
         photo_layout.addWidget(self.photo_label)
-        
+    
         # Photo buttons
         photo_btn_layout = QHBoxLayout()
-        
+    
         self.select_photo_btn = QPushButton("Select Photo")
         self.select_photo_btn.setProperty("class", "info")
+        self.select_photo_btn.setIcon(QIcon("static/icons/upload.png"))
+        self.select_photo_btn.setIconSize(QSize(20, 20))
         self.select_photo_btn.clicked.connect(self.select_photo)
         photo_btn_layout.addWidget(self.select_photo_btn)
-        
+    
         self.remove_photo_btn = QPushButton("Remove")
         self.remove_photo_btn.setProperty("class", "danger")
+        self.remove_photo_btn.setIcon(QIcon("static/icons/remove.png"))
+        self.remove_photo_btn.setIconSize(QSize(20, 20))
         self.remove_photo_btn.clicked.connect(self.remove_photo)
         photo_btn_layout.addWidget(self.remove_photo_btn)
-        
+    
         photo_layout.addLayout(photo_btn_layout)
         parent_layout.addWidget(photo_group)
-
+    
+    
     def create_action_buttons(self, parent_layout):
         """Create action buttons section"""
         actions_group = QGroupBox("Actions")
         actions_layout = QVBoxLayout(actions_group)
-        
-        # Primary actions
+    
+        # === Primary actions ===
         primary_layout = QHBoxLayout()
-        
+    
         self.add_btn = QPushButton("Add Teacher")
         self.add_btn.setProperty("class", "success")
+        self.add_btn.setIcon(QIcon("static/icons/add.png"))
+        self.add_btn.setIconSize(QSize(20, 20))
         self.add_btn.clicked.connect(self.add_teacher)
         primary_layout.addWidget(self.add_btn)
-        
+    
         self.update_btn = QPushButton("Update")
+        self.update_btn.setProperty("class", "primary")
+        self.update_btn.setIcon(QIcon("static/icons/update.png"))
+        self.update_btn.setIconSize(QSize(20, 20))
         self.update_btn.clicked.connect(self.update_teacher)
         primary_layout.addWidget(self.update_btn)
-        
+    
         actions_layout.addLayout(primary_layout)
-        
-        # Secondary actions
+    
+        # === Secondary actions ===
         secondary_layout = QHBoxLayout()
-        
+    
         self.delete_btn = QPushButton("Delete")
         self.delete_btn.setProperty("class", "danger")
+        self.delete_btn.setIcon(QIcon("static/icons/delete.png"))
+        self.delete_btn.setIconSize(QSize(20, 20))
         self.delete_btn.clicked.connect(self.delete_teacher)
         secondary_layout.addWidget(self.delete_btn)
-        
+    
         self.clear_btn = QPushButton("Clear Fields")
         self.clear_btn.setProperty("class", "warning")
+        self.clear_btn.setIcon(QIcon("static/icons/clear.png"))
+        self.clear_btn.setIconSize(QSize(20, 20))
         self.clear_btn.clicked.connect(self.clear_fields)
         secondary_layout.addWidget(self.clear_btn)
-        
+    
         actions_layout.addLayout(secondary_layout)
-        
-        # Utility actions
+    
+        # === Utility actions ===
         utility_layout = QHBoxLayout()
-        
+    
         self.edit_selected_btn = QPushButton("Edit Selected")
+        self.edit_selected_btn.setIcon(QIcon("static/icons/edit.png"))
+        self.edit_selected_btn.setIconSize(QSize(20, 20))
         self.edit_selected_btn.clicked.connect(self.edit_selected_teacher)
         utility_layout.addWidget(self.edit_selected_btn)
-        
+    
         self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.setProperty("class", "secondary")
+        self.refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
+        self.refresh_btn.setIconSize(QSize(20, 20))
         self.refresh_btn.clicked.connect(self.refresh_data)
         utility_layout.addWidget(self.refresh_btn)
-        
+    
         actions_layout.addLayout(utility_layout)
-        
+    
         parent_layout.addWidget(actions_group)
         parent_layout.addStretch()  # Push everything to top
 
+    
     def setup_teacher_data_tab(self):
         """Set up the teacher data tab"""
         layout = QVBoxLayout(self.teacher_data_tab)
-        
-        # Search section
+    
+        # === SEARCH SECTION ===
         search_group = QGroupBox("Search Teachers")
         search_layout = QHBoxLayout(search_group)
-        
+    
+        # Label
         search_layout.addWidget(QLabel("Search:"))
+    
+        # Input field
         self.search_entry = QLineEdit()
         self.search_entry.setPlaceholderText("Enter name, ID, or email...")
         self.search_entry.textChanged.connect(self.search_teachers)
+        self.search_entry.setFixedWidth(500)
         search_layout.addWidget(self.search_entry)
-        
+    
+        # Search button
         self.search_btn = QPushButton("Search")
+        self.search_btn.setProperty("class", "primary")
+        self.search_btn.setIcon(QIcon("static/icons/search.png"))
+        self.search_btn.setIconSize(QSize(18, 18))
+        self.search_btn.setFixedWidth(110)
         self.search_btn.clicked.connect(self.search_teachers)
         search_layout.addWidget(self.search_btn)
-        
+    
+        # Clear button
         self.clear_search_btn = QPushButton("Clear")
         self.clear_search_btn.setProperty("class", "warning")
+        self.clear_search_btn.setIcon(QIcon("static/icons/clear.png"))
+        self.clear_search_btn.setIconSize(QSize(18, 18))
+        self.clear_search_btn.setFixedWidth(100)
         self.clear_search_btn.clicked.connect(self.clear_search)
         search_layout.addWidget(self.clear_search_btn)
-        
+    
+        # Add a little stretch at the end so buttons don’t crowd
+        search_layout.addStretch()
+    
         layout.addWidget(search_group)
+
         
         #Data actions
         #actions_group = QGroupBox("Data Actions")
@@ -691,32 +728,53 @@ class TeachersForm(AuditBaseForm):
         return duplicates
 
     def add_teacher(self):
-        """Add new teacher"""
-        # 🔒 Permission check
+        """Add new teacher with full field-level audit logging"""
         if not has_permission(self.user_session, "create_teacher"):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to add teachers.")
             return
     
         if not self.validate_fields():
             return
-            
+    
         try:
             school_id = self.get_school_id_from_selection()
-            
+    
             # Get form data
             first_name = self.first_name_entry.text().strip()
             surname = self.surname_entry.text().strip()
             full_name = f"{first_name} {surname}".strip()
-            
+            teacher_id_code = self.teacher_id_entry.text().strip()
+    
             # Update full name display
             self.full_name_entry.setText(full_name)
-            
-            # Get salary value
-            try:
-                monthly_salary = float(self.monthly_salary_entry.text().strip() or 0)
-            except ValueError:
-                monthly_salary = 0.0
-            
+    
+            # Build list of fields for audit log
+            fields_created = []
+            if teacher_id_code:
+                fields_created.append(f"ID='{teacher_id_code}'")
+            if first_name:
+                fields_created.append(f"First Name='{first_name}'")
+            if surname:
+                fields_created.append(f"Surname='{surname}'")
+            if full_name:
+                fields_created.append(f"Full Name='{full_name}'")
+            if self.email_entry.text().strip():
+                fields_created.append(f"Email='{self.email_entry.text().strip()}'")
+            if self.phone_contact_1_entry.text().strip():
+                fields_created.append(f"Phone='{self.phone_contact_1_entry.text().strip()}'")
+            if self.position_combo.currentText().strip():
+                fields_created.append(f"Position='{self.position_combo.currentText().strip()}'")
+            if self.staff_type_combo.currentText().strip():
+                fields_created.append(f"Staff Type='{self.staff_type_combo.currentText().strip()}'")
+            if self.subject_specialty_entry.text().strip():
+                fields_created.append(f"Subject='{self.subject_specialty_entry.text().strip()}'")
+            if self.department_combo.currentText().strip():
+                fields_created.append(f"Department='{self.department_combo.currentText().strip()}'")
+            if self.school_combo.currentText().strip():
+                fields_created.append(f"School='{self.school_combo.currentText().strip()}'")
+            if self.is_active_checkbox.isChecked():
+                fields_created.append("Status='Active'")
+    
             # Insert teacher record
             query = '''
                 INSERT INTO teachers (
@@ -727,10 +785,15 @@ class TeachersForm(AuditBaseForm):
                     next_of_kin, employment_status, is_active, staff_type, position, monthly_salary, department_id
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             '''
-            
+    
+            try:
+                monthly_salary = float(self.monthly_salary_entry.text().strip() or 0)
+            except ValueError:
+                monthly_salary = 0.0
+    
             values = (
                 school_id,
-                self.teacher_id_entry.text().strip(),
+                teacher_id_code,
                 self.salutation_combo.currentText(),
                 first_name,
                 surname,
@@ -757,31 +820,32 @@ class TeachersForm(AuditBaseForm):
                 monthly_salary,
                 self.get_department_id_from_selection()
             )
-            
+    
             self.cursor.execute(query, values)
             teacher_id = self.cursor.lastrowid
-            
+    
             # Save photo if selected
             if self.photo_path:
                 photo_path = self.save_photo(teacher_id)
                 if photo_path:
                     self.cursor.execute("UPDATE teachers SET photo_path = %s WHERE id = %s",
                                       (photo_path, teacher_id))
-            
+    
             self.db_connection.commit()
     
-            # ✅ Log audit action
+            # ✅ Log detailed audit action
+            description = f"Created teacher {full_name} (ID: {teacher_id_code}): " + ", ".join(fields_created)
             self.log_audit_action(
                 action="CREATE",
                 table_name="teachers",
                 record_id=teacher_id,
-                description=f"Added teacher {full_name} (ID: {self.teacher_id_entry.text().strip()}) at {self.school_combo.currentText()}"
+                description=description
             )
     
             QMessageBox.information(self, "Success", "Teacher added successfully!")
             self.clear_fields()
             self.load_teachers()
-            
+    
         except Exception as e:
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Error adding teacher: {str(e)}")
@@ -791,42 +855,141 @@ class TeachersForm(AuditBaseForm):
         return self.department_combo.currentData()
 
     def update_teacher(self):
-        """Update existing teacher"""
+        """Update existing teacher with field-level audit logging"""
         if not self.current_teacher_id:
             QMessageBox.warning(self, "Error", "Please select a teacher to update!")
             return
     
-        # 🔒 Permission check
         if not has_permission(self.user_session, "edit_teacher"):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to edit teachers.")
             return
     
         if not self.validate_fields():
             return
-            
+    
         try:
             school_id = self.get_school_id_from_selection()
-            
-            # Get form data
+    
+            # --- Step 1: Get current (old) values ---
+            self.cursor.execute("""
+                SELECT school_id, teacher_id_code, salutation, first_name, surname, full_name,
+                       email, gender, phone_contact_1, day_phone, current_address, home_district,
+                       subject_specialty, qualification, date_joined, emergency_contact_1,
+                       emergency_contact_2, national_id_number, birth_date, bank_account_number,
+                       next_of_kin, employment_status, is_active, staff_type, position, monthly_salary, department_id
+                FROM teachers WHERE id = %s
+            """, (self.current_teacher_id,))
+            old_data = self.cursor.fetchone()
+            if not old_data:
+                QMessageBox.warning(self, "Error", "Teacher not found.")
+                return
+    
+            # Map old values
+            old_fields = {
+                'school_id': old_data[0],
+                'teacher_id_code': old_data[1],
+                'salutation': old_data[2],
+                'first_name': old_data[3],
+                'surname': old_data[4],
+                'full_name': f"{old_data[3]} {old_data[4]}".strip(),
+                'email': old_data[6],
+                'gender': old_data[7],
+                'phone_contact_1': old_data[8],
+                'day_phone': old_data[9],
+                'current_address': old_data[10],
+                'home_district': old_data[11],
+                'subject_specialty': old_data[12],
+                'qualification': old_data[13],
+                'date_joined': old_data[14].strftime('%Y-%m-%d') if old_data[14] else None,
+                'emergency_contact_1': old_data[15],
+                'emergency_contact_2': old_data[16],
+                'national_id_number': old_data[17],
+                'birth_date': old_data[18].strftime('%Y-%m-%d') if old_data[18] else None,
+                'bank_account_number': old_data[19],
+                'next_of_kin': old_data[20],
+                'employment_status': old_data[21],
+                'is_active': bool(old_data[22]),
+                'staff_type': old_data[23],
+                'position': old_data[24],
+                'monthly_salary': float(old_data[25]) if old_data[25] else 0.0,
+                'department_id': old_data[26]
+            }
+    
+            # --- Step 2: Get new values ---
             first_name = self.first_name_entry.text().strip()
             surname = self.surname_entry.text().strip()
             full_name = f"{first_name} {surname}".strip()
-            
-            # Update full name display
-            self.full_name_entry.setText(full_name)
-            
-            # Get salary value
+    
             try:
                 monthly_salary = float(self.monthly_salary_entry.text().strip() or 0)
             except ValueError:
                 monthly_salary = 0.0
-            
-            # Handle photo update
-            photo_path = None
-            if self.photo_path:
-                photo_path = self.save_photo(self.current_teacher_id)
-                
-            # Update teacher record - FIXED SQL with proper comma
+    
+            new_fields = {
+                'school_id': school_id,
+                'teacher_id_code': self.teacher_id_entry.text().strip(),
+                'salutation': self.salutation_combo.currentText(),
+                'first_name': first_name,
+                'surname': surname,
+                'full_name': full_name,
+                'email': self.email_entry.text().strip(),
+                'gender': self.gender_combo.currentText(),
+                'phone_contact_1': self.phone_contact_1_entry.text().strip(),
+                'day_phone': self.day_phone_entry.text().strip(),
+                'current_address': self.current_address_entry.text().strip(),
+                'home_district': self.home_district_entry.text().strip(),
+                'subject_specialty': self.subject_specialty_entry.text().strip(),
+                'qualification': self.qualification_entry.text().strip(),
+                'date_joined': self.date_joined_edit.date().toString("yyyy-MM-dd"),
+                'emergency_contact_1': self.emergency_contact_1_entry.text().strip(),
+                'emergency_contact_2': self.emergency_contact_2_entry.text().strip(),
+                'national_id_number': self.national_id_entry.text().strip(),
+                'birth_date': self.birth_date_edit.date().toString("yyyy-MM-dd"),
+                'bank_account_number': self.bank_account_entry.text().strip(),
+                'next_of_kin': self.next_of_kin_entry.text().strip(),
+                'employment_status': self.employment_status_combo.currentText(),
+                'is_active': self.is_active_checkbox.isChecked(),
+                'staff_type': self.staff_type_combo.currentText(),
+                'position': self.position_combo.currentText().strip().title(),
+                'monthly_salary': monthly_salary,
+                'department_id': self.get_department_id_from_selection()
+            }
+    
+            # --- Step 3: Compare and build changes ---
+            changes = []
+            field_labels = {
+                'teacher_id_code': 'Teacher ID',
+                'salutation': 'Salutation',
+                'first_name': 'First Name',
+                'surname': 'Surname',
+                'email': 'Email',
+                'gender': 'Gender',
+                'phone_contact_1': 'Phone',
+                'current_address': 'Address',
+                'subject_specialty': 'Subject',
+                'qualification': 'Qualification',
+                'date_joined': 'Join Date',
+                'national_id_number': 'National ID',
+                'employment_status': 'Employment Status',
+                'is_active': 'Active',
+                'staff_type': 'Staff Type',
+                'position': 'Position',
+                'monthly_salary': 'Monthly Salary',
+                'department_id': 'Department'
+            }
+    
+            for field in old_fields:
+                old_val = old_fields[field]
+                new_val = new_fields[field]
+                if old_val != new_val:
+                    label = field_labels.get(field, field.replace('_', ' ').title())
+                    changes.append(f"{label} changed from '{old_val}' to '{new_val}'")
+    
+            if not changes:
+                QMessageBox.information(self, "No Changes", "No data was changed.")
+                return
+    
+            # --- Step 4: Perform update ---
             query = '''
                 UPDATE teachers SET
                     school_id = %s, teacher_id_code = %s, salutation = %s, first_name = %s,
@@ -839,123 +1002,108 @@ class TeachersForm(AuditBaseForm):
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             '''
-            
-            values = (
-                school_id,
-                self.teacher_id_entry.text().strip(),
-                self.salutation_combo.currentText(),
-                first_name,
-                surname,
-                full_name,
-                self.email_entry.text().strip(),
-                self.gender_combo.currentText(),
-                self.phone_contact_1_entry.text().strip(),
-                self.day_phone_entry.text().strip(),
-                self.current_address_entry.text().strip(),
-                self.home_district_entry.text().strip(),
-                self.subject_specialty_entry.text().strip(),
-                self.qualification_entry.text().strip(),
-                self.date_joined_edit.date().toString("yyyy-MM-dd"),
-                self.emergency_contact_1_entry.text().strip(),
-                self.emergency_contact_2_entry.text().strip(),
-                self.national_id_entry.text().strip(),
-                self.birth_date_edit.date().toString("yyyy-MM-dd"),
-                self.bank_account_entry.text().strip(),
-                self.next_of_kin_entry.text().strip(),
-                self.employment_status_combo.currentText(),
-                self.is_active_checkbox.isChecked(),
-                self.staff_type_combo.currentText(),
-                self.position_combo.currentText().strip().title(),
-                monthly_salary,
-                self.get_department_id_from_selection(),
-                self.current_teacher_id
-            )
-            
+    
+            values = tuple(new_fields.values()) + (self.current_teacher_id,)
             self.cursor.execute(query, values)
-            
-            # Update photo path if new photo was saved
-            if photo_path:
-                self.cursor.execute("UPDATE teachers SET photo_path = %s WHERE id = %s",
-                                  (photo_path, self.current_teacher_id))
-                
+    
+            # Handle photo update
+            if self.photo_path:
+                photo_path = self.save_photo(self.current_teacher_id)
+                if photo_path:
+                    self.cursor.execute("UPDATE teachers SET photo_path = %s WHERE id = %s",
+                                      (photo_path, self.current_teacher_id))
+    
             self.db_connection.commit()
     
-            # ✅ Log audit action
+            # --- Step 5: Log detailed audit ---
+            change_desc = "; ".join(changes)
             self.log_audit_action(
                 action="UPDATE",
                 table_name="teachers",
                 record_id=self.current_teacher_id,
-                description=f"Updated teacher {full_name} (ID: {self.teacher_id_entry.text().strip()})"
+                description=f"Updated teacher {full_name} (ID: {new_fields['teacher_id_code']}): {change_desc}"
             )
     
             QMessageBox.information(self, "Success", "Teacher updated successfully!")
             self.clear_fields()
             self.load_teachers()
-            
+    
         except Exception as e:
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Error updating teacher: {str(e)}")
             print(f"Full error: {traceback.format_exc()}")
-
+        
     def delete_teacher(self):
-        """Delete selected teacher"""
+        """Delete selected teacher with detailed audit logging"""
         if not self.current_teacher_id:
             QMessageBox.warning(self, "Error", "Please select a teacher to delete!")
             return
     
-        # 🔒 Permission check
         if not has_permission(self.user_session, "delete_teacher"):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete teachers.")
             return
-            
-        # Confirm deletion
+    
         reply = QMessageBox.question(
-            self, 
+            self,
             "Confirm Delete",
-            "Are you sure you want to delete this teacher?",
+            "Are you sure you want to delete this teacher? This action cannot be undone.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
-        
+    
         if reply == QMessageBox.Yes:
             try:
                 # Get teacher info before deletion
-                self.cursor.execute("SELECT full_name, teacher_id_code FROM teachers WHERE id = %s", (self.current_teacher_id,))
+                self.cursor.execute("""
+                    SELECT full_name, teacher_id_code, is_active, staff_type, position, photo_path 
+                    FROM teachers WHERE id = %s
+                """, (self.current_teacher_id,))
                 result = self.cursor.fetchone()
-                full_name = result[0] if result else "Unknown"
-                teacher_id_code = result[1] if result else "N/A"
-                
-                # Get photo path before deletion
-                self.cursor.execute("SELECT photo_path FROM teachers WHERE id = %s", (self.current_teacher_id,))
-                result = self.cursor.fetchone()
-                photo_path = result[0] if result else None
-                
-                # Delete teacher
+                if not result:
+                    QMessageBox.warning(self, "Error", "Teacher not found.")
+                    return
+    
+                full_name = result[0] or "Unknown"
+                teacher_id_code = result[1] or "N/A"
+                is_active = bool(result[2])
+                staff_type = result[3] or "Unknown"
+                position = result[4] or "Unknown"
+                photo_path = result[5]
+    
+                # Delete teacher record
                 self.cursor.execute("DELETE FROM teachers WHERE id = %s", (self.current_teacher_id,))
                 self.db_connection.commit()
-                
-                # ✅ Log audit action BEFORE deleting photo
+    
+                # ✅ Log detailed audit BEFORE deleting file
+                photo_status = "with photo removed" if photo_path and os.path.exists(photo_path) else "no photo"
+                description = (
+                    f"Deleted teacher {full_name} (ID: {teacher_id_code}), "
+                    f"was {'active' if is_active else 'inactive'}, "
+                    f"employed as {position} ({staff_type}), {photo_status}"
+                )
+    
                 self.log_audit_action(
                     action="DELETE",
                     table_name="teachers",
                     record_id=self.current_teacher_id,
-                    description=f"Deleted teacher {full_name} (ID: {teacher_id_code})"
+                    description=description
                 )
-                
+    
                 # Delete photo file if exists
                 if photo_path and os.path.exists(photo_path):
                     try:
                         os.remove(photo_path)
                     except Exception as e:
-                        print(f"Error deleting photo file: {e}")
-                
+                        print(f"Warning: Could not delete photo file {photo_path}: {e}")
+    
                 QMessageBox.information(self, "Success", "Teacher deleted successfully!")
                 self.clear_fields()
                 self.load_teachers()
-                
+    
             except Exception as e:
                 self.db_connection.rollback()
                 QMessageBox.critical(self, "Error", f"Error deleting teacher: {str(e)}")
+                print(f"Full error: {traceback.format_exc()}")
 
     def load_departments_combo(self):
         """Load departments into department combo box"""

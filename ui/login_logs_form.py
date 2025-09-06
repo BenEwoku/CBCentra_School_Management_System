@@ -295,28 +295,86 @@ class LoginLogsForm(AuditBaseForm):
         self.load_login_logs()
 
     def export_logs(self):
-        """Export logs to CSV file"""
+        """Export login logs with the green header style"""
         try:
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                "Export Login Logs to CSV",
-                f"login_logs_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "CSV files (*.csv);;All files (*)"
+            query = '''
+                SELECT ll.id, u.username, ll.login_time, ll.logout_time, 
+                       ll.login_status, ll.failure_reason, ll.ip_address, 
+                       ll.device, ll.user_agent
+                FROM login_logs ll
+                LEFT JOIN users u ON ll.user_id = u.id
+                WHERE 1=1
+            '''
+            params = []
+    
+            from_date = self.from_date.date().toString("yyyy-MM-dd")
+            to_date = self.to_date.date().addDays(1).toString("yyyy-MM-dd")
+            query += " AND ll.login_time >= %s AND ll.login_time < %s"
+            params.extend([from_date, to_date])
+    
+            status = self.status_combo.currentText()
+            if status != "All":
+                if status == "Success":
+                    query += " AND ll.login_status = 'success'"
+                elif status == "Failed":
+                    query += " AND ll.login_status = 'failed'"
+                elif status == "Locked":
+                    query += " AND ll.login_status = 'locked'"
+    
+            username_filter = self.user_filter.text().strip()
+            if username_filter:
+                query += " AND u.username LIKE %s"
+                params.append(f"%{username_filter}%")
+    
+            query += " ORDER BY ll.login_time DESC"
+    
+            self.cursor.execute(query, params)
+            logs = self.cursor.fetchall()
+    
+            if not logs:
+                QMessageBox.information(self, "No Data", "No login logs found to export.")
+                return
+    
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for log in logs:
+                row_data = [
+                    log[0],  # ID
+                    log[1] or 'N/A',  # Username
+                    log[2].strftime('%Y-%m-%d %H:%M:%S') if log[2] else 'N/A',  # Login Time
+                    log[3].strftime('%Y-%m-%d %H:%M:%S') if log[3] else 'N/A',  # Logout Time
+                    log[4] or 'N/A',  # Status
+                    log[5] or 'N/A',  # Failure Reason
+                    log[6] or 'N/A',  # IP Address
+                    log[7] or 'N/A',  # Device
+                    log[8] or 'N/A'   # User Agent
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                "ID", "Username", "Login Time", "Logout Time", "Status",
+                "Failure Reason", "IP Address", "Device", "User Agent"
+            ]
+    
+            # Get school name for title
+            school_info = self.get_school_info()
+            
+            # Include date range in the title
+            title = (f"{school_info['name']} - LOGIN LOGS\n"
+                     f"Date Range: {self.from_date.date().toString('yyyy-MM-dd')} "
+                     f"to {self.to_date.date().toString('yyyy-MM-dd')}")
+    
+            # Use shared export method
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="login_logs_export",
+                title=title
             )
-            if filename:
-                self.load_login_logs()  # Refresh data
-                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(['ID', 'Username', 'Login Time', 'Logout Time',
-                                   'Status', 'Failure Reason', 'IP Address',
-                                   'Device', 'User Agent'])
-                    for row in range(self.logs_table.rowCount()):
-                        row_data = [self.logs_table.item(row, col).text() if self.logs_table.item(row, col) else ''
-                                    for col in range(self.logs_table.columnCount())]
-                        writer.writerow(row_data)
-                QMessageBox.information(self, "Success", f"Login logs exported successfully to {filename}")
+    
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to export logs: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export login logs:\n{str(e)}")
 
     def delete_old_logs(self):
         if not has_permission(self.user_session, 'delete_login_logs'):

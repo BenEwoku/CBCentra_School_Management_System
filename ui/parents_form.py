@@ -1028,8 +1028,7 @@ class ParentsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Failed to load parent: {str(e)}")
 
     def save_parent(self):
-        """Save new parent with permission and audit"""
-        # 🔒 Permission check
+        """Save new parent with full field-level audit logging"""
         if not has_permission(self.user_session, "create_parent"):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to add parents.")
             return
@@ -1055,6 +1054,30 @@ class ParentsForm(AuditBaseForm):
                 self.show_loading(False)
                 return
     
+            # 🔹 Build audit description BEFORE insert
+            fields_created = []
+            if first: fields_created.append(f"first_name='{first}'")
+            if last: fields_created.append(f"surname='{last}'")
+            if full_name: fields_created.append(f"full_name='{full_name}'")
+            if self.relation_combo.currentText(): 
+                fields_created.append(f"relation='{self.relation_combo.currentText()}'")
+            if self.email_entry.text().strip(): 
+                fields_created.append(f"email='{self.email_entry.text().strip()}'")
+            if phone: fields_created.append(f"phone='{phone}'")
+            if self.address1_entry.toPlainText().strip(): 
+                fields_created.append(f"address1='{self.address1_entry.toPlainText().strip()}'")
+            if self.address2_entry.toPlainText().strip(): 
+                fields_created.append(f"address2='{self.address2_entry.toPlainText().strip()}'")
+            if self.is_payer_check.isChecked(): 
+                fields_created.append("is_payer='Yes'")
+            if self.is_emergency_check.isChecked(): 
+                fields_created.append("is_emergency_contact='Yes'")
+            if self.is_active_check.isChecked(): 
+                fields_created.append("is_active='Yes'")
+    
+            description = f"Created parent {full_name} (ID: ??): " + ", ".join(fields_created)
+    
+            # Insert into DB
             query = """
                 INSERT INTO parents (
                     school_id, first_name, surname, full_name, relation,
@@ -1063,8 +1086,7 @@ class ParentsForm(AuditBaseForm):
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
-                1,  # Default school_id
-                first, last, full_name, self.relation_combo.currentText(),
+                1, first, last, full_name, self.relation_combo.currentText(),
                 self.email_entry.text().strip(), phone,
                 self.address1_entry.toPlainText().strip(), 
                 self.address2_entry.toPlainText().strip(),
@@ -1076,13 +1098,14 @@ class ParentsForm(AuditBaseForm):
             self.cursor.execute(query, values)
             parent_id = self.cursor.lastrowid
             self.db_connection.commit()
-            
-            # ✅ Log audit: Parent created
+    
+            # ✅ Log audit with real ID now
+            description = description.replace("ID: ??", f"ID: {parent_id}")
             self.log_audit_action(
                 action="CREATE",
                 table_name="parents",
                 record_id=parent_id,
-                description=f"Created parent: {full_name}, Phone: {phone}"
+                description=description
             )
     
             QMessageBox.information(self, "Success", "Parent saved successfully!")
@@ -1096,12 +1119,11 @@ class ParentsForm(AuditBaseForm):
             self.show_loading(False)
         
     def update_parent(self):
-        """Update existing parent with permission and audit"""
+        """Update existing parent with field-level audit logging"""
         if not self.current_parent_id:
             QMessageBox.warning(self, "Error", "No parent selected for update.")
             return
     
-        # 🔒 Permission check
         if not has_permission(self.user_session, "edit_parent"):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to edit parents.")
             return
@@ -1109,13 +1131,67 @@ class ParentsForm(AuditBaseForm):
         if not self.validate_form():
             return
     
-        first = self.first_name_entry.text().strip()
-        last = self.surname_entry.text().strip()
-        full_name = f"{first} {last}".strip()
-    
         try:
             self.show_loading(True)
-            
+    
+            # --- Step 1: Get current (old) values from DB ---
+            self.cursor.execute("""
+                SELECT first_name, surname, full_name, relation, email, phone,
+                       address1, address2, is_payer, is_emergency_contact, is_active
+                FROM parents WHERE id = %s
+            """, (self.current_parent_id,))
+            old_data = self.cursor.fetchone()
+            if not old_data:
+                QMessageBox.warning(self, "Error", "Parent not found.")
+                return
+    
+            old_fields = {
+                'first_name': old_data[0],
+                'surname': old_data[1],
+                'full_name': f"{old_data[0]} {old_data[1]}".strip(),
+                'relation': old_data[3],
+                'email': old_data[4],
+                'phone': old_data[5],
+                'address1': old_data[6],
+                'address2': old_data[7],
+                'is_payer': bool(old_data[8]),
+                'is_emergency_contact': bool(old_data[9]),
+                'is_active': bool(old_data[10]),
+            }
+    
+            # --- Step 2: Get new values from form ---
+            new_first = self.first_name_entry.text().strip()
+            new_last = self.surname_entry.text().strip()
+            new_full_name = f"{new_first} {new_last}".strip()
+    
+            new_fields = {
+                'first_name': new_first,
+                'surname': new_last,
+                'full_name': new_full_name,
+                'relation': self.relation_combo.currentText().strip(),
+                'email': self.email_entry.text().strip(),
+                'phone': self.phone_entry.text().strip(),
+                'address1': self.address1_entry.toPlainText().strip(),
+                'address2': self.address2_entry.toPlainText().strip(),
+                'is_payer': self.is_payer_check.isChecked(),
+                'is_emergency_contact': self.is_emergency_check.isChecked(),
+                'is_active': self.is_active_check.isChecked(),
+            }
+    
+            # --- Step 3: Compare and build diff ---
+            changes = []
+            for field in old_fields:
+                old_val = old_fields[field]
+                new_val = new_fields[field]
+                if old_val != new_val:
+                    changes.append(f"{field} changed from '{old_val}' to '{new_val}'")
+    
+            # If no changes, skip update
+            if not changes:
+                QMessageBox.information(self, "No Changes", "No data was changed.")
+                return
+    
+            # --- Step 4: Perform the update ---
             query = """
                 UPDATE parents SET
                     first_name=%s, surname=%s, full_name=%s, relation=%s,
@@ -1125,30 +1201,36 @@ class ParentsForm(AuditBaseForm):
                 WHERE id=%s
             """
             values = (
-                first, last, full_name, self.relation_combo.currentText(),
-                self.email_entry.text().strip(), self.phone_entry.text().strip(),
-                self.address1_entry.toPlainText().strip(),
-                self.address2_entry.toPlainText().strip(),
-                self.is_payer_check.isChecked(), 
-                self.is_emergency_check.isChecked(),
-                self.is_active_check.isChecked(), 
+                new_fields['first_name'],
+                new_fields['surname'],
+                new_fields['full_name'],
+                new_fields['relation'],
+                new_fields['email'],
+                new_fields['phone'],
+                new_fields['address1'],
+                new_fields['address2'],
+                new_fields['is_payer'],
+                new_fields['is_emergency_contact'],
+                new_fields['is_active'],
                 self.current_parent_id
             )
-            
             self.cursor.execute(query, values)
             self.db_connection.commit()
-            
-            # ✅ Log audit: Parent updated
+    
+            # --- Step 5: Log detailed audit ---
+            change_desc = "; ".join(changes)
+            full_name = new_fields['full_name']
+    
             self.log_audit_action(
                 action="UPDATE",
                 table_name="parents",
                 record_id=self.current_parent_id,
-                description=f"Updated parent: {full_name} (ID: {self.current_parent_id})"
+                description=f"Updated parent {full_name} (ID: {self.current_parent_id}): {change_desc}"
             )
     
             QMessageBox.information(self, "Success", "Parent updated successfully!")
             self.load_parents()
-            
+    
         except Exception as e:
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Update failed: {str(e)}")
@@ -1201,29 +1283,28 @@ class ParentsForm(AuditBaseForm):
         self.save_btn.setText("Save Parent")
 
     def delete_parent(self):
-        """Delete selected parent with confirmation and audit"""
+        """Delete selected parent with detailed audit logging"""
         if not self.current_parent_id:
             QMessageBox.warning(self, "Select", "Please select a parent to delete.")
             return
     
-        # 🔒 Permission check
         if not has_permission(self.user_session, "delete_parent"):
             QMessageBox.warning(self, "Permission Denied", "You don't have permission to delete parents.")
             return
     
         try:
-            # Get parent name before deletion
+            # Get parent name and student count before deletion
             self.cursor.execute("SELECT full_name FROM parents WHERE id = %s", (self.current_parent_id,))
             result = self.cursor.fetchone()
             full_name = result[0] if result else "Unknown"
     
-            # Check if linked to students
             self.cursor.execute(
                 "SELECT COUNT(*) FROM student_parent WHERE parent_id = %s", 
                 (self.current_parent_id,)
             )
             student_count = self.cursor.fetchone()[0]
-            
+    
+            # Confirmation dialogs
             if student_count > 0:
                 reply = QMessageBox.question(
                     self, "Confirm Delete",
@@ -1235,7 +1316,6 @@ class ParentsForm(AuditBaseForm):
                 if reply != QMessageBox.Yes:
                     return
     
-            # Final confirmation
             reply = QMessageBox.question(
                 self, "Confirm Delete",
                 "Are you sure you want to delete this parent? This action cannot be undone.",
@@ -1253,13 +1333,13 @@ class ParentsForm(AuditBaseForm):
                 )
                 self.db_connection.commit()
                 
-                # ✅ Log audit: Parent soft-deleted
+                # ✅ Log detailed audit
                 self.log_audit_action(
                     action="DELETE",
                     table_name="parents",
                     record_id=self.current_parent_id,
-                    description=f"Soft-deleted parent: {full_name} (ID: {self.current_parent_id}), "
-                                f"had {student_count} student links"
+                    description=f"Soft-deleted parent {full_name} (ID: {self.current_parent_id}), "
+                                f"was linked to {student_count} student(s)"
                 )
     
                 QMessageBox.information(self, "Success", "Parent deleted successfully.")
@@ -1271,7 +1351,7 @@ class ParentsForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"Delete failed: {str(e)}")
         finally:
             self.show_loading(False)
-
+        
     def update_statistics(self):
         """Update statistics in header and analytics tab"""
         try:
