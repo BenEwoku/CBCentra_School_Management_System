@@ -321,7 +321,7 @@ class TeachersForm(AuditBaseForm):
         # Photo buttons
         photo_btn_layout = QHBoxLayout()
     
-        self.select_photo_btn = QPushButton("Select Photo")
+        self.select_photo_btn = QPushButton("Upload Photo")
         self.select_photo_btn.setProperty("class", "info")
         self.select_photo_btn.setIcon(QIcon("static/icons/upload.png"))
         self.select_photo_btn.setIconSize(QSize(20, 20))

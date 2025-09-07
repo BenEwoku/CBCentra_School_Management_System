@@ -1398,6 +1398,7 @@ class UsersForm(AuditBaseForm):
         """Refresh all data"""
         try:
             self._ensure_connection()
+            self.db_connection.commit()
             
             self.load_teachers()
             self.load_users()
