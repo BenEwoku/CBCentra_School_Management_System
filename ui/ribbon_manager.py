@@ -133,7 +133,12 @@ class RibbonManager:
 
     def _get_ribbon_groups_for_tab(self, main_tab):
         """Get ribbon groups configuration for each tab"""
-        return {
+        # Get current subtab if Others tab is selected
+        current_subtab = None
+        if main_tab == "Others" and hasattr(self.main_window, 'others_tabs') and self.main_window.others_tabs:
+            current_subtab = self.main_window.others_tabs.tabText(self.main_window.others_tabs.currentIndex())
+        
+        ribbon_config = {
             "Dashboard": [
                 {"title": "View", "actions": [
                     {"name": "Overview", "icon": "overview.png", "handler": lambda: self.main_window.dashboard_tabs.setCurrentIndex(0)},
@@ -205,8 +210,12 @@ class RibbonManager:
                     {"name": "Manage Contacts", "icon": "contacts.png", "handler": self.main_window.manage_parent_contacts},
                     {"name": "Validate Data", "icon": "validate.png", "handler": self.main_window.validate_parent_data}
                 ]}
-            ]
-        }.get(main_tab, [
+            ],
+            # ADD THIS SECTION FOR OTHERS TAB WITH BOOKS SUPPORT
+            "Others": self._get_others_ribbon_groups(current_subtab)
+        }
+        
+        return ribbon_config.get(main_tab, [
             {"title": "Common", "actions": [
                 {"name": "New", "icon": "new.jpg", "handler": self.main_window.new_action},
                 {"name": "Open", "icon": "open.jpg", "handler": self.main_window.open_action},
@@ -218,6 +227,46 @@ class RibbonManager:
             ]}
         ])
 
+    
+    def _get_others_ribbon_groups(self, current_subtab):
+        """Get ribbon groups for Others tab based on current subtab"""
+        if current_subtab == "Books Management":
+            # Books-specific ribbon groups - FIXED TO USE RIBBON HANDLERS
+            return [
+                {"title": "Books Management", "actions": [
+                    {"name": "Add Book", "icon": "add.png", "handler": self.main_window.ribbon_handlers.add_new_book},
+                    {"name": "Edit Book", "icon": "edit.png", "handler": self.main_window.ribbon_handlers.edit_book},
+                    {"name": "Delete Book", "icon": "delete.png", "handler": self.main_window.ribbon_handlers.delete_book}
+                ]},
+                {"title": "Data Operations", "actions": [
+                    {"name": "Refresh", "icon": "refresh.png", "handler": self.main_window.ribbon_handlers.refresh_books_data},
+                    {"name": "Export Books", "icon": "export.png", "handler": self.main_window.ribbon_handlers.export_books_data},
+                    {"name": "Import Books", "icon": "import.png", "handler": self.main_window.ribbon_handlers.import_books_data}
+                ]},
+                {"title": "Categories", "actions": [
+                    {"name": "Add Category", "icon": "add_category.png", "handler": self.main_window.ribbon_handlers.add_book_category},
+                    {"name": "Manage Categories", "icon": "categories.png", "handler": self.main_window.ribbon_handlers.manage_book_categories}
+                ]},
+                {"title": "Reports", "actions": [
+                    {"name": "Inventory Report", "icon": "report.png", "handler": self.main_window.ribbon_handlers.generate_inventory_report},
+                    {"name": "Category Report", "icon": "category_report.png", "handler": self.main_window.ribbon_handlers.generate_category_report},
+                    {"name": "Popular Books", "icon": "popular.png", "handler": self.main_window.ribbon_handlers.generate_popular_books_report}
+                ]}
+            ]
+        else:
+            # Default groups for Other tab when no specific subtab is selected
+            return [
+                {"title": "Common", "actions": [
+                    {"name": "New", "icon": "new.jpg", "handler": self.main_window.new_action},
+                    {"name": "Open", "icon": "open.jpg", "handler": self.main_window.open_action},
+                    {"name": "Print", "icon": "print.png", "handler": self.main_window.print_action}
+                ]},
+                {"title": "Actions", "actions": [
+                    {"name": "Settings", "icon": "settings.png", "handler": self.main_window.settings_action},
+                    {"name": "Options", "icon": "options.png"}
+                ]}
+            ]
+        
     def toggle_ribbon_visibility(self):
         """Toggle ribbon visibility with animation"""
         if self.main_window.ribbon_visible:

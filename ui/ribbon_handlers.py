@@ -360,3 +360,61 @@ class RibbonHandlers:
     def print_action(self):
         """Handle print action"""
         QMessageBox.information(self.main_window, "Print", "Print action triggered from ribbon.")
+
+    # In your ribbon_handlers.py file, add these methods:
+    
+    def add_new_book(self):
+        """Handle adding a new book"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.add_book()
+    
+    def edit_book(self):
+        """Handle editing a book"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.edit_book()
+    
+    def delete_book(self):
+        """Handle deleting a book"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.delete_book()
+    
+    def refresh_books_data(self):
+        """Handle refreshing books data"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.refresh_data()
+    
+    def export_books_data(self):
+        """Handle exporting books data"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.generate_inventory_report()
+    
+    def import_books_data(self):
+        """Handle importing books data"""
+        QMessageBox.information(self.main_window, "Import", "Book import functionality will be available soon")
+    
+    def add_book_category(self):
+        """Handle adding a book category"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.add_category()
+    
+    def manage_book_categories(self):
+        """Handle managing book categories"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            # Switch to categories tab if available
+            if hasattr(self.main_window.books_management_form, 'tab_widget'):
+                self.main_window.books_management_form.tab_widget.setCurrentIndex(1)  # Categories tab
+    
+    def generate_inventory_report(self):
+        """Handle generating inventory report"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.generate_inventory_report()
+    
+    def generate_category_report(self):
+        """Handle generating category report"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.generate_category_report()
+    
+    def generate_popular_books_report(self):
+        """Handle generating popular books report"""
+        if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
+            self.main_window.books_management_form.generate_popular_books_report()

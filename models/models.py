@@ -1020,6 +1020,101 @@ def initialize_tables(conn, force=False):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
+        # === Books Table ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS books (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                author VARCHAR(255) NOT NULL,
+                isbn VARCHAR(20) UNIQUE NOT NULL,
+                published_year INT,
+                category_id INT, 
+                quantity INT DEFAULT 1,
+                available_quantity INT DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+                INDEX idx_title (title),
+                INDEX idx_author (author),
+                INDEX idx_category (category_id) 
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+
+        # === 36. Book borrowing ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS borrowing_records (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                book_id INT NOT NULL,
+                student_id INT, 
+                teacher_id INT, 
+                borrow_date DATE NOT NULL,
+                return_date DATE,
+                due_date DATE NOT NULL,
+                status ENUM('Borrowed', 'Returned', 'Overdue') DEFAULT 'Borrowed',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+
+
+        # === 36. Book categories ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+
+        # === 36. Health management ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS health_records (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT,
+                teacher_id INT,
+                visit_date DATE NOT NULL,
+                symptoms TEXT,
+                diagnosis TEXT,
+                treatment TEXT,
+                prescribed_medication TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+
+        # === 36. medical inventory management ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS medication_inventory (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                quantity INT DEFAULT 0,
+                expiration_date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+
+        # === 36. sick bay visits ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS visits (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT,  -- Foreign key to students table
+                teacher_id INT,  -- Foreign key to teachers table
+                visit_date DATE NOT NULL,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
         # === 36. Backups ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS backups (

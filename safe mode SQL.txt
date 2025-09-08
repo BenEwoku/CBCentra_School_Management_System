@@ -1,0 +1,17 @@
+-- First, disable safe update mode temporarily
+SET SQL_SAFE_UPDATES = 0;
+
+-- Remove any existing borrowing permissions (if any)
+DELETE FROM role_tab_permissions 
+WHERE tab_name LIKE 'Others.Book%Borrowing%';
+
+-- Re-enable safe update mode
+SET SQL_SAFE_UPDATES = 1;
+
+-- Now add Borrowing as a nested tab under Books Management (which is under Others)
+INSERT INTO role_tab_permissions (role_name, tab_name, can_access, created_at)
+VALUES 
+('admin', 'Others.Books Management.Borrowing', 1, NOW()),
+('headteacher', 'Others.Books Management.Borrowing', 1, NOW()),
+('teacher', 'Others.Books Management.Borrowing', 1, NOW()),
+('librarian', 'Others.Books Management.Borrowing', 1, NOW());
