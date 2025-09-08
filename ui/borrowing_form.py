@@ -148,7 +148,7 @@ class BorrowingManagementForm(AuditBaseForm):
         self.info_label.setProperty("class", "info-label")
         main_layout.addWidget(self.info_label)
         
-    # In your BorrowingManagementForm.load_data() method, change the SQL query:
+    # Updated load_data method for BorrowingManagementForm
     def load_data(self):
         """Load all data from database"""
         try:
@@ -177,23 +177,48 @@ class BorrowingManagementForm(AuditBaseForm):
             """)
             self.borrowing_data = self.cursor.fetchall()
             self.filtered_data = self.borrowing_data.copy()
-
-            # Load available books (only those with available_quantity > 0)
+    
+            # Load available books - DEBUGGING: Add more details and ensure books exist
             self.cursor.execute("""
-                SELECT id, title, isbn, available_quantity 
+                SELECT id, title, isbn, available_quantity, quantity 
                 FROM books 
                 WHERE available_quantity > 0 
                 ORDER BY title
             """)
             self.books_data = self.cursor.fetchall()
             
-            # Load students
-            self.cursor.execute("SELECT id, first_name, surname FROM students ORDER BY first_name")
-            self.students_data = self.cursor.fetchall()
+            # DEBUG: Print books data to console
+            print(f"DEBUG: Found {len(self.books_data)} available books")
+            for book in self.books_data:
+                print(f"  - {book['title']} (Available: {book['available_quantity']}/{book['quantity']})")
             
-            # Load teachers
-            self.cursor.execute("SELECT id, first_name, surname FROM teachers ORDER BY first_name")
+            # If no available books, check all books
+            if not self.books_data:
+                self.cursor.execute("SELECT id, title, isbn, available_quantity, quantity FROM books ORDER BY title")
+                all_books = self.cursor.fetchall()
+                print(f"DEBUG: Total books in database: {len(all_books)}")
+                for book in all_books:
+                    print(f"  - {book['title']} (Available: {book['available_quantity']}/{book['quantity']})")
+            
+            # Load ACTIVE students only (using is_active column)
+            self.cursor.execute("""
+                SELECT id, first_name, surname 
+                FROM students 
+                WHERE is_active = TRUE
+                ORDER BY first_name, surname
+            """)
+            self.students_data = self.cursor.fetchall()
+            print(f"DEBUG: Found {len(self.students_data)} active students")
+            
+            # Load ACTIVE teachers only (using is_active column)
+            self.cursor.execute("""
+                SELECT id, first_name, surname 
+                FROM teachers 
+                WHERE is_active = TRUE
+                ORDER BY first_name, surname
+            """)
             self.teachers_data = self.cursor.fetchall()
+            print(f"DEBUG: Found {len(self.teachers_data)} active teachers")
             
             # Update UI
             self.update_records_table()
@@ -201,6 +226,8 @@ class BorrowingManagementForm(AuditBaseForm):
         except Error as e:
             QMessageBox.critical(self, "Database Error", f"Failed to load data: {e}")
             print(f"Database error: {e}")
+            import traceback
+            traceback.print_exc()
             
     def update_records_table(self):
         """Update the records table with current data"""
@@ -357,7 +384,7 @@ class BorrowingManagementForm(AuditBaseForm):
         reply = QMessageBox.question(
             self, "Confirm Renewal",
             f"Renew '{selected_record['book_title']}' until {new_due_date}?",
-            QMessageBox.Yes | QBox.No
+            QMessageBox.Yes | QMessageBox.No  # FIXED: Was QBox.No
         )
         
         if reply == QMessageBox.Yes:
@@ -426,11 +453,8 @@ class BorrowingManagementForm(AuditBaseForm):
                 QMessageBox.critical(self, "Database Error", f"Failed to delete record: {e}")
                 
     def process_borrowing(self, borrow_data):
-        """Process new book borrowing"""
+        """Process new book borrowing - Simple version"""
         try:
-            # Start transaction
-            self.db_connection.start_transaction()
-            
             # Insert borrowing record
             query = """
                 INSERT INTO borrowing_records (book_id, student_id, teacher_id, borrow_date, due_date, status)
@@ -456,18 +480,27 @@ class BorrowingManagementForm(AuditBaseForm):
             
             # Check if book was actually updated
             if self.cursor.rowcount == 0:
+                # Rollback the insert
+                self.db_connection.rollback()
                 raise Exception("Book is not available for borrowing")
             
+            # Commit both operations
             self.db_connection.commit()
+            
             QMessageBox.information(self, "Success", "Book borrowed successfully!")
             self.load_data()
             
         except Exception as e:
+            # Rollback on any error
             self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Failed to borrow book: {e}")
+            print(f"Borrowing error: {e}")
             
     def refresh_data(self):
         """Refresh all data from database"""
+        # Ensure connection first
+        self._ensure_connection()
+        self.db_connection.commit()
         self.load_data()
         QMessageBox.information(self, "Success", "Data refreshed successfully!")
         
