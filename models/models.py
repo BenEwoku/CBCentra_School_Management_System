@@ -1071,50 +1071,130 @@ def initialize_tables(conn, force=False):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
 
-        # === 36. Health management ===
+        # === Health Management System ===
+        
+        # === 37. Health Records ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS health_records (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 student_id INT,
                 teacher_id INT,
                 visit_date DATE NOT NULL,
+                visit_time TIME,
+                temperature DECIMAL(4,1),
+                blood_pressure VARCHAR(20),
                 symptoms TEXT,
                 diagnosis TEXT,
                 treatment TEXT,
                 prescribed_medication TEXT,
+                dosage VARCHAR(100),
+                follow_up_required BOOLEAN DEFAULT FALSE,
+                follow_up_date DATE,
+                severity ENUM('Mild', 'Moderate', 'Severe', 'Emergency') DEFAULT 'Mild',
+                referred_to_hospital BOOLEAN DEFAULT FALSE,
+                notes TEXT,
+                handled_by_teacher_id INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+                FOREIGN KEY (handled_by_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
-
-        # === 36. medical inventory management ===
+        
+        # === 38. Medication Inventory ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS medication_inventory (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
+                generic_name VARCHAR(100),
+                medication_type ENUM('Tablet', 'Syrup', 'Injection', 'Ointment', 'Drops', 'Inhaler') DEFAULT 'Tablet',
+                strength VARCHAR(50),
                 quantity INT DEFAULT 0,
+                unit ENUM('Tablets', 'Bottles', 'Tubes', 'Ampoules', 'Packs') DEFAULT 'Tablets',
+                minimum_stock_level INT DEFAULT 10,
+                supplier VARCHAR(100),
+                batch_number VARCHAR(50),
                 expiration_date DATE,
+                storage_conditions VARCHAR(100),
+                is_controlled BOOLEAN DEFAULT FALSE,
+                notes TEXT,
+                managed_by_teacher_id INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (managed_by_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL,
+                INDEX idx_expiration (expiration_date),
+                INDEX idx_low_stock (quantity)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
-
-        # === 36. sick bay visits ===
+        
+        # === 39. Sick Bay Visits ===
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS visits (
+            CREATE TABLE IF NOT EXISTS sick_bay_visits (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                student_id INT,  -- Foreign key to students table
-                teacher_id INT,  -- Foreign key to teachers table
+                student_id INT,
+                teacher_id INT,
                 visit_date DATE NOT NULL,
+                visit_time TIME NOT NULL,
+                discharge_date DATE,
+                discharge_time TIME,
                 reason TEXT,
+                initial_assessment TEXT,
+                vital_signs JSON,
+                action_taken ENUM('First Aid', 'Medication', 'Observation', 'Parent Called', 'Hospital Referral', 'Rest') DEFAULT 'Observation',
+                parent_notified BOOLEAN DEFAULT FALSE,
+                parent_notification_time DATETIME,
+                status ENUM('Active', 'Discharged', 'Referred', 'Follow-up') DEFAULT 'Active',
+                handled_by_teacher_id INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+                FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+                FOREIGN KEY (handled_by_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
+        
+        # === 40. Student Medical Conditions ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS student_medical_conditions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT NOT NULL,
+                condition_name VARCHAR(100) NOT NULL,
+                diagnosis_date DATE,
+                severity ENUM('Mild', 'Moderate', 'Severe'),
+                treatment_plan TEXT,
+                special_requirements TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                recorded_by_teacher_id INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (recorded_by_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL,
+                INDEX idx_student_condition (student_id, condition_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+        
+        # === 41. Medication Administration Log ===
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS medication_administration (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT NOT NULL,
+                medication_id INT NOT NULL,
+                administered_by_teacher_id INT NOT NULL,
+                administration_date DATE NOT NULL,
+                administration_time TIME NOT NULL,
+                dosage VARCHAR(100),
+                reason VARCHAR(200),
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (medication_id) REFERENCES medication_inventory(id) ON DELETE CASCADE,
+                FOREIGN KEY (administered_by_teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ''')
+        
+        print("✅ Health management tables created successfully")
+
         # === 36. Backups ===
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS backups (

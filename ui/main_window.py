@@ -26,6 +26,8 @@ from ui.students_form import StudentsForm
 from ui.parents_form import ParentsForm
 from ui.class_form import ClassesForm
 from ui.books_management_form import BooksManagementForm  # Add this line
+# Add this import with your other form imports
+from ui.health_management_form import HealthManagementForm
 
 # Import the tab access management form
 from ui.tab_access_form import TabAccessManagementForm
@@ -183,7 +185,9 @@ class MainWindow(QMainWindow):
                 'Classes': [],
                 'Parents': [],
                 'Students': [],
-                'Others': []
+                'Others': [],
+                'Books Management': [],
+                'Health Management': []
             }
             
             for tab_name in accessible_tabs:
@@ -234,8 +238,9 @@ class MainWindow(QMainWindow):
             'Classes': ['Class Form', 'Student Class Assignments', 'Academic Years', 'Terms'] if 'Classes' in main_tabs else [],
             'Parents': ['Parent Form', 'Parents List', 'Analytics'] if 'Parents' in main_tabs else [],
             'Students': ['Student Form', 'Students List', 'Analytics'] if 'Students' in main_tabs else [],
-            'Others': ['Books Management'],  # Books Management under Others
-            'Books Management': ['Categories', 'Books', 'Borrowing', 'Reports']  # Nested tabs within Books Management
+            'Others': ['Books Management', 'Health Management'],  # Books Management under Others
+            'Books Management': ['Categories', 'Books', 'Borrowing', 'Reports'],  # Nested tabs within Books Management
+            'Health Management': ['Sick Bay Visit', 'Health Records', 'Medical Conditions', 'Medical Inventory']  # ADD HEALTH SUBTABS
         }
         
         return main_tabs, nested_tabs
@@ -369,7 +374,7 @@ class MainWindow(QMainWindow):
                 self.stacked_widget.addWidget(placeholder_page)
 
     def create_others_page(self):
-        """Create Others page with Books Management as a nested tab"""
+        """Create Others page with nested tabs"""
         others_page = QWidget()
         others_layout = QVBoxLayout(others_page)
         others_layout.setContentsMargins(0, 10, 0, 0)
@@ -385,6 +390,8 @@ class MainWindow(QMainWindow):
         # Get visible nested tabs for Others
         others_subtabs = self.visible_nested_tabs.get('Others', [])
         
+        print(f"DEBUG: Others subtabs: {others_subtabs}")
+        
         # Add tabs based on visibility
         for subtab_name in others_subtabs:
             if subtab_name == 'Books Management':
@@ -392,6 +399,13 @@ class MainWindow(QMainWindow):
                     self.books_management_form = BooksManagementForm(parent=self, user_session=self.user_session)
                 self.others_tabs.addTab(self.books_management_form, "Books Management")
                 
+            elif subtab_name == 'Health Management':  # ADD THIS
+                if not hasattr(self, 'health_management_form') or self.health_management_form is None:
+                    self.health_management_form = HealthManagementForm(parent=self, user_session=self.user_session)
+                self.others_tabs.addTab(self.health_management_form, "Health Management")
+                
+            # Add other Others tab content here if needed
+                    
         others_layout.addWidget(self.others_tabs)
         return others_page
     
@@ -402,9 +416,19 @@ class MainWindow(QMainWindow):
             # Update ribbon based on the active subtab
             self.update_ribbon_panel("Others")
             
-            # Load data if Books Management is selected
+            # Special handling for Books Management
             if tab_name == "Books Management" and hasattr(self, 'books_management_form'):
-                self.books_management_form.load_data()
+                current_inner_tab = self.books_management_form.tab_widget.tabText(
+                    self.books_management_form.tab_widget.currentIndex()
+                )
+                self.update_ribbon_panel("Books")
+                
+            # Special handling for Health Management
+            elif tab_name == "Health Management" and hasattr(self, 'health_management_form'):
+                current_inner_tab = self.health_management_form.tab_widget.tabText(
+                    self.health_management_form.tab_widget.currentIndex()
+                )
+                self.update_ribbon_panel("Health Management")
         
     # =========================================
     # DASHBOARD PAGE WITH NESTED TABS

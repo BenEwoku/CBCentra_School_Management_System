@@ -231,7 +231,7 @@ class RibbonManager:
     def _get_others_ribbon_groups(self, current_subtab):
         """Get ribbon groups for Others tab based on current subtab"""
         if current_subtab == "Books Management":
-            # Books-specific ribbon groups - FIXED TO USE RIBBON HANDLERS
+            # Books-specific ribbon groups
             return [
                 {"title": "Books Management", "actions": [
                     {"name": "Add Book", "icon": "add.png", "handler": self.main_window.ribbon_handlers.add_new_book},
@@ -253,6 +253,32 @@ class RibbonManager:
                     {"name": "Popular Books", "icon": "popular.png", "handler": self.main_window.ribbon_handlers.generate_popular_books_report}
                 ]}
             ]
+        
+        elif current_subtab == "Health Management":  # ADD HEALTH MANAGEMENT SUPPORT
+            # Health Management-specific ribbon groups
+            return [
+                {"title": "Health Records", "actions": [
+                    {"name": "New Record", "icon": "add.png", "handler": self.main_window.ribbon_handlers.add_health_record},
+                    {"name": "Edit Record", "icon": "edit.png", "handler": self.main_window.ribbon_handlers.edit_health_record},
+                    {"name": "Delete Record", "icon": "delete.png", "handler": self.main_window.ribbon_handlers.delete_health_record}
+                ]},
+                {"title": "Actions", "actions": [
+                    {"name": "Refresh", "icon": "refresh.png", "handler": self.main_window.ribbon_handlers.refresh_health_data},
+                    {"name": "Export Data", "icon": "export.png", "handler": self.main_window.ribbon_handlers.export_health_data},
+                    {"name": "Generate Report", "icon": "report.png", "handler": self.main_window.ribbon_handlers.generate_health_report}
+                ]},
+                {"title": "Medication", "actions": [
+                    {"name": "Inventory", "icon": "medication.png", "handler": self.main_window.ribbon_handlers.view_medication_inventory},
+                    {"name": "Add Medication", "icon": "add_medication.png", "handler": self.main_window.ribbon_handlers.add_medication},
+                    {"name": "Low Stock Alert", "icon": "alert.png", "handler": self.main_window.ribbon_handlers.check_low_stock}
+                ]},
+                {"title": "Sick Bay", "actions": [
+                    {"name": "New Visit", "icon": "sick_bay.png", "handler": self.main_window.ribbon_handlers.add_sick_bay_visit},
+                    {"name": "Active Cases", "icon": "active.png", "handler": self.main_window.ribbon_handlers.view_active_cases},
+                    {"name": "Discharge Patient", "icon": "discharge.png", "handler": self.main_window.ribbon_handlers.discharge_patient}
+                ]}
+            ]
+        
         else:
             # Default groups for Other tab when no specific subtab is selected
             return [

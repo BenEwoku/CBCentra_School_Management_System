@@ -418,3 +418,61 @@ class RibbonHandlers:
         """Handle generating popular books report"""
         if hasattr(self.main_window, 'books_management_form') and self.main_window.books_management_form:
             self.main_window.books_management_form.generate_popular_books_report()
+
+    # In your ribbon_handlers.py, add these methods:
+    
+    def add_health_record(self):
+        """Handle adding a health record"""
+        if hasattr(self.main_window, 'health_management_form') and self.main_window.health_management_form:
+            self.main_window.health_management_form.add_health_record()
+    
+    def edit_health_record(self):
+        """Handle editing a health record"""
+        if hasattr(self.main_window, 'health_management_form') and self.main_window.health_management_form:
+            self.main_window.health_management_form.edit_health_record()
+    
+    def delete_health_record(self):
+        """Handle deleting a health record"""
+        if hasattr(self.main_window, 'health_management_form') and self.main_window.health_management_form:
+            self.main_window.health_management_form.delete_health_record()
+    
+    def refresh_health_data(self):
+        """Handle refreshing health data"""
+        if hasattr(self.main_window, 'health_management_form') and self.main_window.health_management_form:
+            self.main_window.health_management_form.refresh_data()
+    
+    def export_health_data(self):
+        """Handle exporting health data"""
+        QMessageBox.information(self.main_window, "Export", "Health data export functionality will be available soon")
+    
+    def generate_health_report(self):
+        """Handle generating health reports"""
+        QMessageBox.information(self.main_window, "Reports", "Health reports functionality will be available soon")
+
+    # In your ribbon_handlers.py, add these additional methods:
+    
+    def view_medication_inventory(self):
+        """Handle viewing medication inventory"""
+        if hasattr(self.main_window, 'health_management_form') and self.main_window.health_management_form:
+            # This will switch to the Medication tab when we implement it
+            QMessageBox.information(self.main_window, "Medication", "Medication inventory view will be available soon")
+    
+    def add_medication(self):
+        """Handle adding medication to inventory"""
+        QMessageBox.information(self.main_window, "Medication", "Add medication functionality will be available soon")
+    
+    def check_low_stock(self):
+        """Handle checking for low medication stock"""
+        QMessageBox.information(self.main_window, "Medication", "Low stock alert functionality will be available soon")
+    
+    def add_sick_bay_visit(self):
+        """Handle adding sick bay visit"""
+        QMessageBox.information(self.main_window, "Sick Bay", "Add sick bay visit functionality will be available soon")
+    
+    def view_active_cases(self):
+        """Handle viewing active sick bay cases"""
+        QMessageBox.information(self.main_window, "Sick Bay", "Active cases view will be available soon")
+    
+    def discharge_patient(self):
+        """Handle discharging patient from sick bay"""
+        QMessageBox.information(self.main_window, "Sick Bay", "Discharge patient functionality will be available soon")
