@@ -217,6 +217,14 @@ class BooksManagementForm(AuditBaseForm):
         delete_btn.setIconSize(QSize(16, 16))
         delete_btn.clicked.connect(self.delete_book)
         action_layout.addWidget(delete_btn)
+
+        # ADD EXPORT BUTTONS HERE
+        export_excel_btn = QPushButton("Export Excel")
+        export_excel_btn.setProperty("class", "info")
+        export_excel_btn.setIcon(QIcon("static/icons/excel.png"))
+        export_excel_btn.setIconSize(QSize(16, 16))
+        export_excel_btn.clicked.connect(self.export_books_excel)
+        action_layout.addWidget(export_excel_btn)
         
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setProperty("class", "info")
@@ -1220,6 +1228,48 @@ class BooksManagementForm(AuditBaseForm):
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export PDF:\n{e}")
             traceback.print_exc()
+
+    def export_books_excel(self):
+        """Export books with the green header style"""
+        try:
+            # Get school info for the title
+            school_info = self.get_school_info()
+            
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for record in self.books_data:
+                row_data = [
+                    record['id'],
+                    record['title'],
+                    record['author'],
+                    record['isbn'],
+                    record.get('category_name', 'Uncategorized'),
+                    record['published_year'],
+                    record['quantity'],
+                    record['available_quantity'],
+                    "Available" if record['available_quantity'] > 0 else "Checked Out"
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                'ID', 'Title', 'Author', 'ISBN', 'Category', 'Year', 
+                'Quantity', 'Available', 'Status'
+            ]
+            
+            # Create title
+            title = f"{school_info['name']} - BOOKS INVENTORY"
+            
+            # Use shared export method
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="books_inventory_export",
+                title=title
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export books: {e}")
     
     def generate_popular_books_report(self):
         """Generate PDF popular books report based on borrowing frequency"""

@@ -116,6 +116,14 @@ class BorrowingManagementForm(AuditBaseForm):
         delete_btn.setIconSize(QSize(16, 16))
         delete_btn.clicked.connect(self.delete_record)
         action_layout.addWidget(delete_btn)
+
+        # Add export button to borrowing form
+        export_excel_btn = QPushButton("Export Excel")
+        export_excel_btn.setProperty("class", "info")
+        export_excel_btn.setIcon(QIcon("static/icons/excel.png"))
+        export_excel_btn.setIconSize(QSize(16, 16))
+        export_excel_btn.clicked.connect(self.export_borrowing_excel)
+        action_layout.addWidget(export_excel_btn)
         
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setProperty("class", "warning")
@@ -148,7 +156,6 @@ class BorrowingManagementForm(AuditBaseForm):
         self.info_label.setProperty("class", "info-label")
         main_layout.addWidget(self.info_label)
         
-    # Updated load_data method for BorrowingManagementForm
     def load_data(self):
         """Load all data from database"""
         try:
@@ -164,9 +171,12 @@ class BorrowingManagementForm(AuditBaseForm):
                            ELSE 'Teacher' 
                        END as borrower_type,
                        DATEDIFF(br.due_date, CURDATE()) as days_left,
+                       -- UPDATED: Consistent fine calculation with export method (500 UGX per day)
                        CASE 
-                           WHEN br.status = 'Overdue' THEN 
-                               DATEDIFF(CURDATE(), br.due_date) * 10 
+                           WHEN br.return_date IS NULL AND br.due_date < CURDATE() THEN 
+                               DATEDIFF(CURDATE(), br.due_date) * 500
+                           WHEN br.return_date IS NOT NULL AND br.return_date > br.due_date THEN 
+                               DATEDIFF(br.return_date, br.due_date) * 500
                            ELSE 0 
                        END as fine_amount
                 FROM borrowing_records br
@@ -451,6 +461,79 @@ class BorrowingManagementForm(AuditBaseForm):
                 
             except Error as e:
                 QMessageBox.critical(self, "Database Error", f"Failed to delete record: {e}")
+
+    def export_borrowing_excel(self):
+        """Export borrowing records with the green header style"""
+        try:
+            # Get school info for the title
+            school_info = self.get_school_info()
+            
+            # Load borrowing data for export with fine calculation (500 UGX per day)
+            self.cursor.execute("""
+                SELECT br.*, 
+                       b.title as book_title, 
+                       b.author as book_author,
+                       b.isbn as book_isbn,
+                       COALESCE(s.first_name, t.first_name) as borrower_first_name,
+                       COALESCE(s.surname, t.surname) as borrower_surname,
+                       CASE 
+                           WHEN br.student_id IS NOT NULL THEN 'Student' 
+                           ELSE 'Teacher' 
+                       END as borrower_type,
+                       -- Calculate fine: 500 UGX per day overdue, only if book is not returned or returned late
+                       CASE 
+                           WHEN br.return_date IS NULL AND br.due_date < CURDATE() THEN 
+                               DATEDIFF(CURDATE(), br.due_date) * 500
+                           WHEN br.return_date IS NOT NULL AND br.return_date > br.due_date THEN 
+                               DATEDIFF(br.return_date, br.due_date) * 500
+                           ELSE 0 
+                       END as calculated_fine
+                FROM borrowing_records br
+                LEFT JOIN books b ON br.book_id = b.id
+                LEFT JOIN students s ON br.student_id = s.id
+                LEFT JOIN teachers t ON br.teacher_id = t.id
+                ORDER BY br.borrow_date DESC
+            """)
+            borrowing_data = self.cursor.fetchall()
+            
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for record in borrowing_data:
+                row_data = [
+                    record['id'],
+                    record['book_title'],
+                    record['book_author'],
+                    record['book_isbn'],
+                    f"{record['borrower_first_name']} {record['borrower_surname']}",
+                    record['borrower_type'],
+                    record['borrow_date'].strftime('%Y-%m-%d') if record['borrow_date'] else 'N/A',
+                    record['due_date'].strftime('%Y-%m-%d') if record['due_date'] else 'N/A',
+                    record['return_date'].strftime('%Y-%m-%d') if record['return_date'] else 'Not Returned',
+                    record['status'],
+                    f"{record['calculated_fine']:,} UGX",  # Format fine as Ugandan Shillings with commas
+                    record.get('notes', '')
+                ]
+                export_data.append(row_data)
+    
+            # Define headers (including Fine column)
+            headers = [
+                'ID', 'Book Title', 'Author', 'ISBN', 'Borrower', 'Type', 
+                'Borrow Date', 'Due Date', 'Return Date', 'Status', 'Fine', 'Notes'
+            ]
+            
+            # Create title
+            title = f"{school_info['name']} - BORROWING RECORDS"
+            
+            # Use shared export method
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="borrowing_records_export",
+                title=title
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export borrowing records: {e}")
                 
     def process_borrowing(self, borrow_data):
         """Process new book borrowing - Simple version"""

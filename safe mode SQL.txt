@@ -15,3 +15,49 @@ VALUES
 ('headteacher', 'Others.Books Management.Borrowing', 1, NOW()),
 ('teacher', 'Others.Books Management.Borrowing', 1, NOW()),
 ('librarian', 'Others.Books Management.Borrowing', 1, NOW());
+
+
+
+-- Disable safe mode
+SET SQL_SAFE_UPDATES = 0;
+
+-- Your original DELETE statement (adjusted for the actual tab names)
+DELETE FROM role_tab_permissions 
+WHERE tab_name LIKE 'Others.Health Management%';
+
+-- Your original INSERT statements (corrected the tab names based on your data)
+INSERT INTO role_tab_permissions (role_name, tab_name, can_access, created_at) VALUES
+-- Admin permissions
+('admin', 'Others.Health Management', 1, NOW()),
+('admin', 'Others.Health Management.Sick Bay', 1, NOW()), -- Matched existing name
+('admin', 'Others.Health Management.Health Records', 1, NOW()),
+('admin', 'Others.Health Management.Medical Conditions', 1, NOW()), -- New
+('admin', 'Others.Health Management.Medical Inventory', 1, NOW()),   -- New
+('admin', 'Others.Health Management.Medical Administration', 1, NOW()), -- New
+
+-- Headteacher permissions
+('headteacher', 'Others.Health Management', 1, NOW()),
+('headteacher', 'Others.Health Management.Sick Bay', 1, NOW()), -- Matched existing name
+('headteacher', 'Others.Health Management.Health Records', 1, NOW()),
+('headteacher', 'Others.Health Management.Medical Conditions', 1, NOW()), -- New
+('headteacher', 'Others.Health Management.Medical Inventory', 1, NOW()),   -- New
+('headteacher', 'Others.Health Management.Medical Administration', 1, NOW()), -- New
+
+-- Nurse permissions (full access to health management)
+('nurse', 'Others.Health Management', 1, NOW()),
+('nurse', 'Others.Health Management.Sick Bay', 1, NOW()), -- Matched existing name
+('nurse', 'Others.Health Management.Health Records', 1, NOW()),
+('nurse', 'Others.Health Management.Medical Conditions', 1, NOW()), -- New
+('nurse', 'Others.Health Management.Medical Inventory', 1, NOW()),   -- New
+('nurse', 'Others.Health Management.Medical Administration', 1, NOW()), -- New
+
+-- Teacher permissions (limited access - only view, not manage)
+('teacher', 'Others.Health Management', 1, NOW()),
+('teacher', 'Others.Health Management.Sick Bay', 0, NOW()), -- Matched existing name, set to 0
+('teacher', 'Others.Health Management.Health Records', 0, NOW()), -- Set to 0
+('teacher', 'Others.Health Management.Medical Conditions', 0, NOW()), -- New, Set to 0
+('teacher', 'Others.Health Management.Medical Inventory', 0, NOW()),   -- New, Set to 0
+('teacher', 'Others.Health Management.Medical Administration', 0, NOW()); -- New, Set to 0
+
+-- Re-enable safe mode
+SET SQL_SAFE_UPDATES = 1;

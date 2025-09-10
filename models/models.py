@@ -1174,7 +1174,7 @@ def initialize_tables(conn, force=False):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
         
-        # === 41. Medication Administration Log ===
+        # 1. Create medication_administration table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS medication_administration (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1189,11 +1189,13 @@ def initialize_tables(conn, force=False):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
                 FOREIGN KEY (medication_id) REFERENCES medication_inventory(id) ON DELETE CASCADE,
-                FOREIGN KEY (administered_by_teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+                FOREIGN KEY (administered_by_teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+                INDEX idx_student_date (student_id, administration_date),
+                INDEX idx_medication_date (medication_id, administration_date),
+                INDEX idx_teacher_date (administered_by_teacher_id, administration_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ''')
-        
-        print("✅ Health management tables created successfully")
+        print("✅ Medication administration table created")
 
         # === 36. Backups ===
         cursor.execute('''

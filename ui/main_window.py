@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
             'Students': ['Student Form', 'Students List', 'Analytics'] if 'Students' in main_tabs else [],
             'Others': ['Books Management', 'Health Management'],  # Books Management under Others
             'Books Management': ['Categories', 'Books', 'Borrowing', 'Reports'],  # Nested tabs within Books Management
-            'Health Management': ['Sick Bay Visit', 'Health Records', 'Medical Conditions', 'Medical Inventory']  # ADD HEALTH SUBTABS
+            'Health Management': ['Sick Bay Visit', 'Health Records', 'Medical Conditions', 'Medical Inventory', 'Medical Administration']  # ADD HEALTH SUBTABS
         }
         
         return main_tabs, nested_tabs
@@ -409,26 +409,13 @@ class MainWindow(QMainWindow):
         others_layout.addWidget(self.others_tabs)
         return others_page
     
+    # ui/main_window.py (relevant snippet)
     def on_others_subtab_changed(self, index):
         """Handle subtab changes in Others tab to update ribbon"""
         if hasattr(self, 'others_tabs') and self.others_tabs:
             tab_name = self.others_tabs.tabText(index)
             # Update ribbon based on the active subtab
-            self.update_ribbon_panel("Others")
-            
-            # Special handling for Books Management
-            if tab_name == "Books Management" and hasattr(self, 'books_management_form'):
-                current_inner_tab = self.books_management_form.tab_widget.tabText(
-                    self.books_management_form.tab_widget.currentIndex()
-                )
-                self.update_ribbon_panel("Books")
-                
-            # Special handling for Health Management
-            elif tab_name == "Health Management" and hasattr(self, 'health_management_form'):
-                current_inner_tab = self.health_management_form.tab_widget.tabText(
-                    self.health_management_form.tab_widget.currentIndex()
-                )
-                self.update_ribbon_panel("Health Management")
+            self.update_ribbon_panel("Others") 
         
     # =========================================
     # DASHBOARD PAGE WITH NESTED TABS

@@ -20,6 +20,9 @@ import platform
 import subprocess
 from ui.audit_base_form import AuditBaseForm
 from models.models import get_db_connection
+import pandas as pd
+import openpyxl
+
 
 
 class SearchableComboBox(QComboBox):
@@ -204,7 +207,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         selection_layout.setColumnStretch(1, 1)
         
         # STEP 1: Level (O-Level/A-Level)
-        level_label = QLabel("📚 Education Level *")
+        level_label = QLabel("Education Level *")
         level_label.setProperty("class", "field-label")
         selection_layout.addWidget(level_label, 0, 0)
         
@@ -215,7 +218,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         selection_layout.addWidget(self.level_dropdown, 0, 1)
         
         # STEP 2: Class Name (filtered by level)
-        class_label = QLabel("🏫 Class Name *")
+        class_label = QLabel("Class Name *")
         class_label.setProperty("class", "field-label")
         selection_layout.addWidget(class_label, 1, 0)
         
@@ -226,7 +229,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         selection_layout.addWidget(self.class_name_dropdown, 1, 1)
         
         # STEP 3: Stream (filtered by class)
-        stream_label = QLabel("🎯 Stream *")
+        stream_label = QLabel("Stream *")
         stream_label.setProperty("class", "field-label")
         selection_layout.addWidget(stream_label, 2, 0)
         
@@ -237,7 +240,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         selection_layout.addWidget(self.stream_dropdown, 2, 1)
         
         # STEP 4: Students (filtered by class and stream)
-        student_label = QLabel("👨‍🎓 Student *")
+        student_label = QLabel("Student *")
         student_label.setProperty("class", "field-label")
         selection_layout.addWidget(student_label, 3, 0)
         
@@ -258,7 +261,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         details_layout.setColumnStretch(1, 1)
         
         # Academic Year dropdown
-        year_label = QLabel("📅 Academic Year *")
+        year_label = QLabel("Academic Year *")
         year_label.setProperty("class", "field-label")
         details_layout.addWidget(year_label, 0, 0)
         
@@ -268,7 +271,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         details_layout.addWidget(self.academic_year_dropdown, 0, 1)
         
         # Term dropdown
-        term_label = QLabel("📊 Term *")
+        term_label = QLabel("Term *")
         term_label.setProperty("class", "field-label")
         details_layout.addWidget(term_label, 1, 0)
         
@@ -278,7 +281,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         details_layout.addWidget(self.term_dropdown, 1, 1)
         
         # Status dropdown
-        status_label = QLabel("📋 Status *")
+        status_label = QLabel("Status *")
         status_label.setProperty("class", "field-label")
         details_layout.addWidget(status_label, 2, 0)
         
@@ -289,7 +292,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         details_layout.addWidget(self.status_dropdown, 2, 1)
         
         # Assignment Date (readonly display)
-        date_label = QLabel("📆 Assignment Date")
+        date_label = QLabel("Assignment Date")
         date_label.setProperty("class", "field-label")
         details_layout.addWidget(date_label, 3, 0)
         
@@ -325,7 +328,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         options_layout.addWidget(self.is_current_checkbox)
         
         # Notes
-        notes_label = QLabel("📝 Notes")
+        notes_label = QLabel("Notes")
         notes_label.setProperty("class", "field-label")
         options_layout.addWidget(notes_label)
         
@@ -360,7 +363,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         primary_column.addWidget(primary_label)
         
         # Save button
-        save_btn = QPushButton("💾 Save Assignment")
+        save_btn = QPushButton("Save Assignment")
         save_btn.setProperty("class", "success")
         save_btn.setIcon(QIcon("static/icons/save.png"))
         save_btn.setIconSize(QSize(16, 16))
@@ -369,7 +372,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         primary_column.addWidget(save_btn)
         
         # Update button
-        update_btn = QPushButton("✏️ Update Assignment")
+        update_btn = QPushButton("Update Assignment")
         update_btn.setProperty("class", "primary")
         update_btn.setIcon(QIcon("static/icons/edit.png"))
         update_btn.setIconSize(QSize(16, 16))
@@ -378,7 +381,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         primary_column.addWidget(update_btn)
         
         # Delete button
-        delete_btn = QPushButton("🗑️ Delete Assignment")
+        delete_btn = QPushButton("Delete Assignment")
         delete_btn.setProperty("class", "danger")
         delete_btn.setIcon(QIcon("static/icons/delete.png"))
         delete_btn.setIconSize(QSize(16, 16))
@@ -393,13 +396,13 @@ class StudentClassAssignmentForm(AuditBaseForm):
         secondary_column = QVBoxLayout()
         secondary_column.setSpacing(10)
         
-        secondary_label = QLabel("🔵 Secondary Actions")
+        secondary_label = QLabel("Secondary Actions")
         secondary_label.setProperty("class", "section-subtitle")
         secondary_label.setAlignment(Qt.AlignCenter)
         secondary_column.addWidget(secondary_label)
         
         # Clear button
-        clear_btn = QPushButton("🧹 Clear Form")
+        clear_btn = QPushButton("Clear Form")
         clear_btn.setProperty("class", "secondary")
         clear_btn.setIcon(QIcon("static/icons/clear.png"))
         clear_btn.setIconSize(QSize(16, 16))
@@ -408,7 +411,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         secondary_column.addWidget(clear_btn)
         
         # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh Data")
+        refresh_btn = QPushButton("Refresh Data")
         refresh_btn.setProperty("class", "info")
         refresh_btn.setIcon(QIcon("static/icons/refresh.png"))
         refresh_btn.setIconSize(QSize(16, 16))
@@ -417,7 +420,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         secondary_column.addWidget(refresh_btn)
         
         # View Assignments button (switches to table tab)
-        view_assignments_btn = QPushButton("📋 View Assignments")
+        view_assignments_btn = QPushButton("View Assignments")
         view_assignments_btn.setProperty("class", "warning")
         view_assignments_btn.setIcon(QIcon("static/icons/view.png"))
         view_assignments_btn.setIconSize(QSize(16, 16))
@@ -425,14 +428,6 @@ class StudentClassAssignmentForm(AuditBaseForm):
         view_assignments_btn.clicked.connect(lambda: self.tab_widget.setCurrentIndex(1))
         secondary_column.addWidget(view_assignments_btn)
         
-        # Export button
-        export_btn = QPushButton("📊 Export PDF")
-        export_btn.setProperty("class", "export")
-        export_btn.setIcon(QIcon("static/icons/export.png"))
-        export_btn.setIconSize(QSize(16, 16))
-        export_btn.setMinimumHeight(40)
-        export_btn.clicked.connect(self.export_to_pdf)
-        secondary_column.addWidget(export_btn)
         
         # Add stretch to push buttons to top
         secondary_column.addStretch()
@@ -527,6 +522,14 @@ class StudentClassAssignmentForm(AuditBaseForm):
         export_btn.setIconSize(QSize(16, 16))
         export_btn.clicked.connect(self.export_to_pdf)
         action_frame.addWidget(export_btn)
+
+        # In the action_frame section, add this button:
+        export_excel_btn = QPushButton("Export to Excel")
+        export_excel_btn.setProperty("class", "primary")
+        export_excel_btn.setIcon(QIcon("static/icons/excel.png"))
+        export_excel_btn.setIconSize(QSize(16, 16))
+        export_excel_btn.clicked.connect(self.export_to_excel)
+        action_frame.addWidget(export_excel_btn)
         
         action_frame.addStretch()
         
@@ -1755,6 +1758,72 @@ class StudentClassAssignmentForm(AuditBaseForm):
     def open_demotion_popup(self):
         """Open demotion dialog"""
         QMessageBox.information(self, "Info", "Demotion feature will be implemented in the next version")
+
+    def export_to_excel(self):
+        """Export student class assignments to Excel with green header style"""
+        try:
+            # Validation: Check if there's data to export
+            if not hasattr(self, 'current_assignments_data') or not self.current_assignments_data:
+                QMessageBox.warning(self, "Warning", "No assignment data to export")
+                return
+    
+            # Get school info for the title
+            school_info = self.get_school_info()
+            
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for assignment in self.current_assignments_data:
+                # assignment structure: [id, full_name, grade_applied_for, class_name, stream, term_name, year_name, status, is_current, ...]
+                student_name = assignment[1] or "N/A"
+                grade = assignment[2] or "N/A"
+                class_name = assignment[3] or "N/A"
+                stream = assignment[4] or ""
+                term = assignment[5] or "N/A"
+                year = assignment[6] or "N/A"
+                status = assignment[7] or "Active"
+                is_current = assignment[8]
+                assignment_date = assignment[9] or "N/A"
+                notes = assignment[10] or ""
+                
+                # Format Class/Stream display
+                if stream and stream.strip() and stream != class_name:
+                    class_stream = f"{class_name} {stream}"
+                else:
+                    class_stream = class_name
+                
+                row_data = [
+                    student_name,
+                    grade,
+                    class_stream,
+                    term,
+                    year,
+                    status,
+                    "Yes" if is_current else "No",
+                    str(assignment_date),
+                    notes
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                'Student Name', 'Grade', 'Class/Stream', 'Term', 'Academic Year', 
+                'Status', 'Current', 'Assignment Date', 'Notes'
+            ]
+            
+            # Create title
+            title = f"{school_info['name']} - STUDENT CLASS ASSIGNMENTS"
+            
+            # Use shared export method
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="student_assignments_export",
+                title=title
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export to Excel: {e}")
+            traceback.print_exc()
         
     def export_to_pdf(self):
         """Export student class assignments to PDF"""

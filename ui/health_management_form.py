@@ -24,6 +24,10 @@ from ui.audit_base_form import AuditBaseForm
 from ui.sickbay_visit_form import SickBayVisitDialog  # Import the dialog
 # In your imports section
 from ui.medical_conditions_form import MedicalConditionsForm
+# In your imports section
+from ui.medication_inventory_form import MedicationInventoryForm
+# In your imports section
+from ui.medication_administration_form import MedicationAdministrationForm
 
 
 class HealthManagementForm(AuditBaseForm):
@@ -76,8 +80,8 @@ class HealthManagementForm(AuditBaseForm):
         self.create_sick_bay_tab()          # First: Sick bay management
         self.create_health_records_tab()    # Second: General health records
         self.create_medical_conditions_tab() # Third: Chronic conditions
-        # self.create_medication_tab()       # Third: Medication management
-        # self.create_conditions_tab()       # Fourth: Medical conditions
+        self.create_medication_tab()        # Fourth: Medication inventory
+        self.create_medication_administration_tab() # Fifth: Medication administration
         
         # Add tab widget to main layout
         main_layout.addWidget(self.tab_widget)
@@ -387,13 +391,41 @@ class HealthManagementForm(AuditBaseForm):
         # Create the medical conditions tab
         self.medical_conditions_tab = MedicalConditionsForm(
             parent=self,
-            db_connection=self.db_connection,
             cursor=self.cursor,
             students_data=self.students_data,
             teachers_data=self.teachers_data,
             user_session=self.user_session  # Pass the user session for audit base
         )
         self.tab_widget.addTab(self.medical_conditions_tab, "Medical Conditions")
+
+    # In your setup_ui() method:
+    def create_medication_tab(self):
+        """Create the medication inventory management tab"""
+        # Load teachers data if not already loaded
+        if not hasattr(self, 'teachers_data') or not self.teachers_data:
+            try:
+                self.cursor.execute("SELECT id, first_name, surname FROM teachers WHERE is_active = TRUE ORDER BY first_name")
+                self.teachers_data = self.cursor.fetchall()
+            except Error as e:
+                QMessageBox.critical(self, "Database Error", f"Failed to load teachers: {e}")
+                return
+        
+        # Create the medication inventory tab
+        self.medication_inventory_tab = MedicationInventoryForm(
+            parent=self,
+            cursor=self.cursor,
+            user_session=self.user_session
+        )
+        self.tab_widget.addTab(self.medication_inventory_tab, "Medical Inventory")
+
+    def create_medication_administration_tab(self):
+        """Create the medication administration management tab"""
+        # Create the medication administration tab
+        self.medication_administration_tab = MedicationAdministrationForm(
+            parent=self,
+            user_session=self.user_session
+        )
+        self.tab_widget.addTab(self.medication_administration_tab, "Medical Administration")
     
     def load_data(self):
         """Load all data from database"""
@@ -998,116 +1030,108 @@ class HealthManagementForm(AuditBaseForm):
 
     
     def export_health_records_excel(self):
-        """Export health records to Excel file"""
+        """Export health records with the green header style"""
         try:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save Health Records Excel", "", "Excel Files (*.xlsx)"
+            # Get school info for the title
+            school_info = self.get_school_info()
+            
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for record in self.health_records_data:
+                row_data = [
+                    record['id'],
+                    f"{record.get('first_name', '')} {record.get('last_name', '')}",
+                    'Student' if record['student_id'] else 'Staff',
+                    record['visit_date'].strftime('%Y-%m-%d') if record['visit_date'] else 'N/A',
+                    str(record.get('visit_time', '')) if record.get('visit_time') else 'N/A',
+                    record.get('temperature', ''),
+                    record.get('blood_pressure', ''),
+                    record.get('symptoms', ''),
+                    record.get('diagnosis', ''),
+                    record.get('treatment', ''),
+                    record.get('prescribed_medication', ''),
+                    record.get('dosage', ''),
+                    record.get('severity', ''),
+                    'Yes' if record['follow_up_required'] else 'No',
+                    record.get('follow_up_date', ''),
+                    'Yes' if record['referred_to_hospital'] else 'No',
+                    f"{record.get('handler_first_name', '')} {record.get('handler_last_name', '')}",
+                    record.get('notes', '')
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                'ID', 'Patient', 'Type', 'Visit Date', 'Visit Time', 'Temperature', 
+                'Blood Pressure', 'Symptoms', 'Diagnosis', 'Treatment', 'Medication', 
+                'Dosage', 'Severity', 'Follow-up Required', 'Follow-up Date', 
+                'Referred to Hospital', 'Handler', 'Notes'
+            ]
+            
+            # Create title
+            title = f"{school_info['name']} - HEALTH RECORDS"
+            
+            # Use shared export method (remove sheet_name parameter)
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="health_records_export",
+                title=title
             )
             
-            if file_path:
-                # Create DataFrame from health records data
-                df_data = []
-                for record in self.health_records_data:
-                    df_data.append({
-                        'ID': record['id'],
-                        'Patient': f"{record.get('first_name', '')} {record.get('last_name', '')}",
-                        'Type': 'Student' if record['student_id'] else 'Staff',
-                        'Visit Date': record['visit_date'],
-                        'Visit Time': record.get('visit_time', ''),
-                        'Temperature': record.get('temperature', ''),
-                        'Blood Pressure': record.get('blood_pressure', ''),
-                        'Symptoms': record.get('symptoms', ''),
-                        'Diagnosis': record.get('diagnosis', ''),
-                        'Treatment': record.get('treatment', ''),
-                        'Medication': record.get('prescribed_medication', ''),
-                        'Dosage': record.get('dosage', ''),
-                        'Severity': record.get('severity', ''),
-                        'Follow-up Required': 'Yes' if record['follow_up_required'] else 'No',
-                        'Follow-up Date': record.get('follow_up_date', ''),
-                        'Referred to Hospital': 'Yes' if record['referred_to_hospital'] else 'No',
-                        'Handler': f"{record.get('handler_first_name', '')} {record.get('handler_last_name', '')}",
-                        'Notes': record.get('notes', '')
-                    })
-                
-                df = pd.DataFrame(df_data)
-                
-                # Export to Excel
-                with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Health Records', index=False)
-                    
-                    # Auto-adjust columns width
-                    worksheet = writer.sheets['Health Records']
-                    for column in worksheet.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = min(max_length + 2, 50)
-                        worksheet.column_dimensions[column_letter].width = adjusted_width
-                
-                QMessageBox.information(self, "Success", f"Health records exported to:\n{file_path}")
-                
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export health records: {e}")
     
     def export_sick_bay_excel(self):
-        """Export sick bay visits to Excel file"""
+        """Export sick bay visits with the green header style"""
         try:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save Sick Bay Excel", "", "Excel Files (*.xlsx)"
+            # Get school info for the title
+            school_info = self.get_school_info()
+            
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for record in self.sick_bay_data:
+                duration = f"{record['duration_minutes']} min" if record.get('duration_minutes') else "Ongoing"
+                
+                row_data = [
+                    record['id'],
+                    f"{record.get('first_name', '')} {record.get('last_name', '')}",
+                    'Student' if record['student_id'] else 'Staff',
+                    record['visit_date'].strftime('%Y-%m-%d') if record['visit_date'] else 'N/A',
+                    str(record.get('visit_time', '')) if record.get('visit_time') else 'N/A',
+                    record.get('discharge_date', ''),
+                    str(record.get('discharge_time', '')) if record.get('discharge_time') else 'N/A',
+                    duration,
+                    record.get('reason', ''),
+                    record.get('initial_assessment', ''),
+                    record.get('action_taken', ''),
+                    record.get('status', ''),
+                    'Yes' if record['parent_notified'] else 'No',
+                    str(record.get('parent_notification_time', '')) if record.get('parent_notification_time') else 'N/A',
+                    f"{record.get('handler_first_name', '')} {record.get('handler_last_name', '')}",
+                    record.get('vital_signs', '')
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                'ID', 'Patient', 'Type', 'Visit Date', 'Visit Time', 'Discharge Date',
+                'Discharge Time', 'Duration', 'Reason', 'Initial Assessment', 
+                'Action Taken', 'Status', 'Parent Notified', 'Parent Notification Time',
+                'Handler', 'Vital Signs'
+            ]
+            
+            # Create title
+            title = f"{school_info['name']} - SICK BAY VISITS"
+            
+            # Use shared export method (remove sheet_name parameter)
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="sick_bay_visits_export",
+                title=title
             )
             
-            if file_path:
-                # Create DataFrame from sick bay data
-                df_data = []
-                for record in self.sick_bay_data:
-                    duration = f"{record['duration_minutes']} min" if record.get('duration_minutes') else "Ongoing"
-                    
-                    df_data.append({
-                        'ID': record['id'],
-                        'Patient': f"{record.get('first_name', '')} {record.get('last_name', '')}",
-                        'Type': 'Student' if record['student_id'] else 'Staff',
-                        'Visit Date': record['visit_date'],
-                        'Visit Time': record.get('visit_time', ''),
-                        'Discharge Date': record.get('discharge_date', ''),
-                        'Discharge Time': record.get('discharge_time', ''),
-                        'Duration': duration,
-                        'Reason': record.get('reason', ''),
-                        'Initial Assessment': record.get('initial_assessment', ''),
-                        'Action Taken': record.get('action_taken', ''),
-                        'Status': record.get('status', ''),
-                        'Parent Notified': 'Yes' if record['parent_notified'] else 'No',
-                        'Parent Notification Time': record.get('parent_notification_time', ''),
-                        'Handler': f"{record.get('handler_first_name', '')} {record.get('handler_last_name', '')}",
-                        'Vital Signs': record.get('vital_signs', '')
-                    })
-                
-                df = pd.DataFrame(df_data)
-                
-                # Export to Excel
-                with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Sick Bay Visits', index=False)
-                    
-                    # Auto-adjust columns width
-                    worksheet = writer.sheets['Sick Bay Visits']
-                    for column in worksheet.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = min(max_length + 2, 50)
-                        worksheet.column_dimensions[column_letter].width = adjusted_width
-                
-                QMessageBox.information(self, "Success", f"Sick bay visits exported to:\n{file_path}")
-                
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export sick bay visits: {e}")
     
@@ -1133,16 +1157,19 @@ class HealthManagementForm(AuditBaseForm):
         )
         school_logo = school_info['logo_path'] if school_info and school_info.get('logo_path') else default_logo
     
-        # --- Fetch patient photo ---
+        # --- Fetch patient photo and RegNo ---
         patient_photo = None
+        patient_reg_no = ""  # Will store RegNo for students, empty for teachers
         try:
             if selected_record.get('student_id'):
-                self.cursor.execute("SELECT photo_path FROM students WHERE id = %s LIMIT 1", (selected_record['student_id'],))
+                self.cursor.execute("SELECT photo_path, regNo FROM students WHERE id = %s LIMIT 1", (selected_record['student_id'],))
                 student_photo_res = self.cursor.fetchone()
-                if student_photo_res and student_photo_res.get('photo_path'):
-                    photo_path = student_photo_res['photo_path']
-                    if os.path.exists(photo_path):
-                        patient_photo = photo_path
+                if student_photo_res:
+                    if student_photo_res.get('photo_path'):
+                        photo_path = student_photo_res['photo_path']
+                        if os.path.exists(photo_path):
+                            patient_photo = photo_path
+                    patient_reg_no = student_photo_res.get('regNo', '')  # Get RegNo for students
             elif selected_record.get('teacher_id'):
                 self.cursor.execute("SELECT photo_path FROM teachers WHERE id = %s LIMIT 1", (selected_record['teacher_id'],))
                 teacher_photo_res = self.cursor.fetchone()
@@ -1150,8 +1177,10 @@ class HealthManagementForm(AuditBaseForm):
                     photo_path = teacher_photo_res['photo_path']
                     if os.path.exists(photo_path):
                         patient_photo = photo_path
+                # For teachers, patient_reg_no remains empty
         except Exception:
             patient_photo = None
+            patient_reg_no = ""  # Ensure it's empty on error
     
         # --- PDF class ---
         class HealthRecordPDF(FPDF):
@@ -1295,7 +1324,7 @@ class HealthManagementForm(AuditBaseForm):
                 self.set_font("Arial", "", 10)
                 self.cell(100, 6, "_______________________________", 0, 0, "L")
                 self.cell(0, 6, "_______________________________", 0, 1, "L")
-                self.cell(100, 4, "Handler/Doctor Signature", 0, 0, "L")
+                self.cell(100, 4, "Handler/Nurse/Doctor Signature", 0, 0, "L")
                 self.cell(0, 4, "Date", 0, 1, "L")
                 self.ln(3)
     
@@ -1308,13 +1337,15 @@ class HealthManagementForm(AuditBaseForm):
         patient_type = "Student" if selected_record.get('student_id') else "Staff"
         handler_name = f"{selected_record.get('handler_first_name', '')} {selected_record.get('handler_last_name', '')}".strip()
     
+        # Include RegNo for students, empty for teachers
         combined_fields = [
             ("Name", patient_name),
             ("Type", patient_type),
             ("Record ID", f"HR-{selected_record['id']:06d}"),
+            ("Reg No", patient_reg_no),  # Will show RegNo for students, empty for teachers
             ("Date", selected_record.get('visit_date', 'N/A')),
             ("Visit Time", str(selected_record.get('visit_time', 'N/A'))),
-            ("Handler", handler_name or "Not specified"),
+            ("Handler/Nurse", handler_name or "Not specified"),
             ("Severity", selected_record.get('severity', 'N/A')),
         ]
     
@@ -1630,8 +1661,8 @@ class HealthManagementForm(AuditBaseForm):
             ("Visit Date", selected_record.get('visit_date', 'N/A')),
             ("Status", selected_record.get('status', 'N/A')),
         ]
-        pdf.add_info_box("PATIENT INFORMATION", patient_fields, pdf.get_y(), 40)
-        pdf.ln(2)
+        pdf.add_info_box("PATIENT INFORMATION", patient_fields, pdf.get_y(), 30) #height
+        pdf.ln(7)
     
         # Parent notification
         pdf.add_section_header("PARENT NOTIFICATION")
@@ -1675,7 +1706,7 @@ class HealthManagementForm(AuditBaseForm):
                     pdf.multi_cell(0, 5, " | ".join(vital_texts))
                 else:
                     pdf.cell(0, 5, "No vital signs recorded", 0, 1, "L")
-                pdf.ln(5)
+                pdf.ln(10)
             except:
                 pass
     
@@ -1693,7 +1724,7 @@ class HealthManagementForm(AuditBaseForm):
             pdf.set_font("Arial", "", 9)
             for obs in observations:
                 pdf.cell(0, 5, f"* {obs}", 0, 1, "L")
-            pdf.ln(4)
+            pdf.ln(10)
     
         # Signature Section with Date
         pdf.ln(12)

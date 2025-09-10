@@ -29,26 +29,58 @@ class AuditBaseForm(QWidget):
         self.cursor = None
         self.setup_styling()
 
+    # Inside ui/audit_base_form.py
     def _ensure_connection(self):
         """Ensure database connection is active and reconnected if needed."""
         try:
-            # If no connection exists
-            if not hasattr(self, 'db_connection') or self.db_connection is None:
+            # Check if connection exists and is actually open/usable
+            if (not hasattr(self, 'db_connection') or self.db_connection is None or
+                not self.db_connection.is_connected()): # Use is_connected()
+                
+                # Need to (re)connect
+                print("AuditBaseForm: Establishing new database connection...")
                 self.db_connection = get_db_connection()
-                self.cursor = self.db_connection.cursor(buffered=True)
-                return
+                if self.db_connection is None:
+                     raise Exception("get_db_connection returned None")
+                print("AuditBaseForm: Database connection established.")
     
-            # If connection exists but is closed, reconnect
-            if self.db_connection.is_closed():
-                self.db_connection = get_db_connection()
-                self.cursor = self.db_connection.cursor(buffered=True)
-                return
+            # Ensure cursor exists and is usable
+            # Simple check: if cursor is None or assumed closed, recreate it.
+            # Note: mysql-connector cursors don't typically have a 'closed' attribute easily checked.
+            # It's safer to recreate if db_connection was just established or if cursor is None.
+            if (not hasattr(self, 'cursor') or self.cursor is None or
+                not hasattr(self, 'db_connection') or self.db_connection is None or
+                not self.db_connection.is_connected()): # Check connection again before creating cursor
+                
+                 if self.db_connection and self.db_connection.is_connected():
+                     print("AuditBaseForm: Creating new cursor...")
+                     self.cursor = self.db_connection.cursor(buffered=True, dictionary=True) # Add dictionary=True if needed
+                     print("AuditBaseForm: Cursor created.")
+                 else:
+                     raise Exception("Cannot create cursor: Database connection is not available or not connected.")
     
-            # If cursor is missing or closed
-            if not hasattr(self, 'cursor') or self.cursor is None or getattr(self.cursor, 'closed', False):
-                self.cursor = self.db_connection.cursor(buffered=True)
+        except mysql.connector.Error as db_err: # Catch specific DB errors
+            print(f"AuditBaseForm._ensure_connection: MySQL Error: {db_err}")
+            # Close connection if it exists but is faulty
+            if hasattr(self, 'db_connection') and self.db_connection:
+                try:
+                    self.db_connection.close()
+                except:
+                    pass
+                self.db_connection = None
+                self.cursor = None
+            raise Exception(f"Database connection error: {db_err}")
     
         except Exception as e:
+            print(f"AuditBaseForm._ensure_connection: General Error: {e}")
+            # Ensure cleanup on failure
+            if hasattr(self, 'db_connection') and self.db_connection:
+                try:
+                    self.db_connection.close()
+                except:
+                    pass
+            self.db_connection = None
+            self.cursor = None
             raise Exception(f"Failed to ensure database connection: {e}")
 
     def setup_hand_cursor(self, widget):

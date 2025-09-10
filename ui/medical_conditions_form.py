@@ -483,50 +483,297 @@ class MedicalConditionsForm(AuditBaseForm):
             QMessageBox.critical(self, "Database Error", f"Failed to update medical condition: {e}")
     
     def export_conditions_excel(self):
-        """Export medical conditions to Excel"""
+        """Export medical conditions with the green header style"""
         try:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save Medical Conditions Excel", "", "Excel Files (*.xlsx)"
+            # Get school info for the title
+            school_info = self.get_school_info()
+            
+            # Prepare data for export - convert to list of lists
+            export_data = []
+            for record in self.medical_conditions_data:
+                row_data = [
+                    record['id'],
+                    f"{record['first_name']} {record['surname']}",
+                    record['condition_name'],
+                    record['diagnosis_date'].strftime('%Y-%m-%d') if record['diagnosis_date'] else 'N/A',
+                    record['severity'],
+                    'Active' if record['is_active'] else 'Inactive',
+                    record['treatment_plan'],
+                    record['special_requirements'],
+                    f"{record.get('recorded_first_name', '')} {record.get('recorded_last_name', '')}",
+                    record['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if record['updated_at'] else 'N/A'
+                ]
+                export_data.append(row_data)
+    
+            # Define headers
+            headers = [
+                'ID', 'Student', 'Condition', 'Diagnosis Date', 'Severity', 
+                'Status', 'Treatment Plan', 'Special Requirements', 
+                'Recorded By', 'Last Updated'
+            ]
+            
+            # Create title
+            title = f"{school_info['name']} - MEDICAL CONDITIONS"
+            
+            # Use shared export method
+            self.export_with_green_header(
+                data=export_data,
+                headers=headers,
+                filename_prefix="medical_conditions_export",
+                title=title
             )
             
-            if file_path:
-                df_data = []
-                for record in self.medical_conditions_data:
-                    df_data.append({
-                        'ID': record['id'],
-                        'Student': f"{record['first_name']} {record['surname']}",
-                        'Condition': record['condition_name'],
-                        'Diagnosis Date': record['diagnosis_date'],
-                        'Severity': record['severity'],
-                        'Status': 'Active' if record['is_active'] else 'Inactive',
-                        'Treatment Plan': record['treatment_plan'],
-                        'Special Requirements': record['special_requirements'],
-                        'Recorded By': f"{record.get('recorded_first_name', '')} {record.get('recorded_last_name', '')}",
-                        'Last Updated': record['updated_at']
-                    })
-                
-                df = pd.DataFrame(df_data)
-                
-                with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Medical Conditions', index=False)
-                    
-                    worksheet = writer.sheets['Medical Conditions']
-                    for column in worksheet.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = min(max_length + 2, 50)
-                        worksheet.column_dimensions[column_letter].width = adjusted_width
-                
-                QMessageBox.information(self, "Success", f"Medical conditions exported to:\n{file_path}")
-                
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export medical conditions: {e}")
+
+    def generate_medical_condition_pdf_bytes(self, selected_record):
+        """Generate professional medical condition PDF with school branding and detailed layout"""
+        import tempfile
+        import os
+        from fpdf import FPDF
+        from datetime import datetime
+        
+        # Get school information
+        try:
+            school_query = "SELECT school_name, address, phone, email, logo_path FROM schools WHERE id = %s LIMIT 1"
+            school_id = getattr(self.user_session, 'school_id', 1) if self.user_session else 1
+            self.cursor.execute(school_query, (school_id,))
+            school_info = self.cursor.fetchone()
+        except Exception:
+            school_info = None
+        
+        # Default logo path
+        default_logo = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "static", "images", "logo.png"
+        )
+        school_logo = school_info['logo_path'] if school_info and school_info.get('logo_path') else default_logo
+        
+        # Fetch student photo and registration number
+        student_photo = None
+        student_reg_no = "N/A"
+        try:
+            self.cursor.execute("SELECT photo_path, regNo FROM students WHERE id = %s LIMIT 1", (selected_record['student_id'],))
+            student_photo_res = self.cursor.fetchone()
+            if student_photo_res:
+                if student_photo_res.get('photo_path'):
+                    photo_path = student_photo_res['photo_path']
+                    if os.path.exists(photo_path):
+                        student_photo = photo_path
+                student_reg_no = student_photo_res.get('regNo', 'N/A')
+        except Exception:
+            student_photo = None
+        
+        class MedicalConditionPDF(FPDF):
+            def __init__(self):
+                super().__init__(orientation='P', unit='mm', format='A4')
+                self.set_margins(15, 15, 15)
+                self.set_auto_page_break(auto=False)
+            
+            def header(self):
+                # School logo (left)
+                if os.path.exists(school_logo):
+                    try:
+                        self.image(school_logo, 15, 10, 25)
+                    except:
+                        pass
+                
+                # Student photo (top-right)
+                if student_photo:
+                    try:
+                        self.image(student_photo, 165, 5, 30, 30)
+                    except:
+                        pass
+                
+                # School info (center)
+                self.set_y(10)
+                if school_info:
+                    if school_info.get('school_name'):
+                        self.set_font("Arial", "B", 14)
+                        self.cell(0, 7, school_info['school_name'], 0, 1, "C")
+                    
+                    self.set_font("Arial", "", 9)
+                    if school_info.get('address'):
+                        self.cell(0, 5, school_info['address'], 0, 1, "C")
+                    
+                    contact_info = ""
+                    if school_info.get('phone'):
+                        contact_info += school_info['phone']
+                    if school_info.get('phone') and school_info.get('email'):
+                        contact_info += " | "
+                    if school_info.get('email'):
+                        contact_info += school_info['email']
+                    
+                    if contact_info:
+                        self.cell(0, 5, contact_info, 0, 1, "C")
+                
+                # Document title
+                self.ln(4)
+                self.set_font("Arial", "B", 13)
+                self.set_text_color(70, 70, 70)
+                self.cell(0, 8, "MEDICAL CONDITION REPORT", 0, 1, "C")
+                
+                self.set_font("Arial", "", 8)
+                self.set_text_color(100, 100, 100)
+                doc_id = f"Document ID: MC-{selected_record['id']:06d}"
+                gen_time = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                self.cell(0, 4, f"{doc_id} | {gen_time}", 0, 1, "C")
+                
+                self.set_font("Arial", "I", 7)
+                self.set_text_color(200, 0, 0)
+                self.cell(0, 4, "CONFIDENTIAL MEDICAL INFORMATION", 0, 1, "C")
+                
+                # Separator line
+                self.set_draw_color(200, 200, 200)
+                self.line(15, self.get_y() + 2, 195, self.get_y() + 2)
+                self.ln(4)
+                self.set_text_color(0, 0, 0)
+            
+            def footer(self):
+                self.set_y(-20)
+                self.set_font("Arial", "I", 7)
+                self.set_text_color(128, 128, 128)
+                self.cell(0, 4, "This document contains confidential medical information.", 0, 1, "C")
+                self.cell(0, 4, "Distribution limited to authorized personnel only.", 0, 1, "C")
+                self.cell(0, 4, f"Page {self.page_no()}", 0, 0, "C")
+            
+            def draw_box(self, x, y, width, height, title="", fill_color=(240, 240, 240)):
+                self.set_fill_color(*fill_color)
+                self.set_draw_color(150, 150, 150)
+                self.rect(x, y, width, height, 'DF')
+                if title:
+                    self.set_xy(x + 2, y + 1)
+                    self.set_font("Arial", "B", 9)
+                    self.set_text_color(0, 0, 0)
+                    self.cell(width - 4, 6, title, 0, 0, "L")
+            
+            def add_info_box(self, title, fields, y_pos, height=28):  # Reduced height from 36 to 28
+                box_width = 180
+                self.draw_box(15, y_pos, box_width, height, title)
+                label_width = 50
+                col1_x, col2_x = 20, 110
+                col_y = y_pos + 10
+                
+                for i, (label, value) in enumerate(fields):
+                    x = col1_x if i % 2 == 0 else col2_x
+                    y = col_y + (i // 2) * 6
+                    self.set_xy(x, y)
+                    self.set_font("Arial", "B", 9)
+                    self.cell(label_width, 5, f"{label}:", 0, 0, "L")
+                    self.set_font("Arial", "", 9)
+                    self.cell(0, 5, str(value) if value else "N/A", 0, 1, "L")
+            
+            def add_section_header(self, title, color=(70, 130, 180)):
+                self.ln(4)
+                self.set_fill_color(*color)
+                self.set_text_color(255, 255, 255)
+                self.set_font("Arial", "B", 11)
+                self.cell(0, 8, title, 0, 1, "L", True)
+                self.set_text_color(0, 0, 0)
+                self.ln(2)
+            
+            def add_multiline_content(self, content, max_width=180):
+                self.set_font("Arial", "", 9)
+                if content:
+                    words = str(content).split()
+                    lines, current_line = [], ""
+                    for word in words:
+                        test_line = current_line + (" " if current_line else "") + word
+                        if self.get_string_width(test_line) <= max_width:
+                            current_line = test_line
+                        else:
+                            if current_line:
+                                lines.append(current_line)
+                            current_line = word
+                    if current_line:
+                        lines.append(current_line)
+                    for line in lines:
+                        self.cell(0, 5, line, 0, 1, "L")
+                else:
+                    self.cell(0, 5, "Not specified", 0, 1, "L")
+        
+        # Create PDF
+        pdf = MedicalConditionPDF()
+        pdf.add_page()
+        
+        # Student information
+        student_name = f"{selected_record.get('first_name', '')} {selected_record.get('surname', '')}".strip()
+        recorded_by = f"{selected_record.get('recorded_first_name', '')} {selected_record.get('recorded_last_name', '')}".strip()
+        
+        student_fields = [
+            ("Name", student_name),
+            ("Registration No", student_reg_no),  # Using regNo instead of student_id
+            ("Condition ID", f"MC-{selected_record['id']:06d}"),
+            ("Status", "Active" if selected_record['is_active'] else "Inactive"),
+            ("Diagnosis Date", selected_record.get('diagnosis_date', 'N/A')),
+            ("Severity", selected_record.get('severity', 'N/A')),
+            ("Recorded By", recorded_by or "System"),
+            ("Last Updated", selected_record.get('updated_at', 'N/A'))
+        ]
+        
+        pdf.add_info_box("STUDENT INFORMATION", student_fields, pdf.get_y(), 35)  # Reduced height
+        pdf.ln(4)  # Added extra space to push content down
+        
+        # Condition details
+        pdf.add_section_header("CONDITION DETAILS")
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 6, f"Condition: {selected_record.get('condition_name', 'N/A')}", 0, 1, "L")
+        pdf.ln(2)
+        
+        # Treatment plan
+        if selected_record.get('treatment_plan'):
+            pdf.add_section_header("TREATMENT PLAN")
+            pdf.add_multiline_content(selected_record['treatment_plan'])
+            pdf.ln(2)
+        
+        # Special requirements
+        if selected_record.get('special_requirements'):
+            pdf.add_section_header("SPECIAL REQUIREMENTS & ACCOMMODATIONS")
+            pdf.add_multiline_content(selected_record['special_requirements'])
+            pdf.ln(2)
+        
+        # Emergency procedures
+        if selected_record['severity'] == 'Severe':
+            pdf.add_section_header("EMERGENCY PROCEDURES", (180, 100, 100))
+            pdf.set_font("Arial", "B", 9)
+            pdf.cell(0, 5, "In case of emergency:", 0, 1, "L")
+            pdf.set_font("Arial", "", 9)
+            pdf.cell(0, 5, "1. Administer prescribed emergency medication if available", 0, 1, "L")
+            pdf.cell(0, 5, "2. Contact emergency services immediately", 0, 1, "L")
+            pdf.cell(0, 5, "3. Notify parents/guardians", 0, 1, "L")
+            pdf.cell(0, 5, "4. Follow specific instructions from healthcare provider", 0, 1, "L")
+            pdf.ln(2)
+        
+        # Additional notes section
+        pdf.add_section_header("ADDITIONAL NOTES")
+        pdf.set_font("Arial", "", 9)
+        pdf.cell(0, 5, "This condition requires ongoing monitoring and management.", 0, 1, "L")
+        if selected_record['is_active']:
+            pdf.cell(0, 5, "All staff should be aware of this condition and its management requirements.", 0, 1, "L")
+        pdf.ln(10)
+        
+        # Signature section
+        pdf.set_font("Arial", "B", 9)
+        pdf.cell(60, 6, "School Nurse/Medical Officer:", 0, 0, "L")
+        pdf.set_font("Arial", "", 9)
+        pdf.cell(0, 6, "........................................................", 0, 1, "L")
+        pdf.cell(60, 5, "Date:", 0, 0, "L")
+        pdf.cell(0, 5, datetime.now().strftime("%Y-%m-%d"), 0, 1, "L")
+        pdf.ln(3)
+        
+        # Generate PDF bytes
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            pdf.output(temp_path)
+            with open(temp_path, 'rb') as f:
+                pdf_bytes = f.read()
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        
+        return pdf_bytes
 
     def export_condition_pdf(self):
         """Export individual medical condition as PDF using enhanced viewer"""
@@ -561,90 +808,7 @@ class MedicalConditionsForm(AuditBaseForm):
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to generate medical condition PDF: {str(e)}")
     
-    def generate_medical_condition_pdf_bytes(self, selected_record):
-        """Generate medical condition PDF bytes for the enhanced viewer"""
-        from fpdf import FPDF
-        import tempfile
-        
-        class MedicalConditionPDF(FPDF):
-            def __init__(self):
-                super().__init__()
-                self.set_auto_page_break(auto=True, margin=15)
-            
-            def header(self):
-                self.set_font("Arial", "B", 16)
-                self.cell(0, 10, "MEDICAL CONDITION REPORT", 0, 1, "C")
-                self.ln(5)
-            
-            def footer(self):
-                self.set_y(-15)
-                self.set_font("Arial", "I", 8)
-                self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
-        
-        pdf = MedicalConditionPDF()
-        pdf.add_page()
-        
-        # Patient information
-        patient_name = f"{selected_record.get('first_name', '')} {selected_record.get('surname', '')}".strip()
-        
-        pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, "PATIENT INFORMATION", 0, 1)
-        pdf.set_font("Arial", "", 12)
-        pdf.cell(0, 8, f"Name: {patient_name}", 0, 1)
-        pdf.cell(0, 8, f"Condition ID: MC-{selected_record['id']:06d}", 0, 1)
-        
-        # Condition details
-        pdf.ln(5)
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 8, "CONDITION DETAILS:", 0, 1)
-        pdf.set_font("Arial", "", 10)
-        pdf.cell(0, 6, f"Condition: {selected_record.get('condition_name', 'N/A')}", 0, 1)
-        pdf.cell(0, 6, f"Diagnosis Date: {selected_record.get('diagnosis_date', 'N/A')}", 0, 1)
-        pdf.cell(0, 6, f"Severity: {selected_record.get('severity', 'N/A')}", 0, 1)
-        
-        status = "[X] ACTIVE" if selected_record.get('is_active') else "[ ] INACTIVE"
-        pdf.cell(0, 6, f"Status: {status}", 0, 1)
-        
-        # Treatment plan
-        if selected_record.get('treatment_plan'):
-            pdf.ln(5)
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 8, "TREATMENT PLAN:", 0, 1)
-            pdf.set_font("Arial", "", 10)
-            pdf.multi_cell(0, 6, selected_record['treatment_plan'])
-        
-        # Special requirements
-        if selected_record.get('special_requirements'):
-            pdf.ln(5)
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 8, "SPECIAL REQUIREMENTS:", 0, 1)
-            pdf.set_font("Arial", "", 10)
-            pdf.multi_cell(0, 6, selected_record['special_requirements'])
-        
-        # Recorded by
-        recorded_by = f"{selected_record.get('recorded_first_name', '')} {selected_record.get('recorded_last_name', '')}".strip()
-        if recorded_by:
-            pdf.ln(5)
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 8, "RECORDING INFORMATION:", 0, 1)
-            pdf.set_font("Arial", "", 10)
-            pdf.cell(0, 6, f"Recorded By: {recorded_by}", 0, 1)
-            pdf.cell(0, 6, f"Last Updated: {selected_record.get('updated_at', 'N/A')}", 0, 1)
-        
-        # Generate PDF bytes
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
-            temp_path = temp_file.name
-        
-        try:
-            pdf.output(temp_path)
-            with open(temp_path, 'rb') as f:
-                pdf_bytes = f.read()
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-        
-        return pdf_bytes
-
+   
     def save_condition_pdf_fallback(self, pdf_bytes, selected_record):
         """Fallback method to save medical condition PDF if viewer not available"""
         patient_name = f"{selected_record.get('first_name', '')} {selected_record.get('surname', '')}".strip()
