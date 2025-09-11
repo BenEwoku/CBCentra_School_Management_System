@@ -753,6 +753,47 @@ class AuditBaseForm(QWidget):
                 color: #007BFF;
                 font-weight: bold;
             }}
+
+            /* Notification badge */
+            #notificationBadge {{
+                background-color: #e74c3c;
+                color: white;
+                border-radius: 8px;
+                padding: 2px 6px;
+                font-size: 10px;
+                font-weight: bold;
+                min-width: 16px;
+                max-width: 16px;
+                min-height: 16px;
+                max-height: 16px;
+            }}
+            
+            /* Toast notifications */
+            #toastNotification {{
+                background-color: #2c3e50;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                border: 1px solid #34495e;
+                font-size: 12px;
+            }}
+            
+            /* Email action buttons */
+            #emailAction {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3498db,
+                    stop:1 #2980b9
+                );
+                color: white;
+                border: 1px solid #2980b9;
+            }}
+            
+            #emailAction:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2980b9,
+                    stop:1 #2471a3
+                );
+            }}
             
             /* === OVERRIDE: RIBBON BUTTONS - SMALL, FLAT, NO BORDER === */
             QPushButton#ribbonButton {{

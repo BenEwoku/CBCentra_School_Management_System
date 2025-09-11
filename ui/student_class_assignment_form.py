@@ -22,6 +22,8 @@ from ui.audit_base_form import AuditBaseForm
 from models.models import get_db_connection
 import pandas as pd
 import openpyxl
+# Add these imports at the top
+from services.email_service import EmailService, EmailTemplates
 
 
 
@@ -530,6 +532,21 @@ class StudentClassAssignmentForm(AuditBaseForm):
         export_excel_btn.setIconSize(QSize(16, 16))
         export_excel_btn.clicked.connect(self.export_to_excel)
         action_frame.addWidget(export_excel_btn)
+
+        # Add email button to action buttons
+        email_btn = QPushButton("📧 Email Notification")
+        email_btn.setProperty("class", "info")
+        email_btn.setIcon(QIcon("static/icons/email.png"))
+        email_btn.setIconSize(QSize(16, 16))
+        email_btn.clicked.connect(self.send_assignment_email)
+        action_frame.addWidget(email_btn)
+
+        # Add email configuration button (somewhere in settings/options)
+        email_config_btn = QPushButton("⚙️ Email Setup")
+        email_config_btn.setProperty("class", "secondary")
+        email_config_btn.clicked.connect(self.open_email_config)
+        action_frame.addWidget(email_config_btn)
+        # Add this to your settings menu
         
         action_frame.addStretch()
         
@@ -602,6 +619,51 @@ class StudentClassAssignmentForm(AuditBaseForm):
         
         # Add tab
         self.tab_widget.addTab(table_widget, "View Assignments")
+
+    # Add these methods to your form class:
+    def open_email_config(self):
+        """Open email configuration dialog"""
+        from ui.email_config_dialog import EmailConfigDialog
+        dialog = EmailConfigDialog(self, self.db_connection)
+        dialog.exec()
+    
+    def send_assignment_email(self):
+        """Send assignment email to selected student/parent"""
+        if not self.validate_form():
+            return
+        
+        try:
+            # Get student ID and details
+            student_id = self.get_selected_id(self.student_dropdown)
+            if not student_id:
+                QMessageBox.warning(self, "Warning", "Please select a student first.")
+                return
+            
+            # Get assignment details
+            assignment_data = self.get_assignment_data()
+            
+            # Get student name for email
+            self.cursor.execute("SELECT full_name FROM students WHERE id = %s", (student_id,))
+            student_name = self.cursor.fetchone()[0] or "Student"
+            
+            # Create email service instance
+            email_service = EmailService(self.db_connection)
+            
+            # Send email to student and parent
+            subject = f"Class Assignment: {assignment_data.get('class_name', 'New Class')}"
+            body = EmailTemplates.assignment_notification(student_name, assignment_data)
+            
+            success, message = email_service.send_bulk_email(
+                self, 'student', [student_id], subject, body
+            )
+            
+            if success:
+                QMessageBox.information(self, "Success", 
+                                      "Assignment notification sent to student and parent!")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to send email: {str(e)}")
+
         
         
     def clear_search(self):

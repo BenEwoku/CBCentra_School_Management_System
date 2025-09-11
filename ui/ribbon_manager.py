@@ -305,3 +305,43 @@ class RibbonManager:
             self.main_window.ribbon_toolbar.setFixedHeight(90)
             self.main_window.ribbon_toggle_btn.setText("▴")
             self.main_window.ribbon_visible = True
+
+    def add_email_actions(self):
+        """Add email actions to ribbon"""
+        # Add to appropriate ribbon panel (e.g., Dashboard or Others)
+        email_group = self.create_action_group("Email", "email.png")
+        
+        email_group.addAction(
+            "Send Email", "send_email.png", 
+            lambda: self.main_window.show_email_composer(), 
+            "Send email to selected recipients"
+        )
+        
+        email_group.addAction(
+            "Check Mail", "refresh.png", 
+            lambda: self.main_window.email_notifier._check_incoming_emails(), 
+            "Check for new emails"
+        )
+        
+        email_group.addAction(
+            "Notification Center", "notification.png", 
+            self.main_window.show_notification_center, 
+            "View all notifications"
+        )
+        
+        # Add to ribbon panel
+        self.add_group_to_panel("Dashboard", email_group)
+    
+    def add_system_actions(self):
+        """Add system actions to ribbon"""
+        system_group = self.create_action_group("System", "settings.png")
+        
+        system_group.addAction(
+            "Email Config", "email.png", 
+            self.main_window.show_email_config, 
+            "Configure email settings"
+        )
+        
+        # Add other system actions...
+        
+        self.add_group_to_panel("Dashboard", system_group)

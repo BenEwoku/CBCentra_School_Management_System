@@ -6,11 +6,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QStackedWidget,
     QSizePolicy, QScrollArea, QTabWidget, QInputDialog, QGraphicsDropShadowEffect,
     QDialog, QFileDialog, QGroupBox, QRadioButton, QComboBox, QProgressDialog, QLineEdit,
-    QButtonGroup
+    QButtonGroup, QApplication
 )
 from datetime import datetime
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction, QFont, QCursor 
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
+from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal, QTimer
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintPreviewWidget, QPrintDialog
 from PySide6.QtPdf import QPdfDocument
@@ -25,8 +25,7 @@ from ui.audit_base_form import AuditBaseForm
 from ui.students_form import StudentsForm
 from ui.parents_form import ParentsForm
 from ui.class_form import ClassesForm
-from ui.books_management_form import BooksManagementForm  # Add this line
-# Add this import with your other form imports
+from ui.books_management_form import BooksManagementForm
 from ui.health_management_form import HealthManagementForm
 
 # Import the tab access management form
@@ -36,7 +35,12 @@ from ui.tab_access_form import TabAccessManagementForm
 from ui.ribbon_manager import RibbonManager
 from ui.ribbon_handlers import RibbonHandlers
 
-#ui/main_window.py
+# Email imports
+from services.email_service import EmailService, EmailTemplates
+from services.email_notification_service import EmailNotificationService
+from ui.notification_center import NotificationCenter
+
+# Other imports
 from utils.permissions import has_permission
 from fpdf import FPDF
 from docx import Document
@@ -54,7 +58,7 @@ class MainWindow(QMainWindow):
         # Store instance variables
         self.user_session = user_session or {}
         self.app_config = config or {}
-        self.db_connection = db_connection  # IMPORTANT: Store DB connection for tab access
+        self.db_connection = db_connection
         self.app_paths = app_paths or {}
         
         # Create AuditBaseForm instance for styling and utilities
@@ -70,7 +74,7 @@ class MainWindow(QMainWindow):
         self.export_with_green_header = self.audit_base.export_with_green_header
         self.get_school_info = self.audit_base.get_school_info
         
-        # Initialize ribbon components AFTER setting up colors and fonts
+        # Initialize ribbon components
         self.ribbon_manager = RibbonManager(self)
         self.ribbon_handlers = RibbonHandlers(self)
         
@@ -124,18 +128,36 @@ class MainWindow(QMainWindow):
         self.current_pdf_bytes = None
         self.current_file_path = None
         self.current_file_type = None
-        self.visible_nested_tabs = {}  # Store nested tabs visibility
+        self.visible_nested_tabs = {}
 
         self.init_ui()
         self.setup_window()
         
+        # Initialize email services AFTER UI is set up
+        self.email_service = EmailService(self.db_connection)
+        self.email_notifier = EmailNotificationService(self.db_connection, self.email_service)
+        
+        # Connect email notification signals
+        self.email_notifier.new_notification.connect(self.show_new_notification)
+        self.email_notifier.notification_count_changed.connect(self.update_notification_badge)
+        
+        # Start email monitoring (with check)
+        if self.check_email_configuration():
+            self.email_notifier.start()
+        else:
+            print("⚠️ Email not configured - monitoring disabled")
+        
+        # Check email configuration on startup
+        QTimer.singleShot(2000, self.check_email_configuration_on_startup)
+    
     def setup_window(self):
         self.setWindowTitle(self.app_config['window_title'])
         self.setGeometry(100, 100, *self.app_config['default_size'])
         self.setMinimumSize(*self.app_config['min_size'])
         if os.path.exists(self.app_paths['app_icon']):
             self.setWindowIcon(QIcon(self.app_paths['app_icon']))
-
+    
+            
     # ========================================
     # DATABASE-DRIVEN TAB VISIBILITY METHODS 
     # ========================================
@@ -924,24 +946,49 @@ class MainWindow(QMainWindow):
     # PROFILE SECTION
     # =====================================
     def create_profile_section(self):
-        """Create a modern, compact profile section."""
-        size = 32  # Reduced from 36 → 32px (compact but clear)
-    
+        """Create a modern, compact profile section with notification badge."""
+        size = 32
+        
         # Container
         profile_container = QWidget()
         profile_container.setObjectName("profileContainer")
-        # Let global QSS handle styling
         profile_layout = QHBoxLayout(profile_container)
         profile_layout.setContentsMargins(0, 0, 0, 0)
-        profile_layout.setSpacing(6)  # Slightly tighter
+        profile_layout.setSpacing(6)
         profile_layout.setAlignment(Qt.AlignVCenter)
-    
+        
         # User name
         self.user_name_label = QLabel(self.user_session.get('full_name', 'User'))
         self.user_name_label.setObjectName("userName")
         self.user_name_label.setAlignment(Qt.AlignVCenter)
         profile_layout.addWidget(self.user_name_label)
-    
+        
+        # Notification badge with right-click functionality
+        self.notification_badge = QLabel("0")
+        self.notification_badge.setObjectName("notificationBadge")
+        self.notification_badge.setStyleSheet("""
+            QLabel#notificationBadge {
+                background-color: #e74c3c;
+                color: white;
+                border-radius: 8px;
+                padding: 2px 6px;
+                font-size: 10px;
+                font-weight: bold;
+                min-width: 16px;
+                max-width: 16px;
+                min-height: 16px;
+                max-height: 16px;
+            }
+            QLabel#notificationBadge:hover {
+                background-color: #c0392b;
+            }
+        """)
+        self.notification_badge.setAlignment(Qt.AlignCenter)
+        self.notification_badge.hide()  # Hidden by default
+        self.notification_badge.setCursor(Qt.PointingHandCursor)
+        self.notification_badge.mousePressEvent = self.on_notification_badge_clicked
+        profile_layout.addWidget(self.notification_badge)
+        
         # Profile picture
         self.profile_pic = QLabel()
         self.profile_pic.setObjectName("profilePic")
@@ -950,25 +997,25 @@ class MainWindow(QMainWindow):
         self.profile_pic.setAlignment(Qt.AlignCenter)
         self.profile_pic.setCursor(Qt.PointingHandCursor)
         self.profile_pic.mousePressEvent = self.on_profile_clicked
-    
+        
         # Load image or placeholder
         profile_pixmap = self.load_profile_image(size)
         self.profile_pic.setPixmap(profile_pixmap)
         self.update_profile_tooltip()
-    
+        
         profile_layout.addWidget(self.profile_pic)
-    
+        
         # Ribbon toggle
         self.ribbon_toggle_btn = QPushButton("▴")
         self.ribbon_toggle_btn.setObjectName("ribbonToggle")
         self.ribbon_toggle_btn.setToolTip("Toggle Ribbon Visibility")
-        self.ribbon_toggle_btn.setFixedHeight(size)  # Now 32px tall
+        self.ribbon_toggle_btn.setFixedHeight(size)
         self.ribbon_toggle_btn.clicked.connect(self.toggle_ribbon)
         profile_layout.addWidget(self.ribbon_toggle_btn)
-    
+        
         # Add to toolbar
         self.main_tabbar.addWidget(profile_container)
-
+    
     def load_profile_image(self, size):
         """Load and process profile image with fallback to enhanced placeholder"""
         profile_pixmap = None
@@ -1070,7 +1117,7 @@ class MainWindow(QMainWindow):
         return circular_pixmap
 
     def on_profile_clicked(self, event):
-        """Handle profile picture click - show user menu or profile options"""
+        """Handle profile picture click - show user menu with email options"""
         from PySide6.QtWidgets import QMenu
         
         menu = QMenu(self)
@@ -1090,7 +1137,17 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Add menu actions
+        # Add notification center option
+        notification_action = menu.addAction("📧 Notifications")
+        notification_action.triggered.connect(self.show_notification_center)
+        
+        # Add email configuration option (ADD THIS)
+        email_config_action = menu.addAction("⚙️ Email Configuration")
+        email_config_action.triggered.connect(self.show_email_config)
+        
+        menu.addSeparator()
+        
+        # Add existing menu actions
         profile_action = menu.addAction("View Profile")
         profile_action.triggered.connect(self.show_user_profile)
         
@@ -1104,6 +1161,12 @@ class MainWindow(QMainWindow):
         
         # Show menu at profile picture position
         menu.exec(self.profile_pic.mapToGlobal(self.profile_pic.rect().bottomLeft()))
+    
+    def show_email_config(self):
+        """Show email configuration dialog"""
+        from ui.email_config_dialog import EmailConfigDialog
+        dialog = EmailConfigDialog(self, self.db_connection)
+        dialog.exec()
 
     def show_user_profile(self):
         """Show user profile dialog"""
@@ -1161,6 +1224,278 @@ class MainWindow(QMainWindow):
         """.strip()
     
         self.profile_pic.setToolTip(tooltip_text)
+
+    #===Email Notifications========
+    #    EMAILS
+    #===============================
+    def on_notification_badge_clicked(self, event):
+        """Handle notification badge clicks - left click for center, right click for manual check"""
+        if event.button() == Qt.LeftButton:
+            # Left click - show notification center
+            self.show_notification_center()
+        elif event.button() == Qt.RightButton:
+            # Right click - manual email check
+            self.force_email_check()
+    
+    def force_email_check(self):
+        """Manually trigger email check with visual feedback"""
+        if hasattr(self, 'email_notifier'):
+            # Show checking indicator
+            original_text = self.statusBar().currentMessage()
+            self.statusBar().showMessage("🔄 Checking for new emails...")
+            
+            # Force email check
+            self.email_notifier._check_incoming_emails()
+            
+            # Show success message
+            self.show_temp_message("✅ Manual email check completed", 3000)
+            
+            # Restore original status after delay
+            QTimer.singleShot(3000, lambda: self.statusBar().showMessage(original_text))
+        else:
+            self.show_temp_message("❌ Email service not available", 3000, "#dc3545")
+    
+    def show_temp_message(self, message, duration=3000, color="#28a745"):
+        """Show temporary status message in status bar"""
+        # Store original message
+        if not hasattr(self, '_original_status_message'):
+            self._original_status_message = self.statusBar().currentMessage()
+        
+        # Show temporary message
+        self.statusBar().showMessage(message)
+        
+        # Apply color if specified
+        if color:
+            self.statusBar().setStyleSheet(f"color: {color};")
+        
+        # Restore original message after duration
+        QTimer.singleShot(duration, self.restore_original_status)
+    
+    def restore_original_status(self):
+        """Restore original status bar message"""
+        if hasattr(self, '_original_status_message'):
+            self.statusBar().showMessage(self._original_status_message)
+            self.statusBar().setStyleSheet("")  # Reset style
+    
+    # Also update your update_notification_badge method to add tooltip:
+    def update_notification_badge(self, count):
+        """Update notification badge count with tooltip"""
+        if count > 0:
+            self.notification_badge.setText(str(count))
+            self.notification_badge.show()
+            self.notification_badge.setToolTip(
+                f"{count} unread notifications\n"
+                "Left-click: Open notifications\n"
+                "Right-click: Check for new emails"
+            )
+            
+            # Optional: Add animation for new notifications
+            if hasattr(self, 'notification_animation'):
+                self.notification_animation.stop()
+            
+            self.notification_animation = QPropertyAnimation(self.notification_badge, b"geometry")
+            self.notification_animation.setDuration(200)
+            self.notification_animation.setKeyValueAt(0.3, QRect(
+                self.notification_badge.x() - 2, 
+                self.notification_badge.y() - 2,
+                self.notification_badge.width() + 4,
+                self.notification_badge.height() + 4
+            ))
+            self.notification_animation.setEndValue(self.notification_badge.geometry())
+            self.notification_animation.start()
+        else:
+            self.notification_badge.hide()
+            self.notification_badge.setToolTip("No unread notifications\nRight-click: Check for new emails")
+    
+    def show_new_notification(self, notification_data):
+        """Show popup for new notification"""
+        # Show system tray notification if available
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(
+                f"New message from {notification_data['from']}",
+                notification_data['preview'],
+                QSystemTrayIcon.Information,
+                5000
+            )
+        
+        # Optional: Show in-app toast notification
+        self.show_toast_notification(notification_data)
+    
+    def show_toast_notification(self, notification_data):
+        """Show in-app toast notification"""
+        toast = QLabel(self)
+        toast.setObjectName("toastNotification")
+        toast.setText(f"📧 {notification_data['from']}: {notification_data['preview']}")
+        toast.setStyleSheet("""
+            QLabel#toastNotification {
+                background-color: #2c3e50;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                border: 1px solid #34495e;
+                font-size: 12px;
+            }
+        """)
+        toast.setAlignment(Qt.AlignCenter)
+        toast.setWordWrap(True)
+        toast.adjustSize()
+        
+        # Position at bottom right
+        toast.move(
+            self.width() - toast.width() - 20,
+            self.height() - toast.height() - 60
+        )
+        toast.show()
+        
+        # Auto-hide after 5 seconds
+        QTimer.singleShot(5000, toast.hide)
+    
+    def show_notification_center(self, event=None):
+        """Show notification center dialog"""
+        dialog = NotificationCenter(self, self.db_connection, self.email_notifier)
+        dialog.exec()
+
+    def show_email_composer(self, recipient_type=None, recipient_ids=None, subject=None, body=None):
+        """Show email composer dialog with configuration check"""
+        # Check if email is configured first
+        if not self.check_email_configuration():
+            return
+            
+        from ui.email_composer_dialog import EmailComposerDialog
+        
+        dialog = EmailComposerDialog(
+            self, 
+            self.db_connection,
+            recipient_type=recipient_type,
+            recipient_ids=recipient_ids,
+            subject=subject,
+            body=body
+        )
+        
+        if dialog.exec() == QDialog.Accepted:
+            email_data = dialog.get_email_data()
+            
+            # Get selected emails directly from the dialog
+            selected_emails = dialog.get_selected_emails()
+            
+            if not selected_emails:
+                QMessageBox.warning(self, "No Recipients", "No email addresses were selected.")
+                return
+                
+            success, message = self.email_service.send_email(
+                selected_emails,
+                email_data['subject'],
+                email_data['body'],
+                email_data.get('attachments'),
+                email_data.get('is_html', True)
+            )
+            
+            if success:
+                QMessageBox.information(self, "Success", f"Email sent to {len(selected_emails)} recipients!")
+            else:
+                QMessageBox.warning(self, "Failed", message)
+
+    def email_selected_students(self, student_ids):
+        """Quick email for selected students"""
+        self.show_email_composer(
+            recipient_type='students',
+            recipient_ids=student_ids,
+            subject="Message from School Administration"
+        )
+    
+    def email_selected_teachers(self, teacher_ids):
+        """Quick email for selected teachers"""
+        self.show_email_composer(
+            recipient_type='teachers', 
+            recipient_ids=teacher_ids,
+            subject="Staff Communication"
+        )
+    
+    def email_selected_parents(self, parent_ids):
+        """Quick email for selected parents"""
+        self.show_email_composer(
+            recipient_type='parents',
+            recipient_ids=parent_ids, 
+            subject="Parent Communication from School"
+        )
+    
+    def email_assignment_notification(self, student_id, assignment_data):
+        """Send assignment notification email"""
+        from services.email_service import EmailTemplates
+        
+        student_name = self.get_student_name(student_id)
+        if not student_name:
+            return
+            
+        self.show_email_composer(
+            recipient_type='students',
+            recipient_ids=[student_id],
+            subject=f"Class Assignment: {assignment_data.get('class_name', 'New Class')}",
+            body=EmailTemplates.assignment_notification(student_name, assignment_data)
+        )
+    
+    def get_student_name(self, student_id):
+        """Get student name from database"""
+        try:
+            cursor = self.db_connection.cursor(dictionary=True)
+            cursor.execute("SELECT full_name FROM students WHERE id = %s", (student_id,))
+            result = cursor.fetchone()
+            return result['full_name'] if result else None
+        except:
+            return None
+    
+    # In your MainWindow class
+    
+    def show_email_config(self):
+        """Show email configuration dialog"""
+        from ui.email_config_dialog import EmailConfigDialog
+        
+        dialog = EmailConfigDialog(self, self.db_connection)
+        dialog.config_saved.connect(self.on_email_config_saved)  # Connect the signal
+        dialog.exec()
+    
+    def on_email_config_saved(self):
+        """Handle email configuration being saved"""
+        # Refresh email service with new configuration
+        if hasattr(self, 'email_service'):
+            # Reinitialize email service to load new config
+            self.email_service = EmailService(self.db_connection)
+        
+        # Also refresh the notifier if it exists
+        if hasattr(self, 'email_notifier'):
+            self.email_notifier.stop()
+            self.email_notifier = EmailNotificationService(self.db_connection, self.email_service)
+            self.email_notifier.new_notification.connect(self.show_new_notification)
+            self.email_notifier.notification_count_changed.connect(self.update_notification_badge)
+            self.email_notifier.start()
+        
+        QMessageBox.information(self, "Configuration Updated", 
+            "Email configuration has been updated successfully!\n\n"
+            "The email service has been restarted with the new settings."
+        )
+    
+    def check_email_configuration(self):
+        """Check if email is configured"""
+        try:
+            config = self.email_service.get_email_config()
+            
+            # Handle both tuple and dictionary formats
+            if isinstance(config, tuple):
+                # Check if tuple has at least email and password
+                return len(config) >= 3 and config[1] and config[2]  # email_address and email_password
+            elif isinstance(config, dict):
+                return config.get('email_address') and config.get('email_password')
+            
+            return False
+            
+        except Exception as e:
+            print(f"Error checking email config: {e}")
+            return False
+
+    def check_email_configuration_on_startup(self):
+        """Check email configuration on startup"""
+        if not self.check_email_configuration():
+            self.statusBar().showMessage("Email not configured - Click the profile menu to set up")
 
     # =====================================
     # SIDEBAR CREATION AND MANAGEMENT  
@@ -1415,14 +1750,46 @@ class MainWindow(QMainWindow):
         self.toggle_sidebar()
 
     def closeEvent(self, event):
+        """Handle application closing with proper cleanup"""
         reply = QMessageBox.question(
             self, "Confirm Exit", 
             "Are you sure you want to exit CBCentra School Management System?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
+        
         if reply == QMessageBox.Yes:
+            # Show closing message
+            self.statusBar().showMessage("Closing application - please wait...")
+            
+            # Force UI update
+            QApplication.processEvents()
+            
+            # Stop email monitoring with timeout
+            if hasattr(self, 'email_notifier'):
+                print("Stopping email services...")
+                self.email_notifier.stop()
+                
+                # Small delay to allow graceful shutdown
+                import time
+                time.sleep(1)  # 1 second grace period
+            
+            # Close database connection
             if self.db_connection:
-                self.db_connection.close()
+                try:
+                    self.db_connection.close()
+                    print("Database connection closed")
+                except Exception as e:
+                    print(f"Error closing database: {e}")
+            
+            # Close all child windows
+            for child in self.findChildren(QDialog):
+                try:
+                    child.close()
+                    child.deleteLater()
+                except:
+                    pass
+            
+            print("Application shutdown complete")
             event.accept()
         else:
             event.ignore()
