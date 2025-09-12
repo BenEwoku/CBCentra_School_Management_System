@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QStackedWidget,
     QSizePolicy, QScrollArea, QTabWidget, QInputDialog, QGraphicsDropShadowEffect,
     QDialog, QFileDialog, QGroupBox, QRadioButton, QComboBox, QProgressDialog, QLineEdit,
-    QButtonGroup, QApplication
+    QButtonGroup, QApplication, QListWidget
 )
 from datetime import datetime
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction, QFont, QCursor 
@@ -39,6 +39,7 @@ from ui.ribbon_handlers import RibbonHandlers
 from services.email_service import EmailService, EmailTemplates
 from services.email_notification_service import EmailNotificationService
 from ui.notification_center import NotificationCenter
+from ui.email_composer_dialog import EmailComposerDialog
 
 # Other imports
 from utils.permissions import has_permission
@@ -1228,6 +1229,8 @@ class MainWindow(QMainWindow):
     #===Email Notifications========
     #    EMAILS
     #===============================
+
+        
     def on_notification_badge_clicked(self, event):
         """Handle notification badge clicks - left click for center, right click for manual check"""
         if event.button() == Qt.LeftButton:
@@ -1359,9 +1362,17 @@ class MainWindow(QMainWindow):
         """Show email composer dialog with configuration check"""
         # Check if email is configured first
         if not self.check_email_configuration():
+            # Show configuration dialog instead of just returning
+            reply = QMessageBox.question(
+                self,
+                "Email Not Configured",
+                "Email is not configured. Would you like to set it up now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                self.show_email_config()
             return
-            
-        from ui.email_composer_dialog import EmailComposerDialog
         
         dialog = EmailComposerDialog(
             self, 
@@ -1382,18 +1393,51 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "No Recipients", "No email addresses were selected.")
                 return
                 
-            success, message = self.email_service.send_email(
-                selected_emails,
-                email_data['subject'],
-                email_data['body'],
-                email_data.get('attachments'),
-                email_data.get('is_html', True)
-            )
+            # Show progress dialog for sending
+            progress = QProgressDialog("Sending emails...", "Cancel", 0, len(selected_emails), self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
             
-            if success:
-                QMessageBox.information(self, "Success", f"Email sent to {len(selected_emails)} recipients!")
+            success_count = 0
+            failed_emails = []
+            
+            for i, email in enumerate(selected_emails):
+                if progress.wasCanceled():
+                    break
+                    
+                progress.setValue(i)
+                progress.setLabelText(f"Sending to {email}...")
+                QApplication.processEvents()
+                
+                success, message = self.email_service.send_email(
+                    [email],  # Send to one recipient at a time for better error handling
+                    email_data['subject'],
+                    email_data['body'],
+                    email_data.get('attachments'),
+                    email_data.get('is_html', True)
+                )
+                
+                if success:
+                    success_count += 1
+                else:
+                    failed_emails.append((email, message))
+            
+            progress.close()
+            
+            # Show results
+            if success_count > 0:
+                if failed_emails:
+                    result_msg = f"Successfully sent to {success_count} recipients.\n\nFailed to send to {len(failed_emails)} recipients:\n"
+                    for email, error in failed_emails[:5]:  # Show first 5 errors
+                        result_msg += f"\n• {email}: {error}"
+                    if len(failed_emails) > 5:
+                        result_msg += f"\n\n... and {len(failed_emails) - 5} more failures."
+                    
+                    QMessageBox.warning(self, "Partial Success", result_msg)
+                else:
+                    QMessageBox.information(self, "Success", f"Email sent to {success_count} recipients!")
             else:
-                QMessageBox.warning(self, "Failed", message)
+                QMessageBox.warning(self, "Failed", "Failed to send email to any recipients.")
 
     def email_selected_students(self, student_ids):
         """Quick email for selected students"""
@@ -1475,16 +1519,21 @@ class MainWindow(QMainWindow):
         )
     
     def check_email_configuration(self):
-        """Check if email is configured"""
+        """Check if email is configured with better error handling"""
         try:
+            if not hasattr(self, 'email_service') or self.email_service is None:
+                return False
+                
             config = self.email_service.get_email_config()
             
-            # Handle both tuple and dictionary formats
-            if isinstance(config, tuple):
-                # Check if tuple has at least email and password
-                return len(config) >= 3 and config[1] and config[2]  # email_address and email_password
-            elif isinstance(config, dict):
-                return config.get('email_address') and config.get('email_password')
+            if not config:
+                return False
+                
+            # Handle different config formats
+            if isinstance(config, dict):
+                return bool(config.get('email_address') and config.get('email_password'))
+            elif isinstance(config, tuple) and len(config) >= 3:
+                return bool(config[1] and config[2])  # email_address and email_password
             
             return False
             
@@ -1496,6 +1545,17 @@ class MainWindow(QMainWindow):
         """Check email configuration on startup"""
         if not self.check_email_configuration():
             self.statusBar().showMessage("Email not configured - Click the profile menu to set up")
+
+    def test_email_dialog(self):
+        """Test method to verify the email dialog appears"""
+        try:
+            dialog = EmailComposerDialog(self, self.db_connection)
+            dialog.setWindowTitle("Test Email Dialog")
+            result = dialog.exec()
+            print(f"Dialog closed with result: {result}")
+        except Exception as e:
+            print(f"Error showing dialog: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to show dialog: {str(e)}")
 
     # =====================================
     # SIDEBAR CREATION AND MANAGEMENT  

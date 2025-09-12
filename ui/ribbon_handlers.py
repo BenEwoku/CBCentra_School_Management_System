@@ -476,3 +476,15 @@ class RibbonHandlers:
     def discharge_patient(self):
         """Handle discharging patient from sick bay"""
         QMessageBox.information(self.main_window, "Sick Bay", "Discharge patient functionality will be available soon")
+
+    def test_email_dialog(self):
+        """Test method to verify the email dialog appears"""
+        try:
+            # ✅ Now EmailComposerDialog is imported at the top
+            dialog = EmailComposerDialog(self, self.db_connection)
+            dialog.setWindowTitle("Test Email Dialog")
+            result = dialog.exec()
+            print(f"Dialog closed with result: {result}")
+        except Exception as e:
+            print(f"Error showing dialog: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to show dialog: {str(e)}")

@@ -159,6 +159,10 @@ class RibbonManager:
                 {"title": "Tools", "actions": [
                     {"name": "Settings", "icon": "settings.png", "handler": self.main_window.settings_action},
                     {"name": "Global Refresh", "icon": "refresh.png", "handler": self.main_window.refresh_all_data}
+                ]},
+                # In your ribbon groups configuration
+                {"title": "Emails", "actions": [
+                    {"name": "Email Dialog", "icon": "email.png", "handler": self.main_window.test_email_dialog}
                 ]}
             ],
             "Schools": [

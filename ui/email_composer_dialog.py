@@ -22,7 +22,7 @@ class EmailComposerDialog(QDialog):
         self.attachments = []
         
         self.setWindowTitle("✉️ Compose Email")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1000, 700)
         self.setup_ui()
         self.load_recipients()
         
@@ -64,6 +64,8 @@ class EmailComposerDialog(QDialog):
         self.recipient_list = QListWidget()
         self.recipient_list.setSelectionMode(QListWidget.MultiSelection)
         self.recipient_list.setMinimumWidth(250)
+        # ✅ ADD THIS LINE to connect selection changes
+        self.recipient_list.itemSelectionChanged.connect(self.update_selection_count)
         recipient_layout.addWidget(self.recipient_list)
         
         # Selection info
@@ -222,37 +224,6 @@ class EmailComposerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load recipients: {str(e)}")
     
-    def load_students(self):
-        """Load students from database"""
-        try:
-            cursor = self.db_connection.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT id, full_name, email, parent_email 
-                FROM students 
-                WHERE is_active = TRUE AND (email IS NOT NULL OR parent_email IS NOT NULL)
-                ORDER BY full_name
-            """)
-            
-            students = cursor.fetchall()
-            
-            for student in students:
-                item_text = f"{student['full_name']}"
-                if student['email']:
-                    item_text += f" 📧 {student['email']}"
-                if student['parent_email']:
-                    item_text += f" 👨‍👩‍👧‍👦 {student['parent_email']}"
-                
-                item = QListWidgetItem(item_text)
-                item.setData(Qt.UserRole, {
-                    'id': student['id'],
-                    'type': 'student',
-                    'emails': [e for e in [student['email'], student['parent_email']] if e]
-                })
-                self.recipient_list.addItem(item)
-                
-        except Exception as e:
-            print(f"Error loading students: {e}")
-    
     def load_teachers(self):
         """Load teachers from database"""
         try:
@@ -267,11 +238,9 @@ class EmailComposerDialog(QDialog):
             teachers = cursor.fetchall()
             
             for teacher in teachers:
-                item_text = f"{teacher['first_name']} {teacher['surname']}"
-                if teacher['email']:
-                    item_text += f" 📧 {teacher['email']}"
+                display_text = f"{teacher['first_name']} {teacher['surname']} - {teacher['email']}"
                 
-                item = QListWidgetItem(item_text)
+                item = QListWidgetItem(display_text)
                 item.setData(Qt.UserRole, {
                     'id': teacher['id'],
                     'type': 'teacher',
@@ -281,27 +250,89 @@ class EmailComposerDialog(QDialog):
                 
         except Exception as e:
             print(f"Error loading teachers: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to load teachers: {str(e)}")
     
-    def load_parents(self):
-        """Load parents from database"""
+    def load_students(self):
+        """Load students from database using your existing schema"""
         try:
             cursor = self.db_connection.cursor(dictionary=True)
             cursor.execute("""
-                SELECT p.id, p.full_name, p.email, s.full_name as student_name
+                SELECT s.id, s.full_name, s.email, 
+                       COALESCE(GROUP_CONCAT(DISTINCT p.email SEPARATOR ', '), '') as parent_emails
+                FROM students s
+                LEFT JOIN student_parent sp ON s.id = sp.student_id
+                LEFT JOIN parents p ON sp.parent_id = p.id
+                WHERE s.is_active = TRUE AND (s.email IS NOT NULL OR p.email IS NOT NULL)
+                GROUP BY s.id
+                ORDER BY s.full_name
+            """)
+            
+            students = cursor.fetchall()
+            
+            for student in students:
+                # Create a more readable display
+                display_text = student['full_name']
+                emails = []
+                
+                if student['email']:
+                    emails.append(f"Student: {student['email']}")
+                
+                # Now parent_emails will always be a string (empty if no parents)
+                parent_emails = student['parent_emails']
+                if parent_emails:  # This will be empty string if no parent emails
+                    parent_email_list = parent_emails.split(', ')
+                    for parent_email in parent_email_list:
+                        if parent_email and parent_email != 'None' and parent_email != 'NULL':
+                            emails.append(f"Parent: {parent_email}")
+                
+                if emails:
+                    display_text += f" ({'; '.join(emails)})"
+                
+                item = QListWidgetItem(display_text)
+                
+                # Build email list
+                email_list = []
+                if student['email']:
+                    email_list.append(student['email'])
+                
+                if parent_emails:  # Process parent emails
+                    for email in parent_emails.split(', '):
+                        if email and email != 'None' and email != 'NULL':
+                            email_list.append(email)
+                
+                item.setData(Qt.UserRole, {
+                    'id': student['id'],
+                    'type': 'student',
+                    'emails': email_list
+                })
+                self.recipient_list.addItem(item)
+                
+        except Exception as e:
+            print(f"Error loading students: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to load students: {str(e)}")
+    
+    def load_parents(self):
+        """Load parents from database using your existing student_parent table"""
+        try:
+            cursor = self.db_connection.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT p.id, p.full_name, p.email, 
+                       GROUP_CONCAT(s.full_name SEPARATOR ', ') as student_names
                 FROM parents p
-                JOIN students s ON p.student_id = s.id
+                LEFT JOIN student_parent sp ON p.id = sp.parent_id
+                LEFT JOIN students s ON sp.student_id = s.id
                 WHERE p.is_active = TRUE AND p.email IS NOT NULL
+                GROUP BY p.id
                 ORDER BY p.full_name
             """)
             
             parents = cursor.fetchall()
             
             for parent in parents:
-                item_text = f"{parent['full_name']} (Parent of {parent['student_name']})"
-                if parent['email']:
-                    item_text += f" 📧 {parent['email']}"
+                student_info = f" (Parent of {parent['student_names']})" if parent['student_names'] else ""
+                display_text = f"{parent['full_name']}{student_info} - {parent['email']}"
                 
-                item = QListWidgetItem(item_text)
+                item = QListWidgetItem(display_text)
                 item.setData(Qt.UserRole, {
                     'id': parent['id'],
                     'type': 'parent',
@@ -311,6 +342,7 @@ class EmailComposerDialog(QDialog):
                 
         except Exception as e:
             print(f"Error loading parents: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to load parents: {str(e)}")
     
     def load_custom_emails(self):
         """Load custom email entry"""
@@ -345,6 +377,7 @@ class EmailComposerDialog(QDialog):
         for item in self.recipient_list.selectedItems():
             item_data = item.data(Qt.UserRole)
             total_emails += len(item_data.get('emails', []))
+            print(f"DEBUG: Selected item {item_data}")  # Add this for debugging
         
         self.selection_label.setText(f"{selected_count} recipients selected ({total_emails} email addresses)")
     
