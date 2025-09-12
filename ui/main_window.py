@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QStackedWidget,
     QSizePolicy, QScrollArea, QTabWidget, QInputDialog, QGraphicsDropShadowEffect,
     QDialog, QFileDialog, QGroupBox, QRadioButton, QComboBox, QProgressDialog, QLineEdit,
-    QButtonGroup, QApplication, QListWidget
+    QButtonGroup, QApplication, QListWidget, QMenu
 )
 from datetime import datetime
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QLinearGradient, QAction, QFont, QCursor 
@@ -1119,8 +1119,8 @@ class MainWindow(QMainWindow):
 
     def on_profile_clicked(self, event):
         """Handle profile picture click - show user menu with email options"""
-        from PySide6.QtWidgets import QMenu
-        
+    
+        # Create menu
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
@@ -1138,26 +1138,37 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Add notification center option
-        notification_action = menu.addAction("📧 Notifications")
+        # Helper function to load and scale icons
+        def create_scaled_icon(icon_path, size=QSize(16, 16)):
+            icon = QIcon(icon_path)
+            pixmap = icon.pixmap(size)
+            return QIcon(pixmap)
+        
+        # Add notification center option with icon
+        notification_icon = create_scaled_icon(os.path.join("static", "icons", "notifications.png"))
+        notification_action = menu.addAction(notification_icon, "Notifications")
         notification_action.triggered.connect(self.show_notification_center)
         
-        # Add email configuration option (ADD THIS)
-        email_config_action = menu.addAction("⚙️ Email Configuration")
+        # Add email configuration option with icon
+        email_config_icon = create_scaled_icon(os.path.join("static", "icons", "settings.png"))
+        email_config_action = menu.addAction(email_config_icon, "Email Configuration")
         email_config_action.triggered.connect(self.show_email_config)
         
         menu.addSeparator()
         
-        # Add existing menu actions
-        profile_action = menu.addAction("View Profile")
+        # Add existing menu actions with icons
+        profile_icon = create_scaled_icon(os.path.join("static", "icons", "view.png"))
+        profile_action = menu.addAction(profile_icon, "View Profile")
         profile_action.triggered.connect(self.show_user_profile)
         
-        settings_action = menu.addAction("Account Settings")
+        settings_icon = create_scaled_icon(os.path.join("static", "icons", "account.png"))
+        settings_action = menu.addAction(settings_icon, "Account Settings")
         settings_action.triggered.connect(self.show_account_settings)
         
         menu.addSeparator()
         
-        logout_action = menu.addAction("Logout")
+        logout_icon = create_scaled_icon(os.path.join("static", "icons", "logout.png"))
+        logout_action = menu.addAction(logout_icon, "Logout")
         logout_action.triggered.connect(self.on_logout)
         
         # Show menu at profile picture position
@@ -1229,34 +1240,13 @@ class MainWindow(QMainWindow):
     #===Email Notifications========
     #    EMAILS
     #===============================
-
         
     def on_notification_badge_clicked(self, event):
-        """Handle notification badge clicks - left click for center, right click for manual check"""
+        """Handle notification badge clicks - left click only"""
         if event.button() == Qt.LeftButton:
             # Left click - show notification center
             self.show_notification_center()
-        elif event.button() == Qt.RightButton:
-            # Right click - manual email check
-            self.force_email_check()
-    
-    def force_email_check(self):
-        """Manually trigger email check with visual feedback"""
-        if hasattr(self, 'email_notifier'):
-            # Show checking indicator
-            original_text = self.statusBar().currentMessage()
-            self.statusBar().showMessage("🔄 Checking for new emails...")
-            
-            # Force email check
-            self.email_notifier._check_incoming_emails()
-            
-            # Show success message
-            self.show_temp_message("✅ Manual email check completed", 3000)
-            
-            # Restore original status after delay
-            QTimer.singleShot(3000, lambda: self.statusBar().showMessage(original_text))
-        else:
-            self.show_temp_message("❌ Email service not available", 3000, "#dc3545")
+
     
     def show_temp_message(self, message, duration=3000, color="#28a745"):
         """Show temporary status message in status bar"""
@@ -1288,8 +1278,7 @@ class MainWindow(QMainWindow):
             self.notification_badge.show()
             self.notification_badge.setToolTip(
                 f"{count} unread notifications\n"
-                "Left-click: Open notifications\n"
-                "Right-click: Check for new emails"
+                "Click to open notifications"
             )
             
             # Optional: Add animation for new notifications
@@ -1308,7 +1297,7 @@ class MainWindow(QMainWindow):
             self.notification_animation.start()
         else:
             self.notification_badge.hide()
-            self.notification_badge.setToolTip("No unread notifications\nRight-click: Check for new emails")
+            self.notification_badge.setToolTip("No unread notifications")
     
     def show_new_notification(self, notification_data):
         """Show popup for new notification"""
@@ -1325,33 +1314,77 @@ class MainWindow(QMainWindow):
         self.show_toast_notification(notification_data)
     
     def show_toast_notification(self, notification_data):
-        """Show in-app toast notification"""
+        """Show toast notification with professional light blue theme - 10 seconds"""
         toast = QLabel(self)
         toast.setObjectName("toastNotification")
-        toast.setText(f"📧 {notification_data['from']}: {notification_data['preview']}")
+        
+        email_icon_path = os.path.join("static", "icons", "email.png")
+        if os.path.exists(email_icon_path):
+            toast.setText(f"""
+                <html>
+                <body>
+                    <table>
+                    <tr>
+                        <td><img src="{email_icon_path}" width="22" height="22"></td>
+                        <td style="padding-left: 10px;">
+                        <b style="color: #1976d2;">New Email</b><br>
+                        <span style="color: #424242;">
+                        From: {notification_data['from']}<br>
+                        {notification_data['preview']}
+                        </span>
+                        </td>
+                    </tr>
+                    </table>
+                </body>
+                </html>
+            """)
+            toast.setTextFormat(Qt.RichText)
+        else:
+            toast.setText(f"✉️ New email from {notification_data['from']}:\n{notification_data['preview']}")
+        
+        # Professional light blue theme
         toast.setStyleSheet("""
             QLabel#toastNotification {
-                background-color: #2c3e50;
-                color: white;
-                padding: 10px 15px;
-                border-radius: 5px;
-                border: 1px solid #34495e;
-                font-size: 12px;
+                background-color: #f5fbff;           /* Very light blue */
+                color: #1976d2;                     /* Primary blue */
+                padding: 20px;
+                border-radius: 8px;
+                border: 1px solid #bbdefb;          /* Light blue border */
+                font-size: 13px;
+                font-family: Arial, sans-serif;
             }
         """)
-        toast.setAlignment(Qt.AlignCenter)
         toast.setWordWrap(True)
         toast.adjustSize()
         
-        # Position at bottom right
+        toast.setFixedWidth(450)
+        toast.setFixedHeight(toast.sizeHint().height() + 30)
+        
+        # Add a subtle shadow effect for depth
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(10)
+        shadow.setColor(QColor(0, 0, 0, 60))
+        shadow.setOffset(0, 2)
+        toast.setGraphicsEffect(shadow)
+        
         toast.move(
             self.width() - toast.width() - 20,
-            self.height() - toast.height() - 60
+            self.height() - toast.height() - 80
         )
         toast.show()
         
-        # Auto-hide after 5 seconds
-        QTimer.singleShot(5000, toast.hide)
+        # 10 second duration
+        QTimer.singleShot(10000, toast.hide)
+    
+    def fade_out_toast(self, toast):
+        """Fade out and remove toast notification"""
+        toast_opacity = toast.graphicsEffect()
+        fade_out = QPropertyAnimation(toast_opacity, b"opacity")
+        fade_out.setDuration(500)
+        fade_out.setStartValue(1)
+        fade_out.setEndValue(0)
+        fade_out.finished.connect(lambda: toast.deleteLater())
+        fade_out.start()
     
     def show_notification_center(self, event=None):
         """Show notification center dialog"""

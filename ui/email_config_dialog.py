@@ -12,7 +12,7 @@ class EmailConfigDialog(QDialog):
     def __init__(self, parent=None, db_connection=None):
         super().__init__(parent)
         self.db_connection = db_connection
-        self.setWindowTitle("⚙️ Email Configuration")
+        self.setWindowTitle("Email Configuration")
         self.setMinimumSize(600, 500)
         
         self.setup_ui()
@@ -137,6 +137,7 @@ class EmailConfigDialog(QDialog):
         button_layout = QHBoxLayout()
         
         test_btn = QPushButton("Test Connection")
+        test_btn.setProperty("class", "warning")
         test_btn.setIcon(QIcon("static/icons/test.png"))
         test_btn.clicked.connect(self.test_connection)
         button_layout.addWidget(test_btn)
@@ -144,6 +145,7 @@ class EmailConfigDialog(QDialog):
         button_layout.addStretch()
         
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setProperty("class", "danger")
         cancel_btn.setIcon(QIcon("static/icons/cancel.png"))
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)

@@ -110,7 +110,7 @@ class AuditBaseForm(QWidget):
             'background': '#ffffff',       # White
             'surface': '#f8f9fa',          # Light gray surface
             'border': '#dee2e6',           # Light border
-            'input_border': '#ced4da',
+            'input_border': '#adb5bd',     #ced4da
             'input_focus': '#80bdff',
             'input_background': '#ffffff',
             'table_header': '#455A64',     # gray #e6edf3 

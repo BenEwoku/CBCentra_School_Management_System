@@ -11,6 +11,11 @@ import os
 from services.email_service import EmailService, EmailTemplates
 
 class EmailComposerDialog(QDialog):
+    # Add these constants
+    MAX_ATTACHMENTS = 5  # Maximum number of attachments
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+    ALLOWED_FILE_TYPES = ['.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png', '.xls', '.xlsx']
+    
     def __init__(self, parent=None, db_connection=None, recipient_type=None, 
                  recipient_ids=None, subject=None, body=None):
         super().__init__(parent)
@@ -21,10 +26,12 @@ class EmailComposerDialog(QDialog):
         self.preset_body = body
         self.attachments = []
         
-        self.setWindowTitle("✉️ Compose Email")
+        self.setWindowTitle("Compose Email")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         self.load_recipients()
+        # Initialize attachment display
+        self.update_attachment_display()
         
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -64,6 +71,8 @@ class EmailComposerDialog(QDialog):
         self.recipient_list = QListWidget()
         self.recipient_list.setSelectionMode(QListWidget.MultiSelection)
         self.recipient_list.setMinimumWidth(250)
+        self.recipient_list.setMinimumHeight(350)  # ← Add this line for minimum height
+        self.recipient_list.setMaximumHeight(400)  # ← Optional: set maximum height too
         # ✅ ADD THIS LINE to connect selection changes
         self.recipient_list.itemSelectionChanged.connect(self.update_selection_count)
         recipient_layout.addWidget(self.recipient_list)
@@ -133,6 +142,7 @@ class EmailComposerDialog(QDialog):
         attach_buttons_layout.addWidget(add_attach_btn)
         
         clear_attach_btn = QPushButton("Clear All")
+        clear_attach_btn.setProperty("class", "warning")
         clear_attach_btn.setIcon(QIcon("static/icons/clear.png"))
         clear_attach_btn.clicked.connect(self.clear_attachments)
         attach_buttons_layout.addWidget(clear_attach_btn)
@@ -158,6 +168,7 @@ class EmailComposerDialog(QDialog):
         
         # Test button
         test_btn = QPushButton("Send Test")
+        test_btn.setProperty("class", "warning")
         test_btn.setIcon(QIcon("static/icons/test.png"))
         test_btn.clicked.connect(self.send_test_email)
         test_btn.setToolTip("Send test email to yourself first")
@@ -167,6 +178,7 @@ class EmailComposerDialog(QDialog):
         
         # Cancel button
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setProperty("class", "danger")
         cancel_btn.setIcon(QIcon("static/icons/cancel.png"))
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
@@ -382,21 +394,95 @@ class EmailComposerDialog(QDialog):
         self.selection_label.setText(f"{selected_count} recipients selected ({total_emails} email addresses)")
     
     def add_attachment(self):
-        """Add file attachment"""
+        """Add file attachment with limits"""
+        # Check attachment count limit
+        if len(self.attachments) >= self.MAX_ATTACHMENTS:
+            QMessageBox.warning(
+                self, 
+                "Limit Reached", 
+                f"Maximum {self.MAX_ATTACHMENTS} attachments allowed."
+            )
+            return
+        
         file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select Files to Attach", "", "All Files (*)"
+            self, 
+            "Select Files to Attach", 
+            "", 
+            f"Allowed Files ({' '.join(self.ALLOWED_FILE_TYPES)});;All Files (*)"
         )
         
         for file_path in file_paths:
-            if os.path.exists(file_path):
-                self.attachments.append(file_path)
+            if len(self.attachments) >= self.MAX_ATTACHMENTS:
+                QMessageBox.warning(
+                    self, 
+                    "Limit Reached", 
+                    f"Maximum {self.MAX_ATTACHMENTS} attachments reached. Some files were not added."
+                )
+                break
+                
+            if not os.path.exists(file_path):
+                continue
+                
+            # Check file size
+            file_size = os.path.getsize(file_path)
+            if file_size > self.MAX_FILE_SIZE:
                 file_name = os.path.basename(file_path)
-                self.attachment_list.addItem(QListWidgetItem(file_name))
+                size_mb = file_size / (1024 * 1024)
+                max_mb = self.MAX_FILE_SIZE / (1024 * 1024)
+                QMessageBox.warning(
+                    self,
+                    "File Too Large",
+                    f"'{file_name}' ({size_mb:.1f}MB) exceeds the maximum size of {max_mb:.0f}MB."
+                )
+                continue
+            
+            # Check file type
+            file_ext = os.path.splitext(file_path)[1].lower()
+            if file_ext not in self.ALLOWED_FILE_TYPES:
+                QMessageBox.warning(
+                    self,
+                    "File Type Not Allowed",
+                    f"'{os.path.basename(file_path)}' file type is not allowed.\n"
+                    f"Allowed types: {', '.join(self.ALLOWED_FILE_TYPES)}"
+                )
+                continue
+            
+            # Add valid attachment
+            self.attachments.append(file_path)
+            file_name = os.path.basename(file_path)
+            
+            # Add file size to display
+            size_mb = file_size / (1024 * 1024)
+            list_item = QListWidgetItem(f"{file_name} ({size_mb:.1f}MB)")
+            self.attachment_list.addItem(list_item)
+        
+        # Update UI to show current attachment count
+        self.update_attachment_display()
+    
+    def update_attachment_display(self):
+        """Update attachment count display"""
+        attachment_count = len(self.attachments)
+        max_count = self.MAX_ATTACHMENTS
+        
+        # Update the group box title to show count
+        attachments_group = self.findChild(QGroupBox, "Attachments")
+        if attachments_group:
+            attachments_group.setTitle(f"Attachments ({attachment_count}/{max_count})")
+        
+        # Disable add button if limit reached
+        add_attach_btn = self.findChild(QPushButton, "Add Attachment")
+        if add_attach_btn:
+            add_attach_btn.setEnabled(attachment_count < max_count)
+            if attachment_count >= max_count:
+                add_attach_btn.setToolTip(f"Maximum {max_count} attachments reached")
+            else:
+                add_attach_btn.setToolTip(f"Add attachment ({max_count - attachment_count} remaining)")
     
     def clear_attachments(self):
         """Clear all attachments"""
         self.attachments.clear()
         self.attachment_list.clear()
+        self.update_attachment_display()
     
     def get_selected_emails(self):
         """Get all selected email addresses"""
@@ -430,6 +516,61 @@ class EmailComposerDialog(QDialog):
         if "not configured" in sender_email.lower() or "error" in sender_email.lower():
             QMessageBox.warning(self, "Configuration", "Please configure email settings before sending.")
             return False
+        
+        # Validate attachment count
+        if len(self.attachments) > self.MAX_ATTACHMENTS:
+            QMessageBox.warning(
+                self, 
+                "Too Many Attachments", 
+                f"Maximum {self.MAX_ATTACHMENTS} attachments allowed."
+            )
+            return False
+        
+        # Validate individual attachment sizes
+        for attachment in self.attachments:
+            if os.path.exists(attachment):
+                file_size = os.path.getsize(attachment)
+                if file_size > self.MAX_FILE_SIZE:
+                    file_name = os.path.basename(attachment)
+                    size_mb = file_size / (1024 * 1024)
+                    max_mb = self.MAX_FILE_SIZE / (1024 * 1024)
+                    QMessageBox.warning(
+                        self,
+                        "File Too Large",
+                        f"'{file_name}' ({size_mb:.1f}MB) exceeds the maximum size of {max_mb:.0f}MB."
+                    )
+                    return False
+        
+        # Validate total attachment size
+        total_size = 0
+        for attachment in self.attachments:
+            if os.path.exists(attachment):
+                total_size += os.path.getsize(attachment)
+        
+        MAX_TOTAL_SIZE = 25 * 1024 * 1024  # 25MB total limit
+        if total_size > MAX_TOTAL_SIZE:
+            total_mb = total_size / (1024 * 1024)
+            max_mb = MAX_TOTAL_SIZE / (1024 * 1024)
+            QMessageBox.warning(
+                self,
+                "Attachments Too Large",
+                f"Total attachment size ({total_mb:.1f}MB) exceeds maximum of {max_mb:.0f}MB.\n"
+                "Please remove some attachments or use smaller files."
+            )
+            return False
+        
+        # Validate file types
+        for attachment in self.attachments:
+            file_ext = os.path.splitext(attachment)[1].lower()
+            if file_ext not in self.ALLOWED_FILE_TYPES:
+                file_name = os.path.basename(attachment)
+                QMessageBox.warning(
+                    self,
+                    "File Type Not Allowed",
+                    f"'{file_name}' file type is not allowed.\n"
+                    f"Allowed types: {', '.join(self.ALLOWED_FILE_TYPES)}"
+                )
+                return False
         
         return True
     

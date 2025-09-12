@@ -1247,30 +1247,19 @@ def initialize_tables(conn, force=False):
               smtp_port INT DEFAULT 587,
               imap_server VARCHAR(255),
               imap_port INT,
+              smtp_use_ssl BOOLEAN DEFAULT TRUE,
+              imap_use_ssl BOOLEAN DEFAULT TRUE,
+              check_interval INT DEFAULT 10,
               is_active BOOLEAN DEFAULT TRUE,
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS email_notifications (
-              id INT PRIMARY KEY AUTO_INCREMENT,
-              from_email VARCHAR(255) NOT NULL,
-              from_name VARCHAR(255),
-              subject VARCHAR(500) NOT NULL,
-              received_date DATETIME NOT NULL,
-              email_body TEXT,
-              original_message_id VARCHAR(255),
-              is_read BOOLEAN DEFAULT FALSE,
-              related_student_id INT,
-              related_teacher_id INT,
-              priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
-              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              INDEX idx_unread (is_read),
-              INDEX idx_date (received_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ''')
+
+#Building a notification center for teachers/parents
+#System maintenance alerts
+#Scheduled reminders
+#Broadcast announcements
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS email_conversations (
@@ -1300,13 +1289,30 @@ def initialize_tables(conn, force=False):
               sent_date DATETIME NOT NULL,
               is_outgoing BOOLEAN DEFAULT FALSE,
               is_read BOOLEAN DEFAULT FALSE,
-              attachments JSON,
+              attachments TEXT NULL,
               FOREIGN KEY (conversation_id) REFERENCES email_conversations(id),
               INDEX idx_message_id (message_id),
               INDEX idx_conversation (conversation_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
 
+            #-- Create table for storing attachment files (optional)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS email_attachments (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                message_id INT NOT NULL,
+                content_id VARCHAR(255),
+                filename VARCHAR(255) NOT NULL,
+                file_data LONGBLOB,
+                file_size INT,
+                content_type VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (message_id) REFERENCES email_messages(id),
+                INDEX idx_message_id (message_id),
+                INDEX idx_content_id (content_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ''')
+        
         #print("Creating additional indexes for performance optimization...")
         
         # Additional performance indexes - only create if they don't exist
