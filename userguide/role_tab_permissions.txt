@@ -1,0 +1,144 @@
+UPDATE role_tab_permissions
+SET can_access = 1
+WHERE role_name = 'admin'
+AND tab_name IN (
+    'Dashboard.Overview', 
+    'Dashboard.User Management',
+    'Dashboard.Permissions',
+    'Dashboard.User Permissions',
+    'Dashboard.Tab Access Management',
+    'Dashboard.Login Activity',
+    'Dashboard.Audit Trail',
+    'Schools.School Registration',
+    'Schools.Schools Database',
+    'Staff.Staff Form',
+    'Staff.Staff Data',
+    'Staff.Staff Analytics',
+    'Staff.Departments',
+    'Classes.Class Form',
+    'Classes.Student Class Assignments',
+    'Classes.Academic Years',
+    'Classes.Terms',
+    'Parents.Parent Form',
+    'Parents.Parents List',
+    'Parents.Analytics',
+    'Students.Student Form',
+    'Students.Students List',
+    'Students.Analytics',
+    'Exams.Exam Setup',
+    'Exams.Results Entry',
+    'Exams.Report Cards',
+    'Activities.Activity Management',
+    'Activities.Participation',
+    'Others.System Settings',
+    'Others.Backup'
+);
+
+
+#sample code
+-- Add Books Management main tab permission for all roles
+INSERT INTO role_tab_permissions (role_name, tab_name, can_access, created_at)
+SELECT 'admin', 'Others.Books Management', 1, NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM role_tab_permissions 
+    WHERE role_name = 'admin' AND tab_name = 'Others.Books Management'
+);
+
+INSERT INTO role_tab_permissions (role_name, tab_name, can_access, created_at)
+SELECT 'headteacher', 'Others.Books Management', 1, NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM role_tab_permissions 
+    WHERE role_name = 'headteacher' AND tab_name = 'Others.Books Management'
+);
+
+INSERT INTO role_tab_permissions (role_name, tab_name, can_access, created_at)
+SELECT 'teacher', 'Others.Books Management', 1, NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM role_tab_permissions 
+    WHERE role_name = 'teacher' AND tab_name = 'Others.Books Management'
+);
+
+
+
+
+# id, role_name, tab_name, can_access, created_at
+'1', 'admin', 'Dashboard.Overview', '1', '2025-09-02 15:53:17'
+'2', 'admin', 'Dashboard.User Management', '1', '2025-09-02 15:53:17'
+'3', 'admin', 'Dashboard.Permissions', '1', '2025-09-02 15:53:17'
+'4', 'admin', 'Dashboard.User Permissions', '1', '2025-09-02 15:53:17'
+'5', 'admin', 'Dashboard.Tab Access Management', '1', '2025-09-02 15:53:17'
+'6', 'admin', 'Dashboard.Login Activity', '1', '2025-09-02 15:53:17'
+'7', 'admin', 'Dashboard.Audit Trail', '1', '2025-09-02 15:53:17'
+'8', 'admin', 'Schools.School Registration', '1', '2025-09-02 15:53:17'
+'9', 'admin', 'Schools.Schools Database', '1', '2025-09-02 15:53:17'
+'10', 'admin', 'Staff.Staff Form', '1', '2025-09-02 15:53:17'
+'11', 'admin', 'Staff.Staff Data', '1', '2025-09-02 15:53:17'
+'12', 'admin', 'Staff.Staff Analytics', '1', '2025-09-02 15:53:17'
+'13', 'admin', 'Staff.Departments', '1', '2025-09-02 15:53:17'
+'14', 'admin', 'Classes.Class Form', '1', '2025-09-02 15:53:17'
+'15', 'admin', 'Classes.Student Class Assignments', '1', '2025-09-02 15:53:17'
+'16', 'admin', 'Classes.Academic Years', '1', '2025-09-02 15:53:17'
+'17', 'admin', 'Classes.Terms', '1', '2025-09-02 15:53:17'
+'18', 'admin', 'Parents.Parent Form', '1', '2025-09-02 15:53:17'
+'19', 'admin', 'Parents.Parents List', '1', '2025-09-02 15:53:17'
+'20', 'admin', 'Parents.Analytics', '1', '2025-09-02 15:53:17'
+'21', 'admin', 'Students.Student Form', '1', '2025-09-02 15:53:17'
+'22', 'admin', 'Students.Students List', '1', '2025-09-02 15:53:17'
+'23', 'admin', 'Students.Analytics', '1', '2025-09-02 15:53:17'
+'24', 'admin', 'Dashboard', '1', '2025-09-02 15:59:17'
+'25', 'admin', 'Schools', '1', '2025-09-02 15:59:17'
+'26', 'admin', 'Staff', '1', '2025-09-02 15:59:17'
+'27', 'admin', 'Classes', '1', '2025-09-02 15:59:17'
+'28', 'admin', 'Parents', '1', '2025-09-02 15:59:17'
+'29', 'admin', 'Students', '1', '2025-09-02 15:59:17'
+'30', 'admin', 'Exams', '0', '2025-09-02 15:59:17'
+'31', 'admin', 'Activities', '1', '2025-09-02 15:59:17'
+'32', 'admin', 'Finance', '1', '2025-09-02 15:59:17'
+'33', 'admin', 'Others', '1', '2025-09-02 15:59:17'
+'67', 'admin', 'Exams.Exam Setup', '1', '2025-09-02 21:19:15'
+'68', 'admin', 'Exams.Results Entry', '1', '2025-09-02 21:19:15'
+'69', 'admin', 'Exams.Report Cards', '1', '2025-09-02 21:19:15'
+'70', 'admin', 'Activities.Activity Management', '1', '2025-09-02 21:19:15'
+'71', 'admin', 'Activities.Participation', '1', '2025-09-02 21:19:15'
+'72', 'admin', 'Finance.Fee Management', '1', '2025-09-02 21:19:15'
+'73', 'admin', 'Finance.Payments', '0', '2025-09-02 21:19:15'
+'74', 'admin', 'Finance.Reports', '0', '2025-09-02 21:19:15'
+'602', 'admin', 'Others.Books Management.Categories', '1', '2025-09-09 08:08:03'
+'603', 'admin', 'Others.Books Management.Books', '1', '2025-09-09 08:08:03'
+'604', 'admin', 'Others.Books Management.Borrowing', '1', '2025-09-09 08:08:03'
+'605', 'admin', 'Others.Books Management.Reports', '1', '2025-09-09 08:08:03'
+'606', 'headteacher', 'Others.Books Management.Categories', '1', '2025-09-09 08:08:03'
+'607', 'headteacher', 'Others.Books Management.Books', '1', '2025-09-09 08:08:03'
+'608', 'headteacher', 'Others.Books Management.Borrowing', '1', '2025-09-09 08:08:03'
+'609', 'headteacher', 'Others.Books Management.Reports', '1', '2025-09-09 08:08:03'
+'610', 'teacher', 'Others.Books Management.Categories', '1', '2025-09-09 08:08:03'
+'611', 'teacher', 'Others.Books Management.Books', '1', '2025-09-09 08:08:03'
+'612', 'teacher', 'Others.Books Management.Borrowing', '1', '2025-09-09 08:08:03'
+'613', 'teacher', 'Others.Books Management.Reports', '1', '2025-09-09 08:08:03'
+'614', 'admin', 'Others.Books Management', '1', '2025-09-09 08:29:46'
+'615', 'headteacher', 'Others.Books Management', '1', '2025-09-09 08:29:46'
+'616', 'teacher', 'Others.Books Management', '1', '2025-09-09 08:29:46'
+'617', 'admin', 'Others.Health Management', '1', '2025-09-10 12:34:08'
+'618', 'admin', 'Others.Health Management.Sick Bay', '1', '2025-09-10 12:34:08'
+'619', 'admin', 'Others.Health Management.Health Records', '1', '2025-09-10 12:34:08'
+'620', 'admin', 'Others.Health Management.Medical Conditions', '1', '2025-09-10 12:34:08'
+'621', 'admin', 'Others.Health Management.Medical Inventory', '1', '2025-09-10 12:34:08'
+'622', 'admin', 'Others.Health Management.Medical Administration', '1', '2025-09-10 12:34:08'
+'623', 'headteacher', 'Others.Health Management', '1', '2025-09-10 12:34:08'
+'624', 'headteacher', 'Others.Health Management.Sick Bay', '1', '2025-09-10 12:34:08'
+'625', 'headteacher', 'Others.Health Management.Health Records', '1', '2025-09-10 12:34:08'
+'626', 'headteacher', 'Others.Health Management.Medical Conditions', '1', '2025-09-10 12:34:08'
+'627', 'headteacher', 'Others.Health Management.Medical Inventory', '1', '2025-09-10 12:34:08'
+'628', 'headteacher', 'Others.Health Management.Medical Administration', '1', '2025-09-10 12:34:08'
+'629', 'nurse', 'Others.Health Management', '1', '2025-09-10 12:34:08'
+'630', 'nurse', 'Others.Health Management.Sick Bay', '1', '2025-09-10 12:34:08'
+'631', 'nurse', 'Others.Health Management.Health Records', '1', '2025-09-10 12:34:08'
+'632', 'nurse', 'Others.Health Management.Medical Conditions', '1', '2025-09-10 12:34:08'
+'633', 'nurse', 'Others.Health Management.Medical Inventory', '1', '2025-09-10 12:34:08'
+'634', 'nurse', 'Others.Health Management.Medical Administration', '1', '2025-09-10 12:34:08'
+'635', 'teacher', 'Others.Health Management', '1', '2025-09-10 12:34:08'
+'636', 'teacher', 'Others.Health Management.Sick Bay', '0', '2025-09-10 12:34:08'
+'637', 'teacher', 'Others.Health Management.Health Records', '0', '2025-09-10 12:34:08'
+'638', 'teacher', 'Others.Health Management.Medical Conditions', '0', '2025-09-10 12:34:08'
+'639', 'teacher', 'Others.Health Management.Medical Inventory', '0', '2025-09-10 12:34:08'
+'640', 'teacher', 'Others.Health Management.Medical Administration', '0', '2025-09-10 12:34:08'

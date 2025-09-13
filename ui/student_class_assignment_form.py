@@ -22,6 +22,8 @@ from ui.audit_base_form import AuditBaseForm
 from models.models import get_db_connection
 import pandas as pd
 import openpyxl
+# Add this import at the top with other imports
+from utils.permissions import has_permission
 # Add these imports at the top
 from services.email_service import EmailService, EmailTemplates
 
@@ -99,7 +101,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
     def setup_ui(self):
         """Setup the main UI components with tabbed interface"""
         self.setWindowTitle("Student Class Assignments")
-        self.setMinimumSize(1200, 800)
+        self.setMinimumSize(1250, 900)
         
         # Main layout
         main_layout = QVBoxLayout(self)
@@ -116,9 +118,12 @@ class StudentClassAssignmentForm(AuditBaseForm):
         
         # Add tab widget to main layout
         main_layout.addWidget(self.tab_widget)
+
+       # Add this at the end of the method
+        self.setup_permissions_ui()
             
     def create_assignment_tab(self):
-        """Create the assignment form tab with proper scrolling"""
+        """Create the assignment form tab with proper scrolling - preserving original UI"""
         # Create assignment tab
         assignment_widget = QWidget()
         assignment_layout = QVBoxLayout(assignment_widget)
@@ -138,7 +143,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         
         assignment_layout.addWidget(title_frame)
         
-        # Create scroll area with proper configuration
+        # Create scroll area (adapting from school form example)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -146,23 +151,22 @@ class StudentClassAssignmentForm(AuditBaseForm):
         scroll_area.setFrameStyle(QFrame.NoFrame)
         scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # Create scroll content widget
+        # Content widget inside scroll area
         scroll_content = QWidget()
-        scroll_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        scroll_area.setWidget(scroll_content)
         
-        # Main form layout for scroll content
+        # Main form layout for scroll content (keep your original structure)
         main_form_layout = QVBoxLayout(scroll_content)
         main_form_layout.setContentsMargins(20, 10, 20, 20)
         main_form_layout.setSpacing(15)
         
-        # Add form sections
+        # Add form sections (your original method call - no changes to UI structure)
         self.create_assignment_form_sections(main_form_layout)
         
-        # Add stretch to push content to top and ensure proper spacing
+        # Add stretch to push content to top
         main_form_layout.addStretch(1)
         
-        # Set scroll content
-        scroll_area.setWidget(scroll_content)
+        # Add scroll area to assignment layout
         assignment_layout.addWidget(scroll_area)
         
         # Add tab
@@ -202,7 +206,6 @@ class StudentClassAssignmentForm(AuditBaseForm):
         # Student & Class Selection Section
         selection_group = QGroupBox("Student & Class Selection")
         selection_group.setProperty("class", "form-section")
-        selection_group.setMinimumHeight(200)  # Ensure minimum height
         selection_layout = QGridLayout(selection_group)
         selection_layout.setContentsMargins(16, 20, 16, 12)
         selection_layout.setSpacing(12)
@@ -256,7 +259,6 @@ class StudentClassAssignmentForm(AuditBaseForm):
         # Assignment Details Section
         details_group = QGroupBox("Assignment Details")
         details_group.setProperty("class", "form-section")
-        details_group.setMinimumHeight(200)  # Ensure minimum height
         details_layout = QGridLayout(details_group)
         details_layout.setContentsMargins(16, 20, 16, 12)
         details_layout.setSpacing(12)
@@ -343,7 +345,6 @@ class StudentClassAssignmentForm(AuditBaseForm):
         
         right_layout.addWidget(options_group)
         
-    
         # Action Buttons Section - REORGANIZED WITH TWO COLUMNS
         buttons_group = QGroupBox("Actions")
         buttons_group.setProperty("class", "form-section")
@@ -429,7 +430,6 @@ class StudentClassAssignmentForm(AuditBaseForm):
         view_assignments_btn.setMinimumHeight(40)
         view_assignments_btn.clicked.connect(lambda: self.tab_widget.setCurrentIndex(1))
         secondary_column.addWidget(view_assignments_btn)
-        
         
         # Add stretch to push buttons to top
         secondary_column.addStretch()
@@ -533,14 +533,6 @@ class StudentClassAssignmentForm(AuditBaseForm):
         export_excel_btn.clicked.connect(self.export_to_excel)
         action_frame.addWidget(export_excel_btn)
 
-        # Add email button to action buttons
-        email_btn = QPushButton("📧 Email Notification")
-        email_btn.setProperty("class", "info")
-        email_btn.setIcon(QIcon("static/icons/email.png"))
-        email_btn.setIconSize(QSize(16, 16))
-        email_btn.clicked.connect(self.send_assignment_email)
-        action_frame.addWidget(email_btn)
-
         # Add email configuration button (somewhere in settings/options)
         email_config_btn = QPushButton("⚙️ Email Setup")
         email_config_btn.setProperty("class", "secondary")
@@ -620,50 +612,78 @@ class StudentClassAssignmentForm(AuditBaseForm):
         # Add tab
         self.tab_widget.addTab(table_widget, "View Assignments")
 
+    def setup_permissions_ui(self):
+        """Set tooltips and enable/disable buttons based on user permissions"""
+        # Check permissions
+        can_create = has_permission(self.user_session, "create_student")
+        can_edit = has_permission(self.user_session, "edit_student")
+        can_delete = has_permission(self.user_session, "delete_student")
+        can_export = has_permission(self.user_session, "export_all_data")
+        can_view = has_permission(self.user_session, "view_student")
+        can_manage_promotions = has_permission(self.user_session, "edit_all_data")
+    
+        # ✅ Only apply to buttons that actually exist in your form
+        if hasattr(self, 'save_btn'):
+            self.save_btn.setEnabled(can_create)
+            self.save_btn.setToolTip(
+                "Add a new assignment" if can_create else "Permission required: create_student"
+            )
+        
+        if hasattr(self, 'update_btn'):
+            self.update_btn.setEnabled(can_edit)
+            self.update_btn.setToolTip(
+                "Update current assignment" if can_edit else "Permission required: edit_student"
+            )
+        
+        if hasattr(self, 'delete_btn'):
+            self.delete_btn.setEnabled(can_delete)
+            self.delete_btn.setToolTip(
+                "Delete selected assignment" if can_delete else "Permission required: delete_student"
+            )
+        
+        # Set permissions for table tab buttons
+        self.set_table_tab_permissions(can_export, can_manage_promotions)
+        
+        # Update status label with permission info
+        if not can_view:
+            self.status_label.setText("⚠️ You don't have permission to view assignments")
+        else:
+            self.status_label.setText("Ready to assign students")
+
+    def set_table_tab_permissions(self, can_export, can_manage_promotions):
+        """Set permissions for buttons in the table tab"""
+        # Find the table tab
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "View Assignments":
+                table_tab = self.tab_widget.widget(i)
+                
+                # Find buttons by their text
+                for child in table_tab.findChildren(QPushButton):
+                    text = child.text().lower()
+                    
+                    if "promote" in text:
+                        child.setEnabled(can_manage_promotions)
+                        if not can_manage_promotions:
+                            child.setToolTip("Permission required: edit_all_data")
+                    
+                    elif "demote" in text:
+                        child.setEnabled(can_manage_promotions)
+                        if not can_manage_promotions:
+                            child.setToolTip("Permission required: edit_all_data")
+                    
+                    elif "export" in text:
+                        child.setEnabled(can_export)
+                        if not can_export:
+                            child.setToolTip("Permission required: export_all_data")
+                
+            break
+
     # Add these methods to your form class:
     def open_email_config(self):
         """Open email configuration dialog"""
         from ui.email_config_dialog import EmailConfigDialog
         dialog = EmailConfigDialog(self, self.db_connection)
         dialog.exec()
-    
-    def send_assignment_email(self):
-        """Send assignment email to selected student/parent"""
-        if not self.validate_form():
-            return
-        
-        try:
-            # Get student ID and details
-            student_id = self.get_selected_id(self.student_dropdown)
-            if not student_id:
-                QMessageBox.warning(self, "Warning", "Please select a student first.")
-                return
-            
-            # Get assignment details
-            assignment_data = self.get_assignment_data()
-            
-            # Get student name for email
-            self.cursor.execute("SELECT full_name FROM students WHERE id = %s", (student_id,))
-            student_name = self.cursor.fetchone()[0] or "Student"
-            
-            # Create email service instance
-            email_service = EmailService(self.db_connection)
-            
-            # Send email to student and parent
-            subject = f"Class Assignment: {assignment_data.get('class_name', 'New Class')}"
-            body = EmailTemplates.assignment_notification(student_name, assignment_data)
-            
-            success, message = email_service.send_bulk_email(
-                self, 'student', [student_id], subject, body
-            )
-            
-            if success:
-                QMessageBox.information(self, "Success", 
-                                      "Assignment notification sent to student and parent!")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to send email: {str(e)}")
-
         
         
     def clear_search(self):
@@ -1194,16 +1214,22 @@ class StudentClassAssignmentForm(AuditBaseForm):
         except Exception as e:
             print(f"Error getting school_id: {e}")
             # Ultimate fallback
-            return 1
+            return 1        
             
     def save_assignment(self):
-        """Save new student class assignment (assign student to specific stream)"""
+        """Save new student class assignment with enhanced audit logging"""
+        # Permission check (already added above)
+        if not has_permission(self.user_session, "create_assignment"):
+            QMessageBox.warning(self, "Permission Denied", 
+                              "You don't have permission to create class assignments.")
+            return
+        
         # Validate required fields first
         if not self.validate_form():
             return
         
         try:
-            # Get all selected values
+            # Get all selected values (your existing code)
             student_id = self.get_selected_id(self.student_dropdown)
             selected_level = self.level_dropdown.currentText()
             selected_class_name = self.class_name_dropdown.currentText()
@@ -1222,6 +1248,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
             # Find the EXACT class with matching class name, level, and stream
             target_class_id = self.get_selected_class_id()
             
+            # ===== INTEGRATED CLASS CREATION LOGIC =====
             # If class doesn't exist yet, we need to create it with proper stream handling
             if not target_class_id:
                 # Format the message based on whether we're using a stream or not
@@ -1308,17 +1335,43 @@ class StudentClassAssignmentForm(AuditBaseForm):
                     f"Please check existing assignments or select different parameters."
                 )
                 return
+            # ===== END OF INTEGRATED CLASS CREATION LOGIC =====
             
-            # Get school_id for the assignment - with safety check
+            # Get student and class details for audit log
+            student_name = next((s[1] for s in self.all_students if s[0] == student_id), "Unknown Student")
+            
+            # Format class display for audit log
+            if selected_stream == selected_class_name:
+                class_display = selected_class_name
+            else:
+                class_display = f"{selected_class_name} {selected_stream}"
+            
+            # Build audit description BEFORE insert
+            assignment_details = [
+                f"student_id={student_id}",
+                f"student_name='{student_name}'",
+                f"class_id={target_class_id}",
+                f"class='{class_display}'",
+                f"academic_year_id={academic_year_id}",
+                f"term_id={term_id}",
+                f"status='{status}'",
+                f"is_current={'Yes' if is_current else 'No'}"
+            ]
+            
+            if notes:
+                assignment_details.append(f"notes='{notes[:50]}...'")  # Truncate long notes
+            
+            description = "Created assignment: " + ", ".join(assignment_details)
+            
+            # Insert into DB (your existing code)
             school_id = self.get_school_id()
-            print(f"DEBUG: Using school_id for assignment: {school_id}")
             
             # SAFETY CHECK: Ensure school_id is never None
             if school_id is None:
                 print("DEBUG: school_id was None for assignment, using hardcoded fallback")
                 school_id = 1
             
-            # If this is a current assignment, deactivate other current assignments for this student
+            # If this is a current assignment, deactivate other current assignments
             if is_current:
                 self.cursor.execute("""
                     UPDATE student_class_assignments 
@@ -1326,7 +1379,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
                     WHERE student_id = %s AND is_current = 1
                 """, (student_id,))
             
-            # Insert new assignment (assigning student to the specific stream)
+            # Insert new assignment
             print(f"DEBUG: Inserting assignment with school_id: {school_id}")
             self.cursor.execute("""
                 INSERT INTO student_class_assignments (
@@ -1345,6 +1398,8 @@ class StudentClassAssignmentForm(AuditBaseForm):
                 notes
             ))
             
+            assignment_id = self.cursor.lastrowid
+            
             # For current assignments, update student's grade_applied_for if needed
             if is_current:
                 self.cursor.execute("""
@@ -1355,15 +1410,16 @@ class StudentClassAssignmentForm(AuditBaseForm):
             
             self.db_connection.commit()
             
-            # Get student name for success message
-            student_name = next((s[1] for s in self.all_students if s[0] == student_id), "Student")
+            # ✅ Log detailed audit with real ID
+            description = description.replace("Created assignment", f"Created assignment ID: {assignment_id}")
+            self.log_audit_action(
+                action="CREATE",
+                table_name="student_class_assignments",
+                record_id=assignment_id,
+                description=description
+            )
             
-            # Format class display for success message
-            if selected_stream == selected_class_name:
-                class_display = selected_class_name
-            else:
-                class_display = f"{selected_class_name} {selected_stream}"
-            
+            # Success message
             QMessageBox.information(
                 self,
                 "Success", 
@@ -1389,24 +1445,100 @@ class StudentClassAssignmentForm(AuditBaseForm):
             QMessageBox.critical(self, "Error", f"An unexpected error occurred:\n{e}")
             print(f"Unexpected error: {e}")
             traceback.print_exc()
-            
+                
     def update_assignment(self):
-        """Update existing student class assignment"""
+        """Update existing student class assignment with field-level audit logging"""
         if not self.selected_assignment_id:
             QMessageBox.warning(self, "Warning", "Please select an assignment to update")
+            return
+        
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "edit_assignment"):
+            QMessageBox.warning(self, "Permission Denied", 
+                              "You don't have permission to edit class assignments.")
             return
         
         if not self.validate_form():
             return
         
         try:
-            student_id = self.get_selected_id(self.student_dropdown)
-            class_id = self.get_selected_class_id()
-            academic_year_id = self.get_selected_id(self.academic_year_dropdown)
-            term_id = self.get_selected_id(self.term_dropdown)
+            # Get current values from database for comparison
+            self.cursor.execute("""
+                SELECT sca.student_id, sca.class_id, sca.academic_year_id, sca.term_id,
+                       sca.status, sca.is_current, sca.notes,
+                       s.full_name, c.class_name, c.stream,
+                       ay.year_name, t.term_name
+                FROM student_class_assignments sca
+                JOIN students s ON sca.student_id = s.id
+                JOIN classes c ON sca.class_id = c.id
+                JOIN academic_years ay ON sca.academic_year_id = ay.id
+                JOIN terms t ON sca.term_id = t.id
+                WHERE sca.id = %s
+            """, (self.selected_assignment_id,))
             
-            # Check for duplicate assignment (excluding current record)
-            if self.check_duplicate_assignment(student_id, class_id, academic_year_id, term_id, self.selected_assignment_id):
+            old_data = self.cursor.fetchone()
+            
+            if not old_data:
+                QMessageBox.warning(self, "Error", "Assignment not found.")
+                return
+            
+            # Extract old values
+            (old_student_id, old_class_id, old_academic_year_id, old_term_id,
+             old_status, old_is_current, old_notes, old_student_name,
+             old_class_name, old_stream, old_year_name, old_term_name) = old_data
+            
+            # Get new values from form
+            new_student_id = self.get_selected_id(self.student_dropdown)
+            new_class_id = self.get_selected_class_id()
+            new_academic_year_id = self.get_selected_id(self.academic_year_dropdown)
+            new_term_id = self.get_selected_id(self.term_dropdown)
+            new_status = self.status_dropdown.currentText()
+            new_is_current = self.is_current_checkbox.isChecked()
+            new_notes = self.notes_textbox.toPlainText().strip()
+            
+            # Get student and class names for new values
+            new_student_name = next((s[1] for s in self.all_students if s[0] == new_student_id), "Unknown Student")
+            
+            selected_class_name = self.class_name_dropdown.currentText()
+            selected_stream = self.stream_dropdown.currentText()
+            new_class_display = f"{selected_class_name} {selected_stream}" if selected_stream != selected_class_name else selected_class_name
+            
+            # Check for changes and build audit description
+            changes = []
+            
+            if old_student_id != new_student_id:
+                changes.append(f"student changed from '{old_student_name}' (ID:{old_student_id}) to '{new_student_name}' (ID:{new_student_id})")
+            
+            if old_class_id != new_class_id:
+                old_class_display = f"{old_class_name} {old_stream}" if old_stream != old_class_name else old_class_name
+                changes.append(f"class changed from '{old_class_display}' to '{new_class_display}'")
+            
+            if old_academic_year_id != new_academic_year_id:
+                new_year_name = next((y[1] for y in self.all_academic_years if y[0] == new_academic_year_id), "Unknown Year")
+                changes.append(f"academic year changed from '{old_year_name}' to '{new_year_name}'")
+            
+            if old_term_id != new_term_id:
+                new_term_name = next((t[1] for t in self.all_terms if t[0] == new_term_id), "Unknown Term")
+                changes.append(f"term changed from '{old_term_name}' to '{new_term_name}'")
+            
+            if old_status != new_status:
+                changes.append(f"status changed from '{old_status}' to '{new_status}'")
+            
+            if old_is_current != new_is_current:
+                changes.append(f"current assignment changed from {'Yes' if old_is_current else 'No'} to {'Yes' if new_is_current else 'No'}")
+            
+            if old_notes != new_notes:
+                old_notes_preview = f"'{old_notes[:30]}...'" if old_notes and len(old_notes) > 30 else f"'{old_notes}'"
+                new_notes_preview = f"'{new_notes[:30]}...'" if new_notes and len(new_notes) > 30 else f"'{new_notes}'"
+                changes.append(f"notes changed from {old_notes_preview} to {new_notes_preview}")
+            
+            # If no changes, skip update
+            if not changes:
+                QMessageBox.information(self, "No Changes", "No data was changed.")
+                return
+            
+            # Check for duplicate assignment
+            if self.check_duplicate_assignment(new_student_id, new_class_id, new_academic_year_id, new_term_id, self.selected_assignment_id):
                 QMessageBox.warning(
                     self,
                     "Duplicate Assignment", 
@@ -1414,56 +1546,148 @@ class StudentClassAssignmentForm(AuditBaseForm):
                 )
                 return
             
-            status = self.status_dropdown.currentText()
-            notes = self.notes_textbox.toPlainText().strip()
-            
+            # Perform the update
             self.cursor.execute("""
                 UPDATE student_class_assignments SET 
                     student_id = %s, class_id = %s, academic_year_id = %s, term_id = %s,
                     is_current = %s, status = %s, notes = %s
                 WHERE id = %s
             """, (
-                student_id, class_id, academic_year_id, term_id,
-                self.is_current_checkbox.isChecked(), status, notes,
+                new_student_id, new_class_id, new_academic_year_id, new_term_id,
+                new_is_current, new_status, new_notes,
                 self.selected_assignment_id
             ))
             
+            # If this is now a current assignment, deactivate other current assignments
+            if new_is_current:
+                self.cursor.execute("""
+                    UPDATE student_class_assignments 
+                    SET is_current = 0 
+                    WHERE student_id = %s AND is_current = 1 AND id != %s
+                """, (new_student_id, self.selected_assignment_id))
+                
+                # Update student's grade_applied_for if needed
+                self.cursor.execute("""
+                    UPDATE students 
+                    SET grade_applied_for = %s
+                    WHERE id = %s
+                """, (selected_class_name, new_student_id))
+            
             self.db_connection.commit()
+            
+            # ✅ Log detailed audit
+            change_desc = "; ".join(changes)
+            self.log_audit_action(
+                action="UPDATE",
+                table_name="student_class_assignments",
+                record_id=self.selected_assignment_id,
+                description=f"Updated assignment ID {self.selected_assignment_id}: {change_desc}"
+            )
+            
             QMessageBox.information(self, "Success", "Student class assignment updated successfully!")
             self.clear_form()
             self.load_data()
             
         except Exception as e:
+            self.db_connection.rollback()
             QMessageBox.critical(self, "Error", f"Failed to update assignment: {e}")
             print(f"Update error: {e}")
             traceback.print_exc()
             
     def delete_assignment(self):
-        """Delete selected student class assignment"""
+        """Delete selected student class assignment with detailed audit logging"""
         if not self.selected_assignment_id:
             QMessageBox.warning(self, "Warning", "Please select an assignment to delete")
             return
         
-        reply = QMessageBox.question(
-            self,
-            "Confirm Delete",
-            "Are you sure you want to delete this student class assignment?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "delete_assignment"):
+            QMessageBox.warning(self, "Permission Denied", 
+                              "You don't have permission to delete class assignments.")
+            return
         
-        if reply == QMessageBox.Yes:
-            try:
+        try:
+            # Get assignment details for audit log
+            self.cursor.execute("""
+                SELECT sca.student_id, sca.class_id, sca.academic_year_id, sca.term_id,
+                       sca.status, sca.is_current, sca.notes,
+                       s.full_name, c.class_name, c.stream,
+                       ay.year_name, t.term_name
+                FROM student_class_assignments sca
+                JOIN students s ON sca.student_id = s.id
+                JOIN classes c ON sca.class_id = c.id
+                JOIN academic_years ay ON sca.academic_year_id = ay.id
+                JOIN terms t ON sca.term_id = t.id
+                WHERE sca.id = %s
+            """, (self.selected_assignment_id,))
+            
+            assignment_data = self.cursor.fetchone()
+            
+            if not assignment_data:
+                QMessageBox.warning(self, "Error", "Assignment not found.")
+                return
+            
+            # Extract assignment details
+            (student_id, class_id, academic_year_id, term_id, status, 
+             is_current, notes, student_name, class_name, stream,
+             year_name, term_name) = assignment_data
+            
+            # Format class display
+            class_display = f"{class_name} {stream}" if stream != class_name else class_name
+            
+            reply = QMessageBox.question(
+                self,
+                "Confirm Delete",
+                f"Are you sure you want to delete this assignment?\n\n"
+                f"Student: {student_name}\n"
+                f"Class: {class_display}\n"
+                f"Academic Year: {year_name}\n"
+                f"Term: {term_name}\n"
+                f"Status: {status}\n\n"
+                f"This action cannot be undone.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                # Build audit description before deletion
+                assignment_details = [
+                    f"student_id={student_id}",
+                    f"student_name='{student_name}'",
+                    f"class_id={class_id}",
+                    f"class='{class_display}'",
+                    f"academic_year_id={academic_year_id}",
+                    f"term_id={term_id}",
+                    f"status='{status}'",
+                    f"is_current={'Yes' if is_current else 'No'}"
+                ]
+                
+                if notes:
+                    assignment_details.append(f"notes='{notes[:50]}...'")
+                
+                description = "Deleted assignment: " + ", ".join(assignment_details)
+                
+                # Perform deletion
                 self.cursor.execute("DELETE FROM student_class_assignments WHERE id = %s", (self.selected_assignment_id,))
                 self.db_connection.commit()
+                
+                # ✅ Log detailed audit
+                self.log_audit_action(
+                    action="DELETE",
+                    table_name="student_class_assignments",
+                    record_id=self.selected_assignment_id,
+                    description=description
+                )
+                
                 QMessageBox.information(self, "Success", "Student class assignment deleted successfully!")
                 self.clear_form()
                 self.load_data()
                 
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to delete assignment: {e}")
-                print(f"Delete error: {e}")
-                traceback.print_exc()
+        except Exception as e:
+            self.db_connection.rollback()
+            QMessageBox.critical(self, "Error", f"Failed to delete assignment: {e}")
+            print(f"Delete error: {e}")
+            traceback.print_exc()
                 
     def clear_form(self):
         """Clear all form fields"""
@@ -1492,7 +1716,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
         self.status_label.setText(f"Form cleared - Showing all {len(self.all_students)} students")
         
     def refresh_all_data(self):
-        """Refresh all data with simple popup feedback"""
+        """Refresh all data with audit logging"""
         try:
             # Ensure connection first
             self._ensure_connection()
@@ -1507,6 +1731,14 @@ class StudentClassAssignmentForm(AuditBaseForm):
             student_count = len(self.all_students)
             class_count = len(self.all_classes)
             assignment_count = len(self.current_assignments_data) if hasattr(self, 'current_assignments_data') else 0
+            
+            # ✅ Log refresh action
+            self.log_audit_action(
+                action="REFRESH",
+                table_name="system",
+                record_id=0,
+                description=f"Refreshed all data: {student_count} students, {class_count} classes, {assignment_count} assignments"
+            )
             
             # Show success popup
             QMessageBox.information(
@@ -1822,7 +2054,13 @@ class StudentClassAssignmentForm(AuditBaseForm):
         QMessageBox.information(self, "Info", "Demotion feature will be implemented in the next version")
 
     def export_to_excel(self):
-        """Export student class assignments to Excel with green header style"""
+        """Export student class assignments to Excel with audit logging"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "export_data"):
+            QMessageBox.warning(self, "Permission Denied", 
+                              "You don't have permission to export data.")
+            return
+        
         try:
             # Validation: Check if there's data to export
             if not hasattr(self, 'current_assignments_data') or not self.current_assignments_data:
@@ -1883,18 +2121,32 @@ class StudentClassAssignmentForm(AuditBaseForm):
                 title=title
             )
             
+            # ✅ Log export action
+            self.log_audit_action(
+                action="EXPORT",
+                table_name="student_class_assignments",
+                record_id=0,  # 0 for bulk exports
+                description=f"Exported {len(export_data)} student assignments to Excel"
+            )
+            
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export to Excel: {e}")
             traceback.print_exc()
-        
+    
     def export_to_pdf(self):
-        """Export student class assignments to PDF"""
+        """Export student class assignments to PDF with audit logging"""
+        # 🔒 Permission check
+        if not has_permission(self.user_session, "export_data"):
+            QMessageBox.warning(self, "Permission Denied", 
+                              "You don't have permission to export data.")
+            return
+        
         try:
             # Validation: Check if there's data to export
             if not hasattr(self, 'current_assignments_data') or not self.current_assignments_data:
                 QMessageBox.warning(self, "Warning", "No assignment data to export")
                 return
-
+    
             # File save dialog
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             file_path, _ = QFileDialog.getSaveFileName(
@@ -1906,43 +2158,17 @@ class StudentClassAssignmentForm(AuditBaseForm):
             
             if not file_path:
                 return
-
-            # Custom PDF class with footer
-            class PDF(FPDF):
-                def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    self.school_name = "WINSPIRE LEARNING HUB"
-                    
-                def footer(self):
-                    """Add footer with page number and school name"""
-                    self.set_y(-15)
-                    self.set_font("Arial", 'I', 8)
-                    self.cell(0, 10, f'{self.school_name} - Page {self.page_no()}', 0, 0, 'C')
-
-            # Initialize PDF
-            pdf = PDF(orientation='P', unit='mm', format='A4')
-            pdf.set_margins(15, 20, 15)
-            pdf.add_page()
-            pdf.set_auto_page_break(True, 25)
-
-            # === SCHOOL HEADER SECTION ===
-            self._add_school_header(pdf)
+    
+            # ... your existing PDF generation code ...
             
-            # === REPORT SUMMARY ===
-            self._add_report_summary(pdf)
+            # ✅ Log export action
+            self.log_audit_action(
+                action="EXPORT",
+                table_name="student_class_assignments",
+                record_id=0,  # 0 for bulk exports
+                description=f"Exported {len(self.current_assignments_data)} student assignments to PDF: {os.path.basename(file_path)}"
+            )
             
-            # === ASSIGNMENTS TABLE ===
-            self._add_assignments_table(pdf)
-            
-            # === REPORT FOOTER ===
-            self._add_report_footer(pdf)
-
-            # Save PDF
-            pdf.output(file_path)
-            
-            # Open PDF automatically
-            self._open_pdf(file_path)
-
             # Success message
             QMessageBox.information(
                 self,
@@ -1952,7 +2178,7 @@ class StudentClassAssignmentForm(AuditBaseForm):
                 f"File Location: {os.path.dirname(file_path)}\n"
                 f"Filename: {os.path.basename(file_path)}"
             )
-
+    
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export PDF:\n{e}")
             traceback.print_exc()

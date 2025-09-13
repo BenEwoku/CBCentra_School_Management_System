@@ -725,6 +725,31 @@ class NotificationCenter(QDialog):
         widget.conversation_id = conversation['id']
         return widget
 
+    # Add this method to your NotificationCenter class 
+    def format_message_body(self, body):
+        """Format message body for HTML display with proper line breaks"""
+        if not body:
+            return ""
+        
+        import html
+        # Escape HTML characters first
+        formatted_body = html.escape(body)
+        # Convert line breaks to HTML breaks
+        formatted_body = formatted_body.replace('\n', '<br>')
+        return formatted_body
+    
+    def format_file_size(self, size_bytes):
+        """Format file size in human readable format"""
+        if size_bytes == 0:
+            return "0 B"
+        size_names = ["B", "KB", "MB", "GB"]
+        import math
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_names[i]}"
+    
+    # Updated show_conversation method with line break fixes
     def show_conversation(self, row):
         if row < 0 or self.is_loading:
             return
@@ -788,7 +813,7 @@ class NotificationCenter(QDialog):
                             box-shadow: 0 2px 8px rgba(0,123,255,0.3);
                         '>
                             <strong>You</strong>
-                            <div style='{message_body_style}'>{msg['body']}</div>
+                            <div style='{message_body_style}'>{self.format_message_body(msg['body'])}</div>
                             {attachments_html}
                             <div style='font-size: 11px; margin-top: 8px; opacity: 0.8;'>
                                 {timestamp}
@@ -809,7 +834,7 @@ class NotificationCenter(QDialog):
                             box-shadow: 0 1px 4px rgba(0,0,0,0.1);
                         '>
                             <strong>{msg['from_name'] or msg['from_email']}</strong>
-                            <div style='{message_body_style}'>{msg['body']}</div>
+                            <div style='{message_body_style}'>{self.format_message_body(msg['body'])}</div>
                             {attachments_html}
                             <div style='font-size: 11px; margin-top: 8px; opacity: 0.6;'>
                                 {timestamp}
@@ -829,7 +854,7 @@ class NotificationCenter(QDialog):
                 f"📧 Subject: {conv['subject']}<br>"
                 f"📅 Last message: {conv['last_message_date'].strftime('%Y-%m-%d %H:%M')}"
             )
-
+    
             self.message_header.setStyleSheet("""
                 padding: 20px;
                 background-color: #2c3e50;

@@ -212,31 +212,57 @@ class EmailNotificationService(QObject):
         except:
             return '', address_header
             
+    # 3. Fix for incoming email body extraction in EmailNotificationService
     def _extract_email_body(self, msg):
-        """Extract email body text"""
+        """Extract email body text with preserved formatting"""
         body = ""
+        html_body = ""
+        
         if msg.is_multipart():
             for part in msg.walk():
                 content_type = part.get_content_type()
                 content_disposition = str(part.get("Content-Disposition"))
                 
-                if content_type == "text/plain" and "attachment" not in content_disposition:
+                if "attachment" not in content_disposition:
                     try:
                         payload = part.get_payload(decode=True)
                         charset = part.get_content_charset() or 'utf-8'
-                        body = payload.decode(charset, errors='replace')
-                        break
+                        decoded_content = payload.decode(charset, errors='replace')
+                        
+                        if content_type == "text/plain":
+                            body = decoded_content
+                        elif content_type == "text/html":
+                            html_body = decoded_content
                     except:
                         continue
         else:
             try:
                 payload = msg.get_payload(decode=True)
                 charset = msg.get_content_charset() or 'utf-8'
-                body = payload.decode(charset, errors='replace')
+                content = payload.decode(charset, errors='replace')
+                
+                if msg.get_content_type() == "text/html":
+                    html_body = content
+                else:
+                    body = content
             except:
                 body = msg.get_payload()
-                
-        return body
+        
+        # FIX: Return plain text with preserved line breaks
+        # If we have HTML, convert it to plain text but preserve line breaks
+        if html_body and not body:
+            import re
+            # Simple HTML to text conversion that preserves line breaks
+            text = html_body
+            text = re.sub(r'<br[^>]*>', '\n', text, flags=re.IGNORECASE)
+            text = re.sub(r'</p>', '\n\n', text, flags=re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', '', text)  # Remove remaining HTML tags
+            # Decode HTML entities
+            import html
+            text = html.unescape(text)
+            body = text
+        
+        return body.strip() if body else ""
     
     def _extract_attachments(self, msg):
         """Extract attachments from email message"""
