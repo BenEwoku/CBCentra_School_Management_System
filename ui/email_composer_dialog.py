@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QFont
 import os
 from services.email_service import EmailService, EmailTemplates
+# In your email_composer_dialog.py
+from ui.spam_checker_dialog import SpamCheckerDialog
 
 class EmailComposerDialog(QDialog):
     # Add these constants
@@ -189,6 +191,13 @@ class EmailComposerDialog(QDialog):
         send_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
         send_btn.clicked.connect(self.send_email)
         button_layout.addWidget(send_btn)
+
+        # Add spam check button to toolbar
+        spam_check_btn = QPushButton("Check for Spam")
+        spam_check_btn.setProperty("class", "warning")
+        spam_check_btn.setToolTip("Check if content might be flagged as spam")
+        spam_check_btn.clicked.connect(self.open_spam_checker)
+        button_layout.addWidget(spam_check_btn)
         
         layout.addLayout(button_layout)
         
@@ -574,6 +583,7 @@ class EmailComposerDialog(QDialog):
         
         return True
     
+    # Also update your send_test_email method similarly
     def send_test_email(self):
         """Send test email to yourself"""
         if not self.validate_form():
@@ -587,11 +597,17 @@ class EmailComposerDialog(QDialog):
                 QMessageBox.warning(self, "Configuration", "Email not configured. Please set up email first.")
                 return
             
+            # FIX: Get the proper content based on HTML checkbox
+            if self.html_checkbox.isChecked():
+                email_body = self.body_edit.toPlainText().replace('\n', '<br>')
+            else:
+                email_body = self.body_edit.toPlainText()
+            
             # Send test to yourself
             success, message = email_service.send_email(
                 config['email_address'],
                 f"TEST: {self.subject_edit.text()}",
-                self.body_edit.toPlainText(),
+                email_body,  # Use the properly formatted body
                 self.attachments,
                 self.html_checkbox.isChecked()
             )
@@ -604,6 +620,7 @@ class EmailComposerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to send test email: {str(e)}")
     
+    # Update your send_email method in EmailComposerDialog 
     def send_email(self):
         """Send the actual email"""
         if not self.validate_form():
@@ -635,10 +652,22 @@ class EmailComposerDialog(QDialog):
         try:
             email_service = EmailService(self.db_connection)
             
+            # FIX: Get the proper content based on HTML checkbox
+            if self.html_checkbox.isChecked():
+                # For HTML emails, convert plain text line breaks to HTML
+                email_body = self.body_edit.toPlainText()
+                # Convert line breaks to HTML breaks
+                email_body = email_body.replace('\n', '<br>')
+                # You could also use toHtml() if you want full HTML formatting
+                # email_body = self.body_edit.toHtml()
+            else:
+                # For plain text emails, preserve line breaks
+                email_body = self.body_edit.toPlainText()
+            
             success, message = email_service.send_email(
                 selected_emails,
                 self.subject_edit.text(),
-                self.body_edit.toPlainText(),
+                email_body,  # Use the properly formatted body
                 self.attachments,
                 self.html_checkbox.isChecked()
             )
@@ -658,6 +687,7 @@ class EmailComposerDialog(QDialog):
         except Exception as e:
             progress.close()
             QMessageBox.critical(self, "Error", f"Failed to send email: {str(e)}")
+
     
     def get_email_data(self):
         """Get email data for external sending"""
@@ -669,3 +699,40 @@ class EmailComposerDialog(QDialog):
             'attachments': self.attachments,
             'is_html': self.html_checkbox.isChecked()
         }
+
+    # Add this method to your EmailComposerDialog class in email_composer_dialog.py
+    def open_spam_checker(self):
+        """Open spam checker dialog with current email content"""
+        try:
+            # Get current email content
+            subject = self.subject_edit.text()
+            body = self.body_edit.toPlainText()
+            
+            # Combine subject and body for analysis
+            full_content = f"Subject: {subject}\n\n{body}" if subject else body
+            
+            if not full_content.strip():
+                QMessageBox.information(
+                    self, 
+                    "No Content", 
+                    "Please enter some email content before checking for spam."
+                )
+                return
+            
+            # Create and show spam checker dialog
+            spam_dialog = SpamCheckerDialog(self)
+            
+            # Pre-fill with current content
+            spam_dialog.input_text.setPlainText(full_content)
+            
+            # Auto-analyze on open
+            QTimer.singleShot(100, spam_dialog.analyze_text)
+            
+            spam_dialog.exec()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Error", 
+                f"Failed to open spam checker: {str(e)}"
+            )
